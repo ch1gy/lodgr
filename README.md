@@ -250,14 +250,34 @@ with a burst of 10.
 
 ---
 
-## State Machine
+## Ticket Lifecycle
 
 ```
-open ──(PATCH /tickets/:id/ack)──▶ acknowledged ──(PATCH /tickets/:id/close)──▶ closed
+[open] ──(desk: acknowledge)──▶ [acknowledged] ──(desk: close)──▶ [closed]
+  │                                                                    │
+  └────────────────── no direct close allowed ────────────────────────┘
+                    all transitions enforced server-side
+                    in a single isolated module (ticket_status.rs)
+                    — status cannot be changed anywhere else
 ```
 
-All other transitions return `400`. Logic lives exclusively in
-`src/ticket_status.rs::transition()`.
+| From | Action | To | Who |
+|---|---|---|---|
+| `open` | acknowledge | `acknowledged` | desk only |
+| `acknowledged` | close | `closed` | desk only |
+| any other | — | — | `400 Bad Request` |
+
+Skipping `acknowledged` and closing an `open` ticket directly is not permitted.
+This is intentional: the two-step flow gives desk agents a documented
+acknowledgement point before resolution, and prevents accidental instant-closure
+of tickets that have not been reviewed.
+
+All transition logic lives exclusively in `src/ticket_status.rs::transition()`.
+No other file in the codebase is able to change a ticket's status — the DB write
+function `db::tickets::update_status` is only ever called from the two service
+functions (`transition_ack`, `transition_close`) that go through
+`ticket_status::transition` first. Bypassing the state machine is a compile-time
+impossibility without modifying that module.
 
 ---
 

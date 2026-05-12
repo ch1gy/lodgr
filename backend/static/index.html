@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ticket Support</title>
+  <style>
+    body { font-family: monospace; max-width: 800px; margin: 40px auto; padding: 0 16px; }
+    section { border: 1px solid #ccc; padding: 16px; margin-bottom: 24px; }
+    h2 { margin-top: 0; }
+    input, textarea, select { display: block; width: 100%; margin: 4px 0 8px; box-sizing: border-box; }
+    button { cursor: pointer; }
+    pre { background: #f4f4f4; padding: 8px; overflow: auto; white-space: pre-wrap; }
+    label { font-weight: bold; }
+  </style>
+</head>
+<body>
+<h1>Ticket Support — Test UI</h1>
+<p>Token: <code id="token-display">none</code></p>
+
+<!-- LOGIN -->
+<section>
+  <h2>Login</h2>
+  <form id="login-form">
+    <label>Email</label>
+    <input type="email" id="login-email" placeholder="email">
+    <label>Password</label>
+    <input type="password" id="login-password" placeholder="password">
+    <button type="submit">Login</button>
+  </form>
+  <pre id="login-result"></pre>
+</section>
+
+<!-- CREATE CLIENT (desk only) -->
+<section>
+  <h2>Create Client (desk only)</h2>
+  <form id="create-client-form">
+    <label>Name</label><input id="cc-name" type="text" placeholder="Full name">
+    <label>Email</label><input id="cc-email" type="email" placeholder="client@example.com">
+    <label>Password</label><input id="cc-password" type="password" placeholder="min 8 characters">
+    <button type="submit">Create Client</button>
+  </form>
+  <pre id="create-client-result"></pre>
+</section>
+
+<!-- CREATE TICKET -->
+<section>
+  <h2>Create Ticket</h2>
+  <form id="create-ticket-form">
+    <label>Title</label><input id="ct-title" type="text" placeholder="Short summary">
+    <label>Description</label><textarea id="ct-desc" placeholder="Describe the issue"></textarea>
+    <button type="submit">Create Ticket</button>
+  </form>
+  <pre id="create-ticket-result"></pre>
+</section>
+
+<!-- LIST TICKETS -->
+<section>
+  <h2>List Tickets</h2>
+  <button id="list-tickets-btn">Fetch Tickets</button>
+  <pre id="list-tickets-result"></pre>
+</section>
+
+<!-- VIEW TICKET -->
+<section>
+  <h2>View Ticket</h2>
+  <form id="view-ticket-form">
+    <label>Ticket ID</label><input id="vt-id" type="text" placeholder="paste ticket id">
+    <button type="submit">View</button>
+  </form>
+  <pre id="view-ticket-result"></pre>
+</section>
+
+<!-- POST MESSAGE -->
+<section>
+  <h2>Post Message (multipart)</h2>
+  <form id="message-form" enctype="multipart/form-data">
+    <label>Ticket ID</label><input id="msg-tid" type="text" placeholder="ticket id">
+    <label>Body</label><textarea id="msg-body" placeholder="Your message"></textarea>
+    <label>Attachment (optional)</label><input id="msg-file" type="file">
+    <button type="submit">Send Message</button>
+  </form>
+  <pre id="message-result"></pre>
+</section>
+
+<!-- ACK TICKET (desk) -->
+<section>
+  <h2>Acknowledge Ticket (desk only)</h2>
+  <form id="ack-form">
+    <label>Ticket ID</label><input id="ack-id" type="text" placeholder="ticket id">
+    <button type="submit">Acknowledge</button>
+  </form>
+  <pre id="ack-result"></pre>
+</section>
+
+<!-- CLOSE TICKET (desk) -->
+<section>
+  <h2>Close Ticket (desk only)</h2>
+  <form id="close-form">
+    <label>Ticket ID</label><input id="close-id" type="text" placeholder="ticket id">
+    <button type="submit">Close</button>
+  </form>
+  <pre id="close-result"></pre>
+</section>
+
+<script>
+  let token = '';
+
+  async function api(method, path, body, isMultipart) {
+    const opts = { method, headers: { 'Authorization': 'Bearer ' + token } };
+    if (body && !isMultipart) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    } else if (isMultipart) {
+      opts.body = body;
+    }
+    const res = await fetch(path, opts);
+    const text = await res.text();
+    try { return { status: res.status, data: JSON.parse(text) }; }
+    catch { return { status: res.status, data: text }; }
+  }
+
+  document.getElementById('login-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const res = await fetch('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: document.getElementById('login-email').value,
+        password: document.getElementById('login-password').value
+      })
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      token = data.access_token;
+      document.getElementById('token-display').textContent = token.slice(0, 40) + '…';
+    }
+    document.getElementById('login-result').textContent = JSON.stringify(data, null, 2);
+  });
+
+  document.getElementById('create-client-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const r = await api('POST', '/admin/clients', {
+      name: document.getElementById('cc-name').value,
+      email: document.getElementById('cc-email').value,
+      password: document.getElementById('cc-password').value
+    });
+    document.getElementById('create-client-result').textContent = JSON.stringify(r, null, 2);
+  });
+
+  document.getElementById('create-ticket-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const r = await api('POST', '/tickets', {
+      title: document.getElementById('ct-title').value,
+      description: document.getElementById('ct-desc').value
+    });
+    document.getElementById('create-ticket-result').textContent = JSON.stringify(r, null, 2);
+  });
+
+  document.getElementById('list-tickets-btn').addEventListener('click', async () => {
+    const r = await api('GET', '/tickets');
+    document.getElementById('list-tickets-result').textContent = JSON.stringify(r, null, 2);
+  });
+
+  document.getElementById('view-ticket-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const id = document.getElementById('vt-id').value.trim();
+    const r = await api('GET', `/tickets/${encodeURIComponent(id)}`);
+    document.getElementById('view-ticket-result').textContent = JSON.stringify(r, null, 2);
+  });
+
+  document.getElementById('message-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const tid = document.getElementById('msg-tid').value.trim();
+    const fd = new FormData();
+    fd.append('body', document.getElementById('msg-body').value);
+    const file = document.getElementById('msg-file').files[0];
+    if (file) fd.append('file', file);
+    const r = await api('POST', `/tickets/${encodeURIComponent(tid)}/message`, fd, true);
+    document.getElementById('message-result').textContent = JSON.stringify(r, null, 2);
+  });
+
+  document.getElementById('ack-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const id = document.getElementById('ack-id').value.trim();
+    const r = await api('PATCH', `/tickets/${encodeURIComponent(id)}/ack`);
+    document.getElementById('ack-result').textContent = JSON.stringify(r, null, 2);
+  });
+
+  document.getElementById('close-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const id = document.getElementById('close-id').value.trim();
+    const r = await api('PATCH', `/tickets/${encodeURIComponent(id)}/close`);
+    document.getElementById('close-result').textContent = JSON.stringify(r, null, 2);
+  });
+</script>
+</body>
+</html>

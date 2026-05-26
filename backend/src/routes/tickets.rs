@@ -1,42 +1,91 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
 use serde::Deserialize;
 use sqlx::SqlitePool;
+use std::sync::Arc;
 
 use crate::{
     crypto::EncryptionKey,
-    dto::{TicketResponse, TicketWithThreadResponse, ThreadEntryResponse},
+    db,
+    dto::{PaginatedTickets, TicketResponse, TicketWithThreadResponse, ThreadEntryResponse},
+    email::SmtpMailer,
     error::AppResult,
     middleware::{AuthUser, DeskUser},
-    services,
+    services::{self, tickets::CreateTicketInput},
 };
+
+#[derive(Deserialize)]
+pub struct PaginationQuery {
+    #[serde(default = "default_page")]
+    pub page: u32,
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+}
+fn default_page() -> u32 { 1 }
+fn default_limit() -> u32 { 50 }
 
 pub async fn list(
     State(pool): State<SqlitePool>,
     AuthUser(claims): AuthUser,
+    Query(pagination): Query<PaginationQuery>,
 ) -> AppResult<impl IntoResponse> {
-    let tickets = services::tickets::list(&pool, &claims).await?;
-    let dtos: Vec<TicketResponse> = tickets.into_iter().map(TicketResponse::from).collect();
-    Ok(Json(dtos))
+    let limit = pagination.limit.max(1).min(100);
+    let page = pagination.page.max(1);
+    let (tickets, total) = services::tickets::list(&pool, &claims, page, limit).await?;
+    Ok(Json(PaginatedTickets {
+        tickets: tickets.into_iter().map(TicketResponse::from).collect(),
+        total,
+        page,
+        limit,
+    }))
 }
 
 #[derive(Deserialize)]
 pub struct CreateTicketRequest {
     pub title: String,
     pub description: String,
+    #[serde(default = "default_priority")]
+    pub priority: String,
+    pub category: Option<String>,
+    pub due_date: Option<String>,
+    pub estimated_completion: Option<String>,
+    #[serde(default = "default_ticket_type")]
+    pub ticket_type: String,
+    #[serde(default)]
+    pub recurring: bool,
+    pub recurring_interval_days: Option<i64>,
 }
+
+fn default_priority() -> String { "medium".into() }
+fn default_ticket_type() -> String { "standard".into() }
 
 pub async fn create(
     State(pool): State<SqlitePool>,
+    State(mailer): State<Option<Arc<SmtpMailer>>>,
     AuthUser(claims): AuthUser,
     Json(body): Json<CreateTicketRequest>,
 ) -> AppResult<impl IntoResponse> {
-    let ticket =
-        services::tickets::create(&pool, &claims, body.title, body.description).await?;
+    let ticket = services::tickets::create(
+        &pool,
+        mailer.as_deref(),
+        &claims,
+        CreateTicketInput {
+            title: &body.title,
+            description: &body.description,
+            priority: &body.priority,
+            category: body.category.as_deref(),
+            due_date: body.due_date.as_deref(),
+            estimated_completion: body.estimated_completion.as_deref(),
+            ticket_type: &body.ticket_type,
+            recurring: body.recurring,
+            recurring_interval_days: body.recurring_interval_days,
+        },
+    )
+    .await?;
     Ok((StatusCode::CREATED, Json(TicketResponse::from(ticket))))
 }
 
@@ -47,27 +96,72 @@ pub async fn get(
     Path(id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
     let result = services::tickets::get_with_thread(&pool, &id, &claims, &enc_key).await?;
-    let response = TicketWithThreadResponse {
+    Ok(Json(TicketWithThreadResponse {
         ticket: TicketResponse::from(result.ticket),
         thread: result.thread.into_iter().map(ThreadEntryResponse::from).collect(),
-    };
-    Ok(Json(response))
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateTicketRequest {
+    pub priority: Option<String>,
+    pub category: Option<Option<String>>,
+    pub due_date: Option<Option<String>>,
+    pub estimated_completion: Option<Option<String>>,
+    pub ticket_type: Option<String>,
+    pub recurring: Option<bool>,
+    pub recurring_interval_days: Option<Option<i64>>,
+}
+
+pub async fn update(
+    State(pool): State<SqlitePool>,
+    _: DeskUser,
+    Path(id): Path<String>,
+    Json(body): Json<UpdateTicketRequest>,
+) -> AppResult<impl IntoResponse> {
+    services::tickets::update(
+        &pool,
+        &id,
+        db::tickets::UpdateFields {
+            priority: body.priority.as_deref(),
+            category: body.category.as_ref().map(|o| o.as_deref()),
+            due_date: body.due_date.as_ref().map(|o| o.as_deref()),
+            estimated_completion: body.estimated_completion.as_ref().map(|o| o.as_deref()),
+            ticket_type: body.ticket_type.as_deref(),
+            recurring: body.recurring,
+            recurring_interval_days: body.recurring_interval_days,
+        },
+    )
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn ack(
     State(pool): State<SqlitePool>,
+    State(mailer): State<Option<Arc<SmtpMailer>>>,
     _: DeskUser,
     Path(id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
-    services::tickets::transition_ack(&pool, &id).await?;
+    services::tickets::transition_ack(&pool, &id, mailer.as_deref()).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn pend(
+    State(pool): State<SqlitePool>,
+    State(mailer): State<Option<Arc<SmtpMailer>>>,
+    _: DeskUser,
+    Path(id): Path<String>,
+) -> AppResult<impl IntoResponse> {
+    services::tickets::transition_pend(&pool, &id, mailer.as_deref()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn close(
     State(pool): State<SqlitePool>,
+    State(mailer): State<Option<Arc<SmtpMailer>>>,
     _: DeskUser,
     Path(id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
-    services::tickets::transition_close(&pool, &id).await?;
+    services::tickets::transition_close(&pool, &id, mailer.as_deref()).await?;
     Ok(StatusCode::NO_CONTENT)
 }

@@ -1,18 +1,18 @@
 use axum::{
-    extract::State,
+    extract::{ConnectInfo, State},
     http::{HeaderName, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use serde::Deserialize;
 use sqlx::SqlitePool;
-use std::str::FromStr;
+use std::{net::SocketAddr, str::FromStr};
 
 use crate::{
     config::Config,
     dto::AccessTokenResponse,
     error::{AppError, AppResult},
-    middleware::{clear_refresh_cookie, set_refresh_cookie, RefreshTokenCookie},
+    middleware::{clear_refresh_cookie, set_refresh_cookie, DeskUser, RefreshTokenCookie},
     services,
 };
 
@@ -25,10 +25,23 @@ pub struct LoginRequest {
 pub async fn login(
     State(pool): State<SqlitePool>,
     State(config): State<Config>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Json(body): Json<LoginRequest>,
 ) -> AppResult<Response> {
-    let output = services::auth::login(&pool, &config, &body.email, &body.password).await?;
-    build_token_response(output.access_token, &output.refresh_token, output.refresh_ttl_secs, config.cookie_secure)
+    let output = services::auth::login(
+        &pool,
+        &config,
+        &body.email,
+        &body.password,
+        peer.ip(),
+    )
+    .await?;
+    build_token_response(
+        output.access_token,
+        &output.refresh_token,
+        output.refresh_ttl_secs,
+        config.cookie_secure,
+    )
 }
 
 pub async fn refresh(
@@ -37,7 +50,12 @@ pub async fn refresh(
     RefreshTokenCookie(raw_token): RefreshTokenCookie,
 ) -> AppResult<Response> {
     let output = services::auth::refresh(&pool, &config, &raw_token).await?;
-    build_token_response(output.access_token, &output.refresh_token, output.refresh_ttl_secs, config.cookie_secure)
+    build_token_response(
+        output.access_token,
+        &output.refresh_token,
+        output.refresh_ttl_secs,
+        config.cookie_secure,
+    )
 }
 
 pub async fn logout(
@@ -56,6 +74,37 @@ pub async fn logout(
         [(HeaderName::from_str(name).unwrap(), header_value)],
     )
         .into_response())
+}
+
+#[derive(Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+/// PATCH /auth/password — desk full-session only.
+/// Verifies the current password, applies strength rules to the new one,
+/// invalidates all existing sessions, and returns fresh tokens.
+pub async fn change_password(
+    State(pool): State<SqlitePool>,
+    State(config): State<Config>,
+    DeskUser(claims): DeskUser,
+    Json(body): Json<ChangePasswordRequest>,
+) -> AppResult<Response> {
+    let output = services::auth::change_password(
+        &pool,
+        &config,
+        &claims.sub,
+        &body.current_password,
+        &body.new_password,
+    )
+    .await?;
+    build_token_response(
+        output.access_token,
+        &output.refresh_token,
+        output.refresh_ttl_secs,
+        config.cookie_secure,
+    )
 }
 
 fn build_token_response(

@@ -63,7 +63,8 @@ pub async fn find_by_token_hash(
     token_hash: &str,
 ) -> AppResult<Option<Session>> {
     Ok(sqlx::query_as::<_, Session>(
-        "SELECT id, user_id, token_hash, created_at, expires_at, revoked_at, replaced_by
+        "SELECT id, user_id, token_hash, created_at, expires_at, revoked_at, replaced_by,
+                session_type, scoped_ticket_id
          FROM sessions WHERE token_hash = ?",
     )
     .bind(token_hash)

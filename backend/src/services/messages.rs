@@ -4,6 +4,7 @@ use uuid::Uuid;
 use crate::{
     crypto::{self, EncryptionKey},
     db,
+    email::{SmtpMailer, TicketEvent},
     error::{AppError, AppResult},
     models::ThreadEntry,
     notify,
@@ -13,6 +14,8 @@ pub struct PostMessageInput {
     pub ticket_id: String,
     pub sender_id: String,
     pub sender_role: String,
+    pub sender_session_type: String,
+    pub ticket_scope: Option<String>,
     pub body: String,
     pub attachment_path: Option<String>,
 }
@@ -20,12 +23,21 @@ pub struct PostMessageInput {
 pub async fn post_message(
     pool: &SqlitePool,
     enc_key: &EncryptionKey,
+    mailer: Option<&SmtpMailer>,
     input: PostMessageInput,
 ) -> AppResult<ThreadEntry> {
     if input.body.is_empty() || input.body.len() > 10_000 {
         return Err(AppError::BadRequest(
             "message body must be 1–10,000 characters".into(),
         ));
+    }
+
+    // Scoped sessions can only message their scoped ticket.
+    if input.sender_session_type == "scoped" {
+        match &input.ticket_scope {
+            Some(scope) if scope == &input.ticket_id => {}
+            _ => return Err(AppError::Forbidden),
+        }
     }
 
     let ticket = db::tickets::find_by_id(pool, &input.ticket_id)
@@ -54,7 +66,9 @@ pub async fn post_message(
 
     entry.body = input.body;
 
+    // Determine who to notify: the other party.
     let recipient_id = if input.sender_id == ticket.client_id {
+        // Client sent — notify a desk agent.
         sqlx::query_as::<_, (String,)>("SELECT id FROM users WHERE role = 'desk' LIMIT 1")
             .fetch_optional(pool)
             .await?
@@ -63,8 +77,29 @@ pub async fn post_message(
         Some(ticket.client_id.clone())
     };
 
-    if let Some(rid) = recipient_id {
-        notify::notify(pool, &rid, &input.ticket_id, "New message on your ticket.").await;
+    if let Some(rid) = &recipient_id {
+        notify::notify(pool, rid, &input.ticket_id, "New message on your ticket.").await;
+
+        // Fire-and-forget email — failure is non-fatal but logged.
+        if let Some(m) = mailer {
+            match db::users::find_by_id(pool, rid).await {
+                Ok(Some(user)) => {
+                    let m = m.clone();
+                    let title = ticket.title.clone();
+                    tokio::spawn(async move {
+                        m.send_ticket_notification(
+                            &user.email,
+                            &user.name,
+                            &title,
+                            TicketEvent::NewMessage,
+                        )
+                        .await;
+                    });
+                }
+                Ok(None) => {}
+                Err(e) => tracing::warn!(%e, "failed to fetch recipient for message email"),
+            }
+        }
     }
 
     Ok(entry)

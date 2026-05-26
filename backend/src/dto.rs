@@ -1,14 +1,22 @@
-/// All API-facing response types live here.
-/// DB models (`models.rs`) must never derive `Serialize` — map to a DTO first.
+/// All API-facing response types. DB models must NEVER derive Serialize.
 use serde::Serialize;
 
-use crate::models::{Ticket, ThreadEntry, User};
+use crate::models::{ClientExport, InternalNote, Ticket, ThreadEntry, User};
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
 pub struct AccessTokenResponse {
     pub access_token: String,
+}
+
+// ── Magic links ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct MagicLinkResponse {
+    /// Full URL the client can open — copyable for any delivery channel
+    /// (email, WhatsApp, SMS, etc.).
+    pub url: String,
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
@@ -18,17 +26,51 @@ pub struct ClientResponse {
     pub id: String,
     pub name: String,
     pub email: String,
+    pub deleted_at: Option<String>,
 }
 
 impl From<User> for ClientResponse {
     fn from(u: User) -> Self {
-        ClientResponse { id: u.id, name: u.name, email: u.email }
+        ClientResponse {
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            deleted_at: u.deleted_at,
+        }
     }
 }
 
 #[derive(Debug, Serialize)]
 pub struct DeleteSessionsResponse {
     pub deleted: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportResponse {
+    pub export_id: String,
+    pub download_url: String,
+}
+
+impl From<ClientExport> for ExportResponse {
+    fn from(e: ClientExport) -> Self {
+        ExportResponse {
+            export_id: e.id,
+            download_url: format!("/admin/exports/{}/{}", e.client_id, e.file_path
+                .split(['/', '\\'])
+                .last()
+                .unwrap_or("export.json")),
+        }
+    }
+}
+
+// ── Paginated wrapper ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct PaginatedTickets {
+    pub tickets: Vec<TicketResponse>,
+    pub total: i64,
+    pub page: u32,
+    pub limit: u32,
 }
 
 // ── Tickets ───────────────────────────────────────────────────────────────────
@@ -42,6 +84,13 @@ pub struct TicketResponse {
     pub created_by: String,
     pub client_id: String,
     pub created_at: String,
+    pub priority: String,
+    pub category: Option<String>,
+    pub due_date: Option<String>,
+    pub estimated_completion: Option<String>,
+    pub ticket_type: String,
+    pub recurring: bool,
+    pub recurring_interval_days: Option<i64>,
 }
 
 impl From<Ticket> for TicketResponse {
@@ -54,6 +103,13 @@ impl From<Ticket> for TicketResponse {
             created_by: t.created_by,
             client_id: t.client_id,
             created_at: t.created_at,
+            priority: t.priority,
+            category: t.category,
+            due_date: t.due_date,
+            estimated_completion: t.estimated_completion,
+            ticket_type: t.ticket_type,
+            recurring: t.recurring != 0,
+            recurring_interval_days: t.recurring_interval_days,
         }
     }
 }
@@ -81,12 +137,34 @@ impl From<ThreadEntry> for ThreadEntryResponse {
     }
 }
 
-/// Flattened ticket + thread response; `ticket` fields appear at the top level.
 #[derive(Debug, Serialize)]
 pub struct TicketWithThreadResponse {
     #[serde(flatten)]
     pub ticket: TicketResponse,
     pub thread: Vec<ThreadEntryResponse>,
+}
+
+// ── Internal notes ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct InternalNoteResponse {
+    pub id: String,
+    pub ticket_id: String,
+    pub author_id: String,
+    pub body: String,
+    pub created_at: String,
+}
+
+impl From<InternalNote> for InternalNoteResponse {
+    fn from(n: InternalNote) -> Self {
+        InternalNoteResponse {
+            id: n.id,
+            ticket_id: n.ticket_id,
+            author_id: n.author_id,
+            body: n.body,
+            created_at: n.created_at,
+        }
+    }
 }
 
 // ── Messages ──────────────────────────────────────────────────────────────────

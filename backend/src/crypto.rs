@@ -25,9 +25,9 @@ pub fn derive_key(passphrase: &str, salt_hex: &str) -> anyhow::Result<[u8; 32]> 
     let salt = decode_hex(salt_hex)
         .map_err(|e| anyhow::anyhow!("ENCRYPTION_SALT is not valid hex: {e}"))?;
 
-    if salt.len() < 8 {
+    if salt.len() < 16 {
         anyhow::bail!(
-            "ENCRYPTION_SALT must be at least 8 bytes (16 hex chars), got {} bytes",
+            "ENCRYPTION_SALT must be at least 16 bytes (32 hex chars), got {} bytes",
             salt.len()
         );
     }

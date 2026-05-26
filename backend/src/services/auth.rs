@@ -7,7 +7,7 @@ use jsonwebtoken::{encode, Header};
 use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
-use std::sync::OnceLock;
+use std::{net::IpAddr, sync::OnceLock};
 use uuid::Uuid;
 
 use crate::{
@@ -16,6 +16,30 @@ use crate::{
     error::{AppError, AppResult},
     models::Claims,
 };
+
+// ── 100 most-common passwords — rejected regardless of length ─────────────────
+const COMMON_PASSWORDS: &[&str] = &[
+    "password", "password1", "password123", "password12", "password!",
+    "12345678", "123456789", "1234567890", "123456789a", "1234567891",
+    "qwerty123", "qwertyuiop", "qwerty1234", "qwerty12", "qwerty!1",
+    "iloveyou", "iloveyou1", "iloveyou12", "iloveyou!", "loveyou12",
+    "admin123", "admin1234", "admin12345", "admin2024", "adminadmin",
+    "letmein1", "letmein12", "letmein123", "letmein!1", "letme1n1",
+    "monkey123", "monkey1234", "monkeys12", "dragon123", "dragon1234",
+    "shadow123", "shadow1234", "shadows12", "master123", "master1234",
+    "superman1", "superman12", "batman123", "batman1234", "batmanman",
+    "trustno1", "trustno12", "sunshine1", "sunshine12", "sunshines",
+    "princess1", "princess12", "princess!", "michael1", "michael12",
+    "football1", "football12", "baseball1", "baseball12", "soccer123",
+    "welcome1", "welcome12", "welcome!1", "hello1234", "hello12345",
+    "pass1234", "pass12345", "passw0rd1", "p@ssword1", "p@ss1234",
+    "changeme1", "changeme!", "whatever1", "whatever!", "nothing12",
+    "freedom12", "freedom1!", "starwars1", "starwars12", "starwar12",
+    "1q2w3e4r", "q1w2e3r4", "1qaz2wsx", "zxcvbn12", "zaq1zaq1",
+    "qazwsx12", "abc12345", "abc123456", "test1234", "testing1",
+    "root1234", "toor1234", "computer1", "internet1", "windows10",
+    "mustang1", "charlie1", "jessica1", "1234abcd", "abcd1234",
+];
 
 pub struct LoginOutput {
     pub access_token: String,
@@ -49,12 +73,39 @@ pub async fn login(
     config: &Config,
     email: &str,
     password: &str,
+    peer_ip: IpAddr,
 ) -> AppResult<LoginOutput> {
     let user_opt = db::users::find_by_email(pool, email).await?;
 
+    // Check lockout before running argon2. A locked account's existence is
+    // already known (it wouldn't be locked otherwise), so returning early is
+    // safe and avoids burning CPU on accounts being hammered.
+    if let Some(ref user) = user_opt {
+        if let Some(ref locked_until_str) = user.locked_until {
+            let locked_until = chrono::DateTime::parse_from_rfc3339(locked_until_str)
+                .map_err(|_| AppError::Internal("invalid locked_until".into()))?
+                .with_timezone(&Utc);
+
+            if locked_until > Utc::now() {
+                let retry_after_secs = if user.failed_attempts >= 9 {
+                    None // permanent
+                } else {
+                    Some((locked_until - Utc::now()).num_seconds().max(0) as u64)
+                };
+                tracing::warn!(
+                    email = %email,
+                    ip = %peer_ip,
+                    failed_attempts = user.failed_attempts,
+                    permanent = retry_after_secs.is_none(),
+                    "login rejected — account locked"
+                );
+                return Err(AppError::Locked { retry_after_secs });
+            }
+        }
+    }
+
     // Always run argon2 to make response time identical whether the user exists
     // or not, preventing timing-based email enumeration.
-    // Clone the hash into an owned String so we can consume user_opt in the match below.
     let stored_hash: String = user_opt
         .as_ref()
         .map(|u| u.password_hash.clone())
@@ -62,19 +113,67 @@ pub async fn login(
 
     let password_ok = verify_password(password, &stored_hash).unwrap_or(false);
 
-    let user = match (user_opt, password_ok) {
-        (Some(u), true) => u,
-        _ => return Err(AppError::Unauthorized),
-    };
-
-    // Transparent bcrypt → argon2id migration on next successful login.
-    if user.password_hash.starts_with("$2") {
-        if let Ok(new_hash) = hash_password(password) {
-            let _ = db::users::update_password_hash(pool, &user.id, &new_hash).await;
+    match (user_opt, password_ok) {
+        (Some(u), true) if u.deleted_at.is_none() => {
+            db::users::reset_lockout(pool, &u.id).await?;
+            let output = issue_tokens(pool, config, &u.id, &u.role).await?;
+            tracing::info!(user_id = %u.id, role = %u.role, ip = %peer_ip, "successful login");
+            Ok(output)
+        }
+        (Some(u), true) => {
+            // Correct password but account is soft-deleted — don't increment lockout.
+            tracing::warn!(
+                email = %email,
+                ip = %peer_ip,
+                user_id = %u.id,
+                "login attempt for soft-deleted account"
+            );
+            Err(AppError::Unauthorized)
+        }
+        (Some(u), false) => {
+            // Wrong password — increment counter and set lockout window.
+            let new_attempts = u.failed_attempts + 1;
+            let locked_until = compute_locked_until(new_attempts);
+            db::users::increment_failed_attempts(
+                pool,
+                &u.id,
+                new_attempts,
+                locked_until.as_deref(),
+            )
+            .await?;
+            tracing::warn!(
+                email = %email,
+                ip = %peer_ip,
+                failed_attempts = new_attempts,
+                locked = locked_until.is_some(),
+                "failed login attempt"
+            );
+            Err(AppError::Unauthorized)
+        }
+        (None, _) => {
+            tracing::warn!(email = %email, ip = %peer_ip, "failed login — unknown email");
+            Err(AppError::Unauthorized)
         }
     }
+}
 
-    issue_tokens(pool, config, &user.id, &user.role).await
+/// Compute the RFC-3339 timestamp the account should be locked until, based on
+/// how many consecutive failures have accumulated. Returns `None` if no lockout
+/// applies yet (fewer than 5 failures).
+fn compute_locked_until(failed_attempts: i64) -> Option<String> {
+    let now = Utc::now();
+    let until = match failed_attempts {
+        n if n < 5 => return None,
+        5 => now + chrono::Duration::minutes(1),
+        6 => now + chrono::Duration::minutes(5),
+        7 => now + chrono::Duration::minutes(15),
+        8 => now + chrono::Duration::hours(1),
+        // 9+ → permanent: use a sentinel far-future date.
+        _ => chrono::DateTime::parse_from_rfc3339("9999-01-01T00:00:00+00:00")
+            .unwrap()
+            .with_timezone(&Utc),
+    };
+    Some(until.to_rfc3339())
 }
 
 pub async fn refresh(
@@ -111,6 +210,11 @@ pub async fn refresh(
         .await?
         .ok_or_else(|| AppError::Internal("session references missing user".into()))?;
 
+    if user.deleted_at.is_some() {
+        db::sessions::delete_all_for_user(pool, &user.id).await?;
+        return Err(AppError::Unauthorized);
+    }
+
     let (new_raw, new_hash) = generate_refresh_token();
     let new_expires_at = (Utc::now()
         + chrono::Duration::seconds(config.refresh_token_ttl_secs))
@@ -146,6 +250,38 @@ pub async fn logout(pool: &SqlitePool, raw_token: &str) -> AppResult<()> {
         db::sessions::delete(pool, &session.id).await?;
     }
     Ok(())
+}
+
+/// Change password for the authenticated desk user.
+/// Verifies current password, validates and hashes the new one, revokes all
+/// existing sessions, and issues fresh tokens so the caller stays logged in.
+pub async fn change_password(
+    pool: &SqlitePool,
+    config: &Config,
+    user_id: &str,
+    current_password: &str,
+    new_password: &str,
+) -> AppResult<LoginOutput> {
+    let user = db::users::find_by_id(pool, user_id)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+
+    if !verify_password(current_password, &user.password_hash)? {
+        tracing::warn!(user_id = %user_id, "password change rejected — wrong current password");
+        return Err(AppError::Unauthorized);
+    }
+
+    validate_password_strength(new_password)?;
+
+    let new_hash = hash_password(new_password)?;
+    db::users::update_password_hash(pool, user_id, &new_hash).await?;
+
+    // Invalidate all existing sessions; issue_tokens creates a fresh one.
+    db::sessions::delete_all_for_user(pool, user_id).await?;
+
+    tracing::info!(user_id = %user_id, "password changed — all previous sessions revoked");
+
+    issue_tokens(pool, config, user_id, &user.role).await
 }
 
 pub async fn check_default_password_warning(pool: &SqlitePool) {
@@ -207,18 +343,38 @@ pub fn hash_password(password: &str) -> AppResult<String> {
         .map_err(|e| AppError::Internal(format!("argon2 hash failed: {e}")))
 }
 
-/// Supports legacy bcrypt hashes (prefix $2a/$2b/$2y) for transparent migration.
-pub fn verify_password(password: &str, stored_hash: &str) -> AppResult<bool> {
-    if stored_hash.starts_with("$2") {
-        bcrypt::verify(password, stored_hash)
-            .map_err(|e| AppError::Internal(format!("bcrypt verify: {e}")))
-    } else {
-        let parsed = PasswordHash::new(stored_hash)
-            .map_err(|e| AppError::Internal(format!("parse hash: {e}")))?;
-        Ok(Argon2::default()
-            .verify_password(password.as_bytes(), &parsed)
-            .is_ok())
+/// Validates password strength. Called on account creation and password change.
+/// Rules: at least 8 chars, at most 128, not whitespace-only, not in common list.
+pub fn validate_password_strength(password: &str) -> AppResult<()> {
+    if password.len() < 8 {
+        return Err(AppError::BadRequest(
+            "password must be at least 8 characters".into(),
+        ));
     }
+    if password.len() > 128 {
+        return Err(AppError::BadRequest(
+            "password must be at most 128 characters".into(),
+        ));
+    }
+    if password.chars().all(|c| c.is_whitespace()) {
+        return Err(AppError::BadRequest(
+            "password cannot consist entirely of whitespace".into(),
+        ));
+    }
+    if COMMON_PASSWORDS.contains(&password.to_lowercase().as_str()) {
+        return Err(AppError::BadRequest(
+            "password is too common — choose a more unique password".into(),
+        ));
+    }
+    Ok(())
+}
+
+pub fn verify_password(password: &str, stored_hash: &str) -> AppResult<bool> {
+    let parsed = PasswordHash::new(stored_hash)
+        .map_err(|e| AppError::Internal(format!("parse hash: {e}")))?;
+    Ok(Argon2::default()
+        .verify_password(password.as_bytes(), &parsed)
+        .is_ok())
 }
 
 fn generate_access_token(config: &Config, user_id: &str, role: &str) -> AppResult<String> {
@@ -227,6 +383,8 @@ fn generate_access_token(config: &Config, user_id: &str, role: &str) -> AppResul
         sub: user_id.to_owned(),
         role: role.to_owned(),
         exp,
+        session_type: "full".into(),
+        ticket_scope: None,
     };
     encode(&Header::default(), &claims, &config.encoding_key())
         .map_err(|e| AppError::Internal(format!("jwt encode: {e}")))

@@ -1,56 +1,139 @@
+use chrono::NaiveDate;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::{
     crypto::{self, EncryptionKey},
     db,
+    email::{SmtpMailer, TicketEvent},
     error::{AppError, AppResult},
     models::{Claims, Ticket, ThreadEntry},
     notify,
     ticket_status::{transition, TransitionAction},
 };
 
-/// Plain struct — not serialized directly; routes map this to `dto::TicketWithThreadResponse`.
 pub struct TicketWithThread {
     pub ticket: Ticket,
     pub thread: Vec<ThreadEntry>,
 }
 
-pub async fn list(pool: &SqlitePool, claims: &Claims) -> AppResult<Vec<Ticket>> {
+pub struct CreateTicketInput<'a> {
+    pub title: &'a str,
+    pub description: &'a str,
+    pub priority: &'a str,
+    pub category: Option<&'a str>,
+    pub due_date: Option<&'a str>,
+    pub estimated_completion: Option<&'a str>,
+    pub ticket_type: &'a str,
+    pub recurring: bool,
+    pub recurring_interval_days: Option<i64>,
+}
+
+/// Returns (page of tickets, total count). page is 1-indexed; limit capped at 100.
+pub async fn list(
+    pool: &SqlitePool,
+    claims: &Claims,
+    page: u32,
+    limit: u32,
+) -> AppResult<(Vec<Ticket>, i64)> {
+    let limit = (limit.max(1).min(100)) as i64;
+    let offset = ((page.max(1) - 1) as i64) * limit;
+
     if claims.role == "desk" {
-        db::tickets::list_all(pool).await
+        db::tickets::list_all_paginated(pool, false, limit, offset).await
+    } else if claims.is_scoped() {
+        if let Some(tid) = &claims.ticket_scope {
+            // Scoped sessions see exactly one ticket.
+            let t = db::tickets::find_by_id(pool, tid)
+                .await?
+                .ok_or(AppError::NotFound)?;
+            Ok((vec![t], 1))
+        } else {
+            db::tickets::list_for_client_paginated(pool, &claims.sub, limit, offset).await
+        }
     } else {
-        db::tickets::list_for_client(pool, &claims.sub).await
+        db::tickets::list_for_client_paginated(pool, &claims.sub, limit, offset).await
     }
 }
 
 pub async fn create(
     pool: &SqlitePool,
+    mailer: Option<&SmtpMailer>,
     claims: &Claims,
-    title: String,
-    description: String,
+    input: CreateTicketInput<'_>,
 ) -> AppResult<Ticket> {
-    if title.is_empty() || title.len() > 200 {
+    claims.require_full_session()?;
+
+    validate_priority(input.priority)?;
+    validate_ticket_type(input.ticket_type)?;
+    if let Some(cat) = input.category {
+        if cat.len() > 100 {
+            return Err(AppError::BadRequest("category must be at most 100 characters".into()));
+        }
+    }
+    if input.title.is_empty() || input.title.len() > 200 {
         return Err(AppError::BadRequest("title must be 1–200 characters".into()));
     }
-    if description.is_empty() || description.len() > 10_000 {
+    if input.description.is_empty() || input.description.len() > 10_000 {
         return Err(AppError::BadRequest(
             "description must be 1–10,000 characters".into(),
         ));
     }
+    if let Some(d) = input.due_date { validate_date_format(d)?; }
+    if let Some(d) = input.estimated_completion { validate_date_format(d)?; }
+    if input.recurring {
+        match input.recurring_interval_days {
+            Some(days) if days >= 1 => {}
+            _ => return Err(AppError::BadRequest(
+                "recurring_interval_days must be at least 1 when recurring is true".into(),
+            )),
+        }
+    }
 
     let id = Uuid::new_v4().to_string();
-    db::tickets::create(
+    let ticket = db::tickets::create(
         pool,
         db::tickets::NewTicket {
             id: &id,
-            title: &title,
-            description: &description,
+            title: input.title,
+            description: input.description,
             created_by: &claims.sub,
             client_id: &claims.sub,
+            priority: input.priority,
+            category: input.category,
+            due_date: input.due_date,
+            estimated_completion: input.estimated_completion,
+            ticket_type: input.ticket_type,
+            recurring: input.recurring,
+            recurring_interval_days: input.recurring_interval_days,
         },
     )
-    .await
+    .await?;
+
+    notify::notify(pool, &claims.sub, &ticket.id, "Your ticket has been created.").await;
+
+    // Fire-and-forget email — failure is non-fatal but logged.
+    if let Some(m) = mailer {
+        match db::users::find_by_id(pool, &claims.sub).await {
+            Ok(Some(user)) => {
+                let m = m.clone();
+                let title = ticket.title.clone();
+                tokio::spawn(async move {
+                    m.send_ticket_notification(
+                        &user.email,
+                        &user.name,
+                        &title,
+                        TicketEvent::Created,
+                    )
+                    .await;
+                });
+            }
+            Ok(None) => {}
+            Err(e) => tracing::warn!(%e, "failed to fetch user for ticket-created email"),
+        }
+    }
+
+    Ok(ticket)
 }
 
 pub async fn get_with_thread(
@@ -63,8 +146,15 @@ pub async fn get_with_thread(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    if claims.role == "client" && ticket.client_id != claims.sub {
-        return Err(AppError::Forbidden);
+    if ticket.deleted_at.is_some() && claims.role != "desk" {
+        return Err(AppError::NotFound);
+    }
+
+    if claims.role == "client" {
+        if ticket.client_id != claims.sub {
+            return Err(AppError::Forbidden);
+        }
+        claims.check_ticket_access(ticket_id)?;
     }
 
     let encrypted_thread = db::thread::list_for_ticket(pool, &ticket.id).await?;
@@ -74,7 +164,7 @@ pub async fn get_with_thread(
         .map(|mut entry| {
             let nonce = entry.body_nonce.as_deref().ok_or_else(|| {
                 AppError::Internal(format!(
-                    "thread entry {} has no encryption nonce — pre-migration data",
+                    "thread entry {} missing nonce — pre-migration data",
                     entry.id
                 ))
             })?;
@@ -86,28 +176,117 @@ pub async fn get_with_thread(
     Ok(TicketWithThread { ticket, thread })
 }
 
-pub async fn transition_ack(pool: &SqlitePool, ticket_id: &str) -> AppResult<()> {
+pub async fn update(
+    pool: &SqlitePool,
+    ticket_id: &str,
+    f: db::tickets::UpdateFields<'_>,
+) -> AppResult<()> {
+    if let Some(p) = f.priority { validate_priority(p)?; }
+    if let Some(t) = f.ticket_type { validate_ticket_type(t)?; }
+    if let Some(Some(cat)) = f.category {
+        if cat.len() > 100 {
+            return Err(AppError::BadRequest("category must be at most 100 characters".into()));
+        }
+    }
+    if let Some(Some(d)) = f.due_date { validate_date_format(d)?; }
+    if let Some(Some(d)) = f.estimated_completion { validate_date_format(d)?; }
+    if let Some(Some(days)) = f.recurring_interval_days {
+        if days < 1 {
+            return Err(AppError::BadRequest(
+                "recurring_interval_days must be at least 1".into(),
+            ));
+        }
+    }
+    if db::tickets::find_by_id(pool, ticket_id).await?.is_none() {
+        return Err(AppError::NotFound);
+    }
+    db::tickets::update_fields(pool, ticket_id, f).await
+}
+
+pub async fn transition_ack(
+    pool: &SqlitePool,
+    ticket_id: &str,
+    mailer: Option<&SmtpMailer>,
+) -> AppResult<()> {
+    apply_transition(pool, ticket_id, TransitionAction::Acknowledge, TicketEvent::Acknowledged, "Your ticket has been acknowledged.", mailer).await
+}
+
+pub async fn transition_pend(
+    pool: &SqlitePool,
+    ticket_id: &str,
+    mailer: Option<&SmtpMailer>,
+) -> AppResult<()> {
+    apply_transition(pool, ticket_id, TransitionAction::Pend, TicketEvent::Pending, "Your ticket is awaiting your response.", mailer).await
+}
+
+pub async fn transition_close(
+    pool: &SqlitePool,
+    ticket_id: &str,
+    mailer: Option<&SmtpMailer>,
+) -> AppResult<()> {
+    apply_transition(pool, ticket_id, TransitionAction::Close, TicketEvent::Closed, "Your ticket has been closed.", mailer).await
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+async fn apply_transition(
+    pool: &SqlitePool,
+    ticket_id: &str,
+    action: TransitionAction,
+    event: TicketEvent,
+    notify_msg: &str,
+    mailer: Option<&SmtpMailer>,
+) -> AppResult<()> {
     let ticket = db::tickets::find_by_id(pool, ticket_id)
         .await?
         .ok_or(AppError::NotFound)?;
 
-    let new_status = transition(&ticket.status, TransitionAction::Acknowledge)?;
+    let new_status = transition(&ticket.status, action)?;
     db::tickets::update_status(pool, ticket_id, new_status.as_str()).await?;
+    notify::notify(pool, &ticket.client_id, ticket_id, notify_msg).await;
 
-    notify::notify(pool, &ticket.client_id, ticket_id, "Your ticket has been acknowledged.").await;
+    // Fire-and-forget email — failure is non-fatal but logged.
+    if let Some(m) = mailer {
+        match db::users::find_by_id(pool, &ticket.client_id).await {
+            Ok(Some(user)) => {
+                let m = m.clone();
+                let title = ticket.title.clone();
+                tokio::spawn(async move {
+                    m.send_ticket_notification(&user.email, &user.name, &title, event)
+                        .await;
+                });
+            }
+            Ok(None) => {}
+            Err(e) => tracing::warn!(%e, "failed to fetch client for transition email"),
+        }
+    }
 
     Ok(())
 }
 
-pub async fn transition_close(pool: &SqlitePool, ticket_id: &str) -> AppResult<()> {
-    let ticket = db::tickets::find_by_id(pool, ticket_id)
-        .await?
-        .ok_or(AppError::NotFound)?;
-
-    let new_status = transition(&ticket.status, TransitionAction::Close)?;
-    db::tickets::update_status(pool, ticket_id, new_status.as_str()).await?;
-
-    notify::notify(pool, &ticket.client_id, ticket_id, "Your ticket has been closed.").await;
-
+fn validate_date_format(d: &str) -> AppResult<()> {
+    if NaiveDate::parse_from_str(d, "%Y-%m-%d").is_err() {
+        return Err(AppError::BadRequest(
+            "dates must be in YYYY-MM-DD format".into(),
+        ));
+    }
     Ok(())
+}
+
+fn validate_priority(p: &str) -> AppResult<()> {
+    match p {
+        "low" | "medium" | "high" | "urgent" => Ok(()),
+        _ => Err(AppError::BadRequest(
+            "priority must be one of: low, medium, high, urgent".into(),
+        )),
+    }
+}
+
+fn validate_ticket_type(t: &str) -> AppResult<()> {
+    match t {
+        "standard" | "maintenance" | "security_log" => Ok(()),
+        _ => Err(AppError::BadRequest(
+            "ticket_type must be one of: standard, maintenance, security_log".into(),
+        )),
+    }
 }

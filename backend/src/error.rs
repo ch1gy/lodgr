@@ -1,5 +1,5 @@
 use axum::{
-    http::StatusCode,
+    http::{HeaderName, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -13,6 +13,8 @@ pub enum AppError {
     BadRequest(String),
     UnprocessableEntity(String),
     InvalidTransition { from: String, to: String },
+    /// Account lockout. `retry_after_secs = None` means permanent.
+    Locked { retry_after_secs: Option<u64> },
     Internal(String),
 }
 
@@ -30,6 +32,12 @@ impl std::fmt::Display for AppError {
             AppError::InvalidTransition { from, to } => {
                 write!(f, "Invalid transition: '{from}' → '{to}'")
             }
+            AppError::Locked { retry_after_secs: Some(s) } => {
+                write!(f, "Account locked, retry after {s}s")
+            }
+            AppError::Locked { retry_after_secs: None } => {
+                write!(f, "Account permanently locked")
+            }
             AppError::Internal(m) => write!(f, "Internal error: {m}"),
         }
     }
@@ -45,6 +53,28 @@ impl From<sqlx::Error> for AppError {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
+        // Locked is the only variant that needs an extra response header.
+        if let AppError::Locked { retry_after_secs } = &self {
+            let message = match retry_after_secs {
+                Some(secs) => format!(
+                    "Account is temporarily locked. Try again in {secs} seconds."
+                ),
+                None => "Account is permanently locked. Contact support to unlock.".into(),
+            };
+            let mut resp = (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(serde_json::json!({ "error": message })),
+            )
+                .into_response();
+            if let Some(secs) = retry_after_secs {
+                if let Ok(v) = HeaderValue::from_str(&secs.to_string()) {
+                    resp.headers_mut()
+                        .insert(HeaderName::from_static("retry-after"), v);
+                }
+            }
+            return resp;
+        }
+
         let (status, message) = match &self {
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized".into()),
             AppError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden".into()),
@@ -52,17 +82,15 @@ impl IntoResponse for AppError {
             AppError::Conflict(m) => (StatusCode::CONFLICT, m.clone()),
             AppError::BadRequest(m) => (StatusCode::BAD_REQUEST, m.clone()),
             AppError::UnprocessableEntity(m) => (StatusCode::UNPROCESSABLE_ENTITY, m.clone()),
-            AppError::InvalidTransition { from, to } => (
+            AppError::InvalidTransition { .. } => (
                 StatusCode::BAD_REQUEST,
-                format!("Invalid status transition: '{from}' → '{to}'"),
+                "Invalid status transition".into(),
             ),
             AppError::Internal(m) => {
                 tracing::error!("internal error: {m}");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal server error".into(),
-                )
+                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
             }
+            AppError::Locked { .. } => unreachable!(),
         };
         (status, Json(serde_json::json!({ "error": message }))).into_response()
     }

@@ -54,6 +54,7 @@ where
         if claims.role != "desk" {
             return Err(AppError::Forbidden);
         }
+        claims.require_full_session()?;
         Ok(DeskUser(claims))
     }
 }

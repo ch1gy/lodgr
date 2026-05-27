@@ -14,8 +14,6 @@ use crate::{
 };
 
 pub struct MagicLinkOutput {
-    /// Raw token — use this to build the full URL.
-    pub raw_token: String,
     /// Full URL ready to be sent via any channel. Always included regardless
     /// of whether SMTP is configured — desk can copy it to WhatsApp, etc.
     pub url: String,
@@ -88,7 +86,7 @@ pub async fn create_magic_link(
         });
     }
 
-    Ok(MagicLinkOutput { raw_token, url })
+    Ok(MagicLinkOutput { url })
 }
 
 pub async fn exchange_magic_link(

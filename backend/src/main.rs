@@ -23,9 +23,9 @@ use axum::{
     routing::{delete, get, patch, post},
     Extension, Router,
 };
-use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
+use sqlx::{sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions}, SqlitePool};
 use std::str::FromStr;
-use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
+use tower_http::{services::{ServeDir, ServeFile}, set_header::SetResponseHeaderLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use config::Config;
@@ -129,8 +129,12 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let connect_opts = SqliteConnectOptions::from_str(&config.database_url)?
-        .create_if_missing(true);
-    let pool = SqlitePool::connect_with(connect_opts).await?;
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(10)
+        .connect_with(connect_opts)
+        .await?;
     sqlx::migrate!("./migrations").run(&pool).await?;
 
     // Startup cleanup.
@@ -166,13 +170,25 @@ async fn main() -> anyhow::Result<()> {
     let report_limiter = ReportRateLimiter(IpRateLimiter::with_rate(0.2, 3));
     let state = AppState { pool, config, enc_key, mailer };
 
-    let app = Router::new()
-        // ── Rate-limited auth endpoints ────────────────────────────────────
+    // ── Rate-limited sub-routers ───────────────────────────────────────────
+    // route_layer() in Axum applies to ALL routes currently in the router, so
+    // each limiter lives in its own sub-router and is merged in below. This
+    // prevents the report limiter (0.2 req/s) from leaking onto ticket/admin routes.
+    let auth_limited = Router::new()
         .route("/auth/login",   post(auth::login))
         .route("/auth/refresh", post(auth::refresh))
         .route("/auth/magic",   post(routes::magic::exchange))
         .route_layer(from_fn(rate_limit_by_ip))
-        .layer(Extension(auth_limiter))
+        .layer(Extension(auth_limiter));
+
+    let report_limited = Router::new()
+        .route("/reports/monthly/:client_id/:year/:month", get(routes::reports::monthly))
+        .route_layer(from_fn(rate_limit_reports))
+        .layer(Extension(report_limiter));
+
+    let app = Router::new()
+        // ── Auth (rate-limited) ────────────────────────────────────────────
+        .merge(auth_limited)
         // ── Auth — no rate limit ───────────────────────────────────────────
         .route("/auth/logout",   post(auth::logout))
         .route("/auth/password", patch(auth::change_password))
@@ -189,19 +205,24 @@ async fn main() -> anyhow::Result<()> {
         .route("/admin/exports/:client_id/:filename",     get(routes::admin::get_export_file))
         // ── Tickets ────────────────────────────────────────────────────────
         .route("/tickets",           get(routes::tickets::list).post(routes::tickets::create))
-        .route("/tickets/:id",       get(routes::tickets::get).patch(routes::tickets::update))
+        .route("/tickets/:id",       get(routes::tickets::get).patch(routes::tickets::update).delete(routes::tickets::delete))
         .route("/tickets/:id/ack",   patch(routes::tickets::ack))
         .route("/tickets/:id/pend",  patch(routes::tickets::pend))
         .route("/tickets/:id/close", patch(routes::tickets::close))
         .route("/tickets/:id/message",    post(routes::messages::post_message))
         .route("/tickets/:id/notes",      get(routes::notes::list).post(routes::notes::create))
         .route("/tickets/:id/magic-link", post(routes::magic::create_ticket_scoped))
-        // ── Reports — separately rate-limited ─────────────────────────────
-        .route("/reports/monthly/:client_id/:year/:month", get(routes::reports::monthly))
-        .route_layer(from_fn(rate_limit_reports))
-        .layer(Extension(report_limiter))
+        // ── Reports (rate-limited) ─────────────────────────────────────────
+        .merge(report_limited)
         // ── Static frontend ────────────────────────────────────────────────
-        .nest_service("/", ServeDir::new("static"))
+        // In dev, Vite handles this via its proxy. In production (cargo run
+        // from the backend/ dir), serve the built React app with an SPA
+        // fallback so React Router can handle client-side paths like /clients.
+        .nest_service(
+            "/",
+            ServeDir::new("../frontend/dist")
+                .fallback(ServeFile::new("../frontend/dist/index.html")),
+        )
         // ── Global middleware ──────────────────────────────────────────────
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
         .layer(SetResponseHeaderLayer::if_not_present(
@@ -279,11 +300,20 @@ async fn check_desk_lockout(pool: &SqlitePool) {
 
 async fn seed_desk_user(pool: &SqlitePool) -> anyhow::Result<()> {
     if db::users::find_by_email(pool, "desk@local").await?.is_none() {
+        let initial_password = std::env::var("DESK_INITIAL_PASSWORD")
+            .unwrap_or_else(|_| "changeme".to_string());
         let id = uuid::Uuid::new_v4().to_string();
-        let hash = services::auth::hash_password("changeme")
+        let hash = services::auth::hash_password(&initial_password)
             .map_err(|e| anyhow::anyhow!("{e:?}"))?;
         db::users::create(pool, &id, "Desk Agent", "desk@local", &hash, "desk").await?;
-        tracing::info!("Seeded desk user: desk@local / changeme");
+        if initial_password == "changeme" {
+            tracing::warn!(
+                "Seeded desk@local with the default password 'changeme'. \
+                 Set DESK_INITIAL_PASSWORD in your environment to use a stronger one."
+            );
+        } else {
+            tracing::info!("Seeded desk@local with password from DESK_INITIAL_PASSWORD.");
+        }
     }
     Ok(())
 }

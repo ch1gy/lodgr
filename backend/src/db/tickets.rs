@@ -33,17 +33,6 @@ pub struct UpdateFields<'a> {
     pub recurring_interval_days: Option<Option<i64>>,
 }
 
-pub async fn list_all(pool: &SqlitePool, include_deleted: bool) -> AppResult<Vec<Ticket>> {
-    let sql = if include_deleted {
-        format!("SELECT {TICKET_COLS} FROM tickets ORDER BY created_at DESC")
-    } else {
-        format!(
-            "SELECT {TICKET_COLS} FROM tickets WHERE deleted_at IS NULL ORDER BY created_at DESC"
-        )
-    };
-    Ok(sqlx::query_as::<_, Ticket>(&sql).fetch_all(pool).await?)
-}
-
 /// Returns (page of tickets, total matching count).
 pub async fn list_all_paginated(
     pool: &SqlitePool,
@@ -68,17 +57,6 @@ pub async fn list_all_paginated(
     .await?;
 
     Ok((tickets, total.0))
-}
-
-pub async fn list_for_client(pool: &SqlitePool, client_id: &str) -> AppResult<Vec<Ticket>> {
-    Ok(sqlx::query_as::<_, Ticket>(&format!(
-        "SELECT {TICKET_COLS} FROM tickets
-         WHERE client_id = ? AND deleted_at IS NULL
-         ORDER BY created_at DESC"
-    ))
-    .bind(client_id)
-    .fetch_all(pool)
-    .await?)
 }
 
 /// Returns (page of tickets, total matching count) for a specific client.
@@ -205,32 +183,6 @@ pub async fn update_fields(pool: &SqlitePool, id: &str, f: UpdateFields<'_>) -> 
 pub async fn update_last_recurred(pool: &SqlitePool, id: &str, ts: &str) -> AppResult<()> {
     sqlx::query("UPDATE tickets SET last_recurred_at = ? WHERE id = ?")
         .bind(ts)
-        .bind(id)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
-
-pub async fn soft_delete(pool: &SqlitePool, id: &str) -> AppResult<()> {
-    let now = Utc::now().to_rfc3339();
-    sqlx::query("UPDATE tickets SET deleted_at = ? WHERE id = ?")
-        .bind(&now)
-        .bind(id)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
-
-pub async fn restore(pool: &SqlitePool, id: &str) -> AppResult<()> {
-    sqlx::query("UPDATE tickets SET deleted_at = NULL WHERE id = ?")
-        .bind(id)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
-
-pub async fn hard_delete(pool: &SqlitePool, id: &str) -> AppResult<()> {
-    sqlx::query("DELETE FROM tickets WHERE id = ?")
         .bind(id)
         .execute(pool)
         .await?;

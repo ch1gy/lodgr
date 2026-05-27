@@ -58,6 +58,9 @@ pub struct CreateTicketRequest {
     #[serde(default)]
     pub recurring: bool,
     pub recurring_interval_days: Option<i64>,
+    /// Desk only: file this ticket on behalf of a specific client.
+    /// Ignored for client-role callers (always files as self).
+    pub client_id: Option<String>,
 }
 
 fn default_priority() -> String { "medium".into() }
@@ -83,6 +86,7 @@ pub async fn create(
             ticket_type: &body.ticket_type,
             recurring: body.recurring,
             recurring_interval_days: body.recurring_interval_days,
+            client_id: body.client_id.as_deref(),
         },
     )
     .await?;
@@ -163,5 +167,28 @@ pub async fn close(
     Path(id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
     services::tickets::transition_close(&pool, &id, mailer.as_deref()).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// DELETE /tickets/:id — desk only.
+/// Cascade-deletes all child rows then removes the ticket itself.
+pub async fn delete(
+    State(pool): State<SqlitePool>,
+    _: DeskUser,
+    Path(id): Path<String>,
+) -> AppResult<impl IntoResponse> {
+    // Verify the ticket exists first.
+    db::tickets::find_by_id(&pool, &id)
+        .await?
+        .ok_or(crate::error::AppError::NotFound)?;
+
+    let mut tx = pool.begin().await?;
+    sqlx::query("DELETE FROM thread_entries WHERE ticket_id = ?")   .bind(&id).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM internal_notes WHERE ticket_id = ?")   .bind(&id).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM notifications WHERE ticket_id = ?")    .bind(&id).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM magic_links WHERE ticket_id = ?")      .bind(&id).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM tickets WHERE id = ?")                 .bind(&id).execute(&mut *tx).await?;
+    tx.commit().await?;
+
     Ok(StatusCode::NO_CONTENT)
 }

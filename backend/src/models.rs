@@ -2,6 +2,7 @@
 use serde::Deserialize;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)] // all columns selected for FromRow mapping; not every field is read in app code
 pub struct User {
     pub id: String,
     pub name: String,
@@ -15,6 +16,7 @@ pub struct User {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct Ticket {
     pub id: String,
     pub title: String,
@@ -56,6 +58,7 @@ pub struct InternalNote {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)] // mirrors the notifications table; not yet queried as a Rust type
 pub struct Notification {
     pub id: String,
     pub ticket_id: String,
@@ -65,6 +68,7 @@ pub struct Notification {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct Session {
     pub id: String,
     pub user_id: String,
@@ -78,6 +82,7 @@ pub struct Session {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct MagicLink {
     pub id: String,
     pub token_hash: String,
@@ -90,6 +95,7 @@ pub struct MagicLink {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct ClientExport {
     pub id: String,
     pub client_id: String,

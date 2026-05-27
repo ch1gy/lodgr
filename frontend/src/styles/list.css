@@ -1,0 +1,383 @@
+/* ────────────────────────────────────────────────────────────────────────────
+ * list.css — ticket queue page
+ *
+ * Editorial rows: each ticket is one wide row, big italic display number on
+ * the left, italic title in the middle, status / priority / due / last-from
+ * laid out like a magazine masthead caption. Urgent rows get a 3px red left
+ * border and a faint red wash so they pop without screaming.
+ *
+ * Responsive plan:
+ *   ≥ 1024px : full row layout as designed
+ *   < 1024px : compress columns into two stacks per row (title + meta)
+ *   < 540px  : compact mobile cards with a sticky filter strip
+ * ──────────────────────────────────────────────────────────────────────── */
+
+.lg-list {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--cream);
+}
+
+/* The body sits below the global masthead. */
+.lg-list__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── Headline strip ───────────────────────────────────────────────────── */
+.lg-list__head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 32px;
+  padding: 36px 40px 24px;
+  border-bottom: 1px solid var(--rule);
+  align-items: baseline;
+}
+.lg-list__title {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 72px;
+  line-height: 0.9;
+  color: var(--ink);
+}
+.lg-list__title-count {
+  color: var(--red);
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 18px;
+  letter-spacing: 0.12em;
+  vertical-align: top;
+  margin-left: 12px;
+}
+.lg-list__sub {
+  font-family: var(--sans);
+  font-weight: 500;
+  font-style: italic;
+  font-size: 16px;
+  color: var(--ink-soft);
+  margin-top: 8px;
+  letter-spacing: 0.003em;
+}
+.lg-list__head-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.lg-list__kpi {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 32px;
+  color: var(--ink);
+  line-height: 1;
+}
+.lg-list__kpi .red { color: var(--red); }
+.lg-list__kpi-lbl {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mid);
+}
+
+/* ── Filter bar ───────────────────────────────────────────────────────── */
+.lg-list__filt {
+  display: flex;
+  align-items: center;
+  padding: 12px 40px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--cream);
+  gap: 0;
+}
+.lg-list__filt-group { display: flex; gap: 18px; }
+.lg-list__filt-tab {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mid);
+  padding: 4px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.lg-list__filt-tab b { color: var(--ink); }
+.lg-list__filt-tab.is-active {
+  color: var(--ink);
+  border-bottom: 1.5px solid var(--ink);
+  padding-bottom: 2px;
+}
+.lg-list__filt-spacer { flex: 1; }
+.lg-list__filt-search {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--mid);
+  letter-spacing: 0.08em;
+  border-left: 1px solid var(--rule);
+  padding-left: 16px;
+}
+.lg-list__filt-meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mid);
+  margin-left: 24px;
+}
+.lg-list__filt-new {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: var(--ink);
+  color: var(--cream);
+  padding: 8px 16px;
+  margin-left: 16px;
+  border: none;
+  cursor: pointer;
+}
+
+/* ── Rows ─────────────────────────────────────────────────────────────── */
+.lg-list__rows { flex: 1; }
+
+.lg-row {
+  display: grid;
+  grid-template-columns: 60px 110px 1fr 200px 120px 100px 30px;
+  gap: 20px;
+  padding: 24px 40px;
+  border-bottom: 1px solid var(--rule);
+  align-items: center;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  text-decoration: none;   /* used as <Link> */
+  color: inherit;
+}
+.lg-row::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 0;
+  background: var(--red);
+  transition: width 0.25s ease;
+}
+.lg-row:hover { background: rgba(13, 13, 13, 0.025); }
+.lg-row:hover::before { width: 3px; }
+.lg-row.is-hot { background: rgba(200, 50, 42, 0.04); }
+.lg-row.is-hot::before { width: 3px; background: var(--red); }
+
+.lg-row__num {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 32px;
+  color: var(--rule);
+  line-height: 1;
+}
+.lg-row.is-hot .lg-row__num { color: var(--red); }
+
+.lg-row__client { display: flex; align-items: center; gap: 10px; }
+.lg-row__av {
+  width: 28px; height: 28px;
+  background: var(--ink); color: var(--cream);
+  display: grid; place-items: center;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+.lg-row__client-nm {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.lg-row__title-blk { min-width: 0; }
+.lg-row__cat {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--red);
+  margin-bottom: 4px;
+}
+.lg-row__title {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 22px;
+  line-height: 1.15;
+  color: var(--ink);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lg-row__meta {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: var(--mid);
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.lg-row__meta b { color: var(--ink); font-weight: 400; }
+
+.lg-row__due {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--mid);
+  text-align: left;
+}
+.lg-row__due-v {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 20px;
+  color: var(--ink);
+  display: block;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.lg-row__due.is-urgent .lg-row__due-v { color: var(--red); }
+
+.lg-row__chevron {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--mid);
+  text-align: right;
+}
+
+/* ── Empty + loading + error states ──────────────────────────────────── */
+.lg-list__state {
+  padding: 64px 40px;
+  text-align: center;
+  font-family: var(--sans);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 18px;
+  color: var(--mid);
+  letter-spacing: 0.003em;
+}
+.lg-list__state h3 {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 36px;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────── */
+@media (max-width: 1280px) {
+  .lg-row { grid-template-columns: 50px 1fr 180px 110px 90px 28px; }
+  .lg-row__client { display: none; }
+}
+
+@media (max-width: 1024px) {
+  .lg-list__head { padding: 28px 28px 20px; }
+  .lg-list__title { font-size: 56px; }
+  .lg-list__filt { padding: 10px 28px; }
+  .lg-row { padding: 20px 28px; grid-template-columns: 40px 1fr 140px 90px 22px; }
+  .lg-row__title { font-size: 20px; }
+  .lg-row__due { display: none; }   /* due now lives inside meta */
+}
+
+/* ── Mobile cards (≤ 540px) — from design spec: list-responsive.jsx ────── */
+@media (max-width: 540px) {
+  /* Compact head — eyebrow + smaller title */
+  .lg-list__head { padding: 18px 18px 14px; gap: 12px; }
+  .lg-list__title { font-size: 36px; }
+  .lg-list__kpi   { font-size: 22px; }
+  .lg-list__kpi-lbl { font-size: 8px; }
+
+  /* Filter bar: horizontally scrollable, no overflow wrap, hide extras */
+  .lg-list__filt {
+    padding: 8px 18px; overflow-x: auto; white-space: nowrap; flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  .lg-list__filt::-webkit-scrollbar { display: none; }
+  .lg-list__filt-meta   { display: none; }
+  .lg-list__filt-search { display: none; }
+  /* Hide the "+ New ticket" button — FAB handles it on mobile */
+  .lg-list__filt-new { display: none; }
+
+  /* Card rows: single column, stacked sections */
+  .lg-row {
+    display: grid;
+    grid-template-columns: 36px 1fr auto;
+    gap: 0 12px;
+    padding: 14px 18px;
+    align-items: start;
+  }
+  .lg-row__num    { font-size: 20px; padding-top: 2px; }
+  .lg-row__title  { font-size: 17px; white-space: normal; } /* allow wrapping on mobile */
+  .lg-row__client { display: none; }
+  .lg-row__due    {
+    min-width: 52px; text-align: right;
+    font-size: 9px;
+  }
+  .lg-row__due-v  { font-size: 15px; }
+
+  .lg-list__state { padding: 48px 18px; }
+
+  /* FAB — floating "+" for new ticket (rendered by TicketListPage) */
+  .lg-fab {
+    position: fixed; right: 20px; bottom: 80px; /* above tab bar */
+    width: 56px; height: 56px;
+    background: var(--ink); color: var(--cream);
+    font-family: var(--serif); font-style: italic; font-size: 28px;
+    display: grid; place-items: center;
+    border: none; cursor: pointer; z-index: 90;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  }
+  [data-theme="dark"] .lg-fab { box-shadow: 0 4px 20px rgba(0,0,0,0.55); }
+}
+
+/* Hide FAB on desktop */
+.lg-fab { display: none; }
+@media (max-width: 540px) { .lg-fab { display: grid; } }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Motion polish (Apple-style)
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/* Headline + filter strip fade up; each row staggers in on first paint. */
+.lg-list__head  { animation: lg-enter-fade var(--dur-slow) var(--ease-out) both; }
+.lg-list__filt  { animation: lg-enter-fade var(--dur-base) var(--ease-out) 80ms both; }
+.lg-row         { animation: lg-enter-fade var(--dur-slow) var(--ease-out) both;
+                  animation-delay: calc(var(--i, 0) * 40ms + 120ms); }
+
+/* Hover treatment — a faint background and a 2px nudge right + chevron shift. */
+.lg-row { transition: background-color var(--dur-fast) var(--ease-out),
+                       transform        var(--dur-base) var(--ease-spring); }
+.lg-row:hover {
+  background: rgba(13, 13, 13, 0.04);
+  transform: translateX(2px);
+}
+[data-theme="dark"] .lg-row:hover { background: rgba(255, 255, 255, 0.025); }
+.lg-row__chevron { transition: transform var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+.lg-row:hover .lg-row__chevron { transform: translateX(4px); color: var(--ink); }
+
+/* Filter tabs — the active underline animates between widths. */
+.lg-list__filt-tab { transition: color var(--dur-fast) var(--ease-out); }
+.lg-list__filt-tab:hover { color: var(--ink); }
+.lg-list__filt-tab.is-active { transition: color var(--dur-fast) var(--ease-out), border-bottom-color var(--dur-fast) var(--ease-out); }
+
+/* "+ New ticket" button mirrors the login send. */
+.lg-list__filt-new:hover {
+  background: #1a1a1a;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(13, 13, 13, 0.14);
+}
+[data-theme="dark"] .lg-list__filt-new { background: var(--ink); color: var(--cream); }
+[data-theme="dark"] .lg-list__filt-new:hover { background: rgba(237, 232, 223, 0.92); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }
+
+/* The KPI number gets a soft scale-up on first render. */
+.lg-list__kpi { animation: lg-enter-pop var(--dur-base) var(--ease-spring) 200ms both; }
+
+/* Empty/loading/error states fade up. */
+.lg-list__state { animation: lg-enter-fade var(--dur-slow) var(--ease-out) both; }
+

@@ -27,6 +27,9 @@ pub struct CreateTicketInput<'a> {
     pub ticket_type: &'a str,
     pub recurring: bool,
     pub recurring_interval_days: Option<i64>,
+    /// Desk only: file on behalf of a specific client UUID.
+    /// None → use the caller's own ID (clients always use self).
+    pub client_id: Option<&'a str>,
 }
 
 /// Returns (page of tickets, total count). page is 1-indexed; limit capped at 100.
@@ -90,6 +93,30 @@ pub async fn create(
         }
     }
 
+    // Resolve client_id: desk may file on behalf of a client; everyone else
+    // always files as themselves.
+    let resolved_client_id: String = if claims.role == "desk" {
+        match input.client_id {
+            Some(cid) => {
+                let client = db::users::find_by_id(pool, cid)
+                    .await?
+                    .ok_or_else(|| AppError::BadRequest("client not found".into()))?;
+                if client.role != "client" {
+                    return Err(AppError::BadRequest("target user is not a client".into()));
+                }
+                if client.deleted_at.is_some() {
+                    return Err(AppError::BadRequest(
+                        "cannot file a ticket for a deleted client".into(),
+                    ));
+                }
+                cid.to_owned()
+            }
+            None => claims.sub.clone(),
+        }
+    } else {
+        claims.sub.clone()
+    };
+
     let id = Uuid::new_v4().to_string();
     let ticket = db::tickets::create(
         pool,
@@ -98,7 +125,7 @@ pub async fn create(
             title: input.title,
             description: input.description,
             created_by: &claims.sub,
-            client_id: &claims.sub,
+            client_id: &resolved_client_id,
             priority: input.priority,
             category: input.category,
             due_date: input.due_date,
@@ -110,11 +137,11 @@ pub async fn create(
     )
     .await?;
 
-    notify::notify(pool, &claims.sub, &ticket.id, "Your ticket has been created.").await;
+    notify::notify(pool, &resolved_client_id, &ticket.id, "Your ticket has been created.").await;
 
     // Fire-and-forget email — failure is non-fatal but logged.
     if let Some(m) = mailer {
-        match db::users::find_by_id(pool, &claims.sub).await {
+        match db::users::find_by_id(pool, &resolved_client_id).await {
             Ok(Some(user)) => {
                 let m = m.clone();
                 let title = ticket.title.clone();

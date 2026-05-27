@@ -27,6 +27,12 @@ pub struct ClientResponse {
     pub name: String,
     pub email: String,
     pub deleted_at: Option<String>,
+    /// Consecutive failed login attempts. Reset to 0 on successful login or
+    /// magic link exchange.
+    pub failed_attempts: i64,
+    /// RFC-3339 timestamp the account is locked until. `None` = not locked.
+    /// `"9999-01-01T00:00:00+00:00"` = permanent lockout.
+    pub locked_until: Option<String>,
 }
 
 impl From<User> for ClientResponse {
@@ -36,6 +42,8 @@ impl From<User> for ClientResponse {
             name: u.name,
             email: u.email,
             deleted_at: u.deleted_at,
+            failed_attempts: u.failed_attempts,
+            locked_until: u.locked_until,
         }
     }
 }

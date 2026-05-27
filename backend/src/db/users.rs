@@ -99,24 +99,6 @@ pub async fn reset_lockout(pool: &SqlitePool, user_id: &str) -> AppResult<()> {
     Ok(())
 }
 
-pub async fn soft_delete(pool: &SqlitePool, id: &str) -> AppResult<()> {
-    let now = Utc::now().to_rfc3339();
-    sqlx::query("UPDATE users SET deleted_at = ? WHERE id = ?")
-        .bind(&now)
-        .bind(id)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
-
-pub async fn restore(pool: &SqlitePool, id: &str) -> AppResult<()> {
-    sqlx::query("UPDATE users SET deleted_at = NULL WHERE id = ?")
-        .bind(id)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
-
 pub async fn hard_delete(pool: &SqlitePool, id: &str) -> AppResult<()> {
     sqlx::query("DELETE FROM users WHERE id = ?")
         .bind(id)

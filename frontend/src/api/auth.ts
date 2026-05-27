@@ -1,0 +1,31 @@
+import { api, tokenStore } from './client';
+import type { AccessTokenResponse } from './types';
+
+export const auth = {
+  async login(email: string, password: string): Promise<string> {
+    const r = await api.post<AccessTokenResponse>('/auth/login', { email, password });
+    tokenStore.set(r.data.access_token);
+    return r.data.access_token;
+  },
+
+  async logout(): Promise<void> {
+    try { await api.post('/auth/logout'); } catch { /* ignore */ }
+    tokenStore.set(null);
+  },
+
+  /** Exchange a magic-link token for a (short-lived, stateless) access token. */
+  async magic(token: string): Promise<string> {
+    const r = await api.post<AccessTokenResponse>('/auth/magic', { token });
+    tokenStore.set(r.data.access_token);
+    return r.data.access_token;
+  },
+
+  async changePassword(current_password: string, new_password: string): Promise<string> {
+    const r = await api.patch<AccessTokenResponse>('/auth/password', {
+      current_password,
+      new_password,
+    });
+    tokenStore.set(r.data.access_token);
+    return r.data.access_token;
+  },
+};

@@ -7,7 +7,7 @@ use jsonwebtoken::{encode, Header};
 use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
-use std::{net::IpAddr, sync::OnceLock};
+use std::{collections::HashSet, net::IpAddr, sync::OnceLock};
 use uuid::Uuid;
 
 use crate::{
@@ -18,28 +18,37 @@ use crate::{
 };
 
 // ── 100 most-common passwords — rejected regardless of length ─────────────────
-const COMMON_PASSWORDS: &[&str] = &[
-    "password", "password1", "password123", "password12", "password!",
-    "12345678", "123456789", "1234567890", "123456789a", "1234567891",
-    "qwerty123", "qwertyuiop", "qwerty1234", "qwerty12", "qwerty!1",
-    "iloveyou", "iloveyou1", "iloveyou12", "iloveyou!", "loveyou12",
-    "admin123", "admin1234", "admin12345", "admin2024", "adminadmin",
-    "letmein1", "letmein12", "letmein123", "letmein!1", "letme1n1",
-    "monkey123", "monkey1234", "monkeys12", "dragon123", "dragon1234",
-    "shadow123", "shadow1234", "shadows12", "master123", "master1234",
-    "superman1", "superman12", "batman123", "batman1234", "batmanman",
-    "trustno1", "trustno12", "sunshine1", "sunshine12", "sunshines",
-    "princess1", "princess12", "princess!", "michael1", "michael12",
-    "football1", "football12", "baseball1", "baseball12", "soccer123",
-    "welcome1", "welcome12", "welcome!1", "hello1234", "hello12345",
-    "pass1234", "pass12345", "passw0rd1", "p@ssword1", "p@ss1234",
-    "changeme1", "changeme!", "whatever1", "whatever!", "nothing12",
-    "freedom12", "freedom1!", "starwars1", "starwars12", "starwar12",
-    "1q2w3e4r", "q1w2e3r4", "1qaz2wsx", "zxcvbn12", "zaq1zaq1",
-    "qazwsx12", "abc12345", "abc123456", "test1234", "testing1",
-    "root1234", "toor1234", "computer1", "internet1", "windows10",
-    "mustang1", "charlie1", "jessica1", "1234abcd", "abcd1234",
-];
+// Stored as a HashSet (O(1) lookup) initialised once via OnceLock.
+static COMMON_PASSWORDS: OnceLock<HashSet<&'static str>> = OnceLock::new();
+
+fn common_passwords() -> &'static HashSet<&'static str> {
+    COMMON_PASSWORDS.get_or_init(|| {
+        [
+            "password", "password1", "password123", "password12", "password!",
+            "12345678", "123456789", "1234567890", "123456789a", "1234567891",
+            "qwerty123", "qwertyuiop", "qwerty1234", "qwerty12", "qwerty!1",
+            "iloveyou", "iloveyou1", "iloveyou12", "iloveyou!", "loveyou12",
+            "admin123", "admin1234", "admin12345", "admin2024", "adminadmin",
+            "letmein1", "letmein12", "letmein123", "letmein!1", "letme1n1",
+            "monkey123", "monkey1234", "monkeys12", "dragon123", "dragon1234",
+            "shadow123", "shadow1234", "shadows12", "master123", "master1234",
+            "superman1", "superman12", "batman123", "batman1234", "batmanman",
+            "trustno1", "trustno12", "sunshine1", "sunshine12", "sunshines",
+            "princess1", "princess12", "princess!", "michael1", "michael12",
+            "football1", "football12", "baseball1", "baseball12", "soccer123",
+            "welcome1", "welcome12", "welcome!1", "hello1234", "hello12345",
+            "pass1234", "pass12345", "passw0rd1", "p@ssword1", "p@ss1234",
+            "changeme1", "changeme!", "whatever1", "whatever!", "nothing12",
+            "freedom12", "freedom1!", "starwars1", "starwars12", "starwar12",
+            "1q2w3e4r", "q1w2e3r4", "1qaz2wsx", "zxcvbn12", "zaq1zaq1",
+            "qazwsx12", "abc12345", "abc123456", "test1234", "testing1",
+            "root1234", "toor1234", "computer1", "internet1", "windows10",
+            "mustang1", "charlie1", "jessica1", "1234abcd", "abcd1234",
+        ]
+        .into_iter()
+        .collect()
+    })
+}
 
 pub struct LoginOutput {
     pub access_token: String,
@@ -361,7 +370,7 @@ pub fn validate_password_strength(password: &str) -> AppResult<()> {
             "password cannot consist entirely of whitespace".into(),
         ));
     }
-    if COMMON_PASSWORDS.contains(&password.to_lowercase().as_str()) {
+    if common_passwords().contains(password.to_lowercase().as_str()) {
         return Err(AppError::BadRequest(
             "password is too common — choose a more unique password".into(),
         ));

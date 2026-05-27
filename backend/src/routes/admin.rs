@@ -157,6 +157,15 @@ pub async fn get_export_file(
         .await
         .map_err(|_| AppError::NotFound)?;
 
+    // Delete the export file immediately after reading — export files contain
+    // decrypted plaintext and must not persist on disk longer than the download.
+    if let Err(e) = tokio::fs::remove_file(&path).await {
+        // Log but don't fail the response — client already has the file.
+        tracing::error!(path = %path.display(), err = %e, "failed to delete export file after download");
+    } else {
+        tracing::info!(path = %path.display(), "export file deleted after download");
+    }
+
     Ok((
         [(
             header::CONTENT_DISPOSITION,

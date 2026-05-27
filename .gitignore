@@ -1,5 +1,17 @@
+# Rust build output
 /target
+
+# Secrets and local config
 .env
+
+# Runtime data (never commit)
 data/
 uploads/
 exports/
+logs/
+
+# Frontend dependencies and build output
+node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local

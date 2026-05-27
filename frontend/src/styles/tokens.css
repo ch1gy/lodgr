@@ -1,0 +1,424 @@
+/* ────────────────────────────────────────────────────────────────────────────
+ * tokens.css — Lodgr design tokens + base atoms
+ *
+ * Editorial magazine direction lifted from chigy.dev portfolio:
+ *   • Cream/ink/red palette (light theme is the default)
+ *   • DM Serif Display italic for editorial headlines and the "Lodgr." wordmark
+ *   • Bebas Neue is intentionally absent — too loud for a working tool
+ *   • DM Mono for labels, IDs, timestamps, anything secondary
+ *   • Archivo Narrow for body text (sentences, message bodies, descriptions)
+ *
+ * Everything else in the app references these tokens via var(--*). If you
+ * find yourself reaching for a raw hex value somewhere, add a token instead.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Colors ───────────────────────────────────────────────────────────── */
+  --cream: #f2ede4;        /* page background, off-white paper */
+  --ink: #0d0d0d;          /* primary text + dark fills */
+  --ink-soft: #3d3830;     /* body copy — softer than full black */
+  --mid: #6a6560;          /* secondary text, dividers' active state */
+  --rule: #c8c2b8;         /* hairlines + form underlines */
+  --red: #c8322a;          /* the single accent — use sparingly */
+  --green: #4f6f4a;        /* status: positive (not used yet but reserved) */
+  --amber: #b88a2c;        /* status: acknowledged / high priority */
+  --slate: #6a7585;        /* status: pending */
+
+  /* ── Motion tokens ─── Apple-style easing + durations ──────────────── */
+  /* Ease-out-quint is THE curve for entering UI — fast start, soft settle.
+   * Spring adds a hint of overshoot for tactile clicks. */
+  --ease-out:    cubic-bezier(0.16, 1.00, 0.30, 1.00);
+  --ease-in-out: cubic-bezier(0.65, 0.00, 0.35, 1.00);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1.00);
+  --dur-xfast: 120ms;
+  --dur-fast:  200ms;
+  --dur-base:  320ms;
+  --dur-slow:  520ms;
+
+  /* ── Fonts ────────────────────────────────────────────────────────────── */
+  --serif: 'DM Serif Display', Georgia, serif;     /* headings, wordmark */
+  --sans: 'Archivo Narrow', sans-serif;            /* body text */
+  --mono: 'DM Mono', 'Courier New', monospace;     /* labels, IDs, meta */
+}
+
+/* ── Reset ────────────────────────────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Dark theme ────────────────────────────────────────────────────────────
+ * Lifted from the Roadmap page palette. We swap cream/ink, soften rule lines
+ * to translucent white, and bump the red a touch so it still reads on near-
+ * black. Everything else (gaps, fonts, motion tokens) is inherited from :root.
+ * ──────────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --cream:    oklch(0.10 0.01 60);
+  --ink:      #ede8df;
+  --ink-soft: rgba(237, 232, 223, 0.78);
+  --mid:      rgba(237, 232, 223, 0.38);
+  --rule:     rgba(255, 255, 255, 0.08);
+  --red:      #d94539;
+  --green:    #6a8c63;
+  --amber:    #d4a23e;
+  --slate:    #8a96a8;
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Theme-aware properties crossfade smoothly when no View Transition runs. */
+html, body {
+  transition:
+    background-color var(--dur-base) var(--ease-in-out),
+    color            var(--dur-base) var(--ease-in-out);
+}
+
+html, body, #root {
+  background: var(--cream);
+  color: var(--ink);
+  font-family: var(--serif);
+  min-height: 100%;
+}
+
+input, textarea, button { font: inherit; color: inherit; }
+button { cursor: pointer; }
+
+/* Remove native browser spinner arrows on number inputs. */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+a { color: inherit; }
+
+/* ── Paper grain overlay ────────────────────────────────────────────────────
+ * Add the `.grain` class to any positioned container to get a subtle SVG
+ * noise overlay — the same texture the portfolio uses. It's a pseudo-element
+ * so it doesn't intercept clicks.
+ * ──────────────────────────────────────────────────────────────────────── */
+.grain { position: relative; }
+.grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  z-index: 999;
+  background-size: 200px;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ── Shared atoms ─────────────────────────────────────────────────────────
+ * Small, reusable pieces. Keep them small — page-specific styles live in
+ * login.css / list.css / detail.css.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* Status pill (open / ack / pending / closed). The dot is animated only on
+   `open` — that's our way of saying "this needs a human". */
+.lg-status {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.lg-status .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.lg-status--open    { color: var(--red);   border: 1px solid var(--red); }
+.lg-status--open .dot { background: var(--red); animation: lg-blink 2s ease-in-out infinite; }
+.lg-status--ack     { color: var(--amber); border: 1px solid color-mix(in oklab, var(--amber) 60%, transparent); }
+.lg-status--ack .dot { background: var(--amber); }
+.lg-status--pending { color: var(--slate); border: 1px solid color-mix(in oklab, var(--slate) 50%, transparent); }
+.lg-status--pending .dot { background: var(--slate); }
+.lg-status--closed  { color: var(--mid);   border: 1px solid var(--rule); }
+.lg-status--closed .dot { background: var(--mid); }
+
+@keyframes lg-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* Priority bars — 1..4 filled segments, color shifts with priority. */
+.lg-prio {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.lg-prio--urgent { color: var(--red); }
+.lg-prio--high   { color: var(--amber); }
+.lg-prio--medium { color: var(--ink-soft); }
+.lg-prio--low    { color: var(--mid); }
+.lg-prio .bars { display: inline-flex; gap: 2px; align-items: flex-end; height: 10px; }
+.lg-prio .bars span { width: 2px; background: currentColor; }
+.lg-prio .bars span:nth-child(1) { height: 4px; }
+.lg-prio .bars span:nth-child(2) { height: 6px; }
+.lg-prio .bars span:nth-child(3) { height: 8px; }
+.lg-prio .bars span:nth-child(4) { height: 10px; }
+.lg-prio .bars span.off { opacity: 0.18; }
+
+/* ── Form atoms ──────────────────────────────────────────────────────────── */
+.lg-input {
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--rule);
+  padding: 12px 0;
+  color: var(--ink);
+  width: 100%;
+  outline: none;
+}
+.lg-input::placeholder { color: var(--mid); font-style: italic; }
+.lg-input-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--mid);
+  margin-bottom: 6px;
+}
+
+/* ── Masthead — the editorial top bar used on every signed-in page ───────── */
+.lg-mast {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 18px 40px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--cream);
+}
+.lg-mast-left { display: flex; align-items: center; gap: 24px; }
+.lg-mast-issue {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mid);
+}
+.lg-mast-issue b { color: var(--ink); font-weight: 400; }
+.lg-mast-logo {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 26px;
+  letter-spacing: -0.01em;
+  text-align: center;
+  color: var(--ink);
+}
+.lg-mast-logo .dot { color: var(--red); }
+.lg-mast-right { display: flex; align-items: center; justify-content: flex-end; gap: 28px; }
+.lg-mast-link {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mid);
+  cursor: pointer;
+  text-decoration: none;
+}
+.lg-mast-link.active { color: var(--ink); border-bottom: 1.5px solid var(--ink); padding-bottom: 2px; }
+.lg-mast-user { display: flex; align-items: center; gap: 10px; }
+.lg-mast-user .av {
+  width: 26px; height: 26px;
+  background: var(--ink); color: var(--cream);
+  display: grid; place-items: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+.lg-mast-user .nm {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+
+/* ── Generic responsive shrink for the masthead ─────────────────────────── */
+@media (max-width: 768px) {
+  .lg-mast { padding: 12px 18px; grid-template-columns: auto 1fr auto; gap: 12px; }
+  .lg-mast-left .lg-mast-issue:last-child { display: none; }
+  .lg-mast-right { gap: 14px; }
+  .lg-mast-right .lg-mast-link { display: none; }
+  .lg-mast-right .lg-mast-link.active { display: inline; }
+}
+
+/* ── Phone masthead (≤ 540px) — logo + avatar only, nav moves to tab bar ── */
+@media (max-width: 540px) {
+  .lg-mast { grid-template-columns: auto 1fr auto; padding: 10px 18px; }
+  .lg-mast-left { display: none; }
+  /* Hide ALL right-side items except the avatar square.
+     Use .lg-mast-right .lg-theme-switch (specificity 0-2-0) so it beats the
+     base .lg-theme-switch rule that appears later in this file (0-1-0). */
+  .lg-mast-right .lg-mast-link,
+  .lg-mast-right .lg-mast-link.active,
+  .lg-mast-right .lg-theme-switch,
+  .lg-mast-user .nm { display: none; }
+  .lg-mast-right { gap: 0; }
+  .lg-mast-logo { font-size: 22px; }
+}
+
+/* ── Bottom tab bar — mobile navigation (design spec: list-responsive.jsx) ─ */
+.lg-tabbar {
+  display: none; /* hidden on desktop */
+}
+@media (max-width: 540px) {
+  .lg-tabbar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-top: 1px solid var(--rule);
+    background: var(--cream);
+    flex-shrink: 0;
+    position: sticky; bottom: 0; z-index: 100;
+  }
+  /* client role only gets 2 tabs — let them fill evenly */
+  .lg-tabbar:has(.lg-tabbar__t:only-of-type),
+  .lg-tabbar:has(.lg-tabbar__t:nth-child(2):last-child) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .lg-tabbar__t {
+    padding: 12px 0 14px;
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--mid);
+    text-align: center; text-decoration: none;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    transition: color var(--dur-fast) var(--ease-out);
+  }
+  .lg-tabbar__ic {
+    width: 18px; height: 18px;
+    border: 1px solid var(--rule);
+    display: grid; place-items: center;
+    font-family: var(--serif); font-style: italic; font-size: 12px;
+    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  }
+  .lg-tabbar__t.active { color: var(--ink); }
+  .lg-tabbar__t.active .lg-tabbar__ic { background: var(--ink); color: var(--cream); border-color: var(--ink); }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Theme switch — "LGT / DRK" toggle borrowed from the chigy.dev portfolio.
+ * The active segment underlines + colors in; inactive is muted. No icons,
+ * no animations on the toggle itself — the page-wide reveal is the show.
+ * ───────────────────────────────────────────────────────────────────────── */
+.lg-theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.lg-theme-switch:focus-visible {
+  outline: 1px solid var(--ink);
+  outline-offset: 2px;
+}
+.lg-theme-switch .seg {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--mid);
+  line-height: 1;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.lg-theme-switch .seg:hover { color: var(--ink); }
+.lg-theme-switch .slash {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--rule);
+  line-height: 1;
+  user-select: none;
+}
+[data-theme="light"] .lg-theme-switch .seg.light,
+[data-theme="dark"]  .lg-theme-switch .seg.dark {
+  color: var(--ink);
+  border-bottom: 1.5px solid var(--ink);
+  padding-bottom: 1px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * View Transitions — when the user toggles theme.
+ * On supporting browsers (Chrome 111+, Safari 18+) ThemeContext snapshots
+ * the page, swaps the data-theme attribute, then animates a circle clip-path
+ * on the new layer outward from the click point. Old layer just sits still.
+ * ───────────────────────────────────────────────────────────────────────── */
+::view-transition-old(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Global hover/active motion — every interactive surface gets a 200ms ease.
+ * Apple-style: subtle bg/border response, a tiny 0.98 active-press, and a
+ * focus-visible ring for keyboard users that's distinct from hover.
+ * ───────────────────────────────────────────────────────────────────────── */
+button, a {
+  transition:
+    color           var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    border-color    var(--dur-fast) var(--ease-out),
+    transform       var(--dur-fast) var(--ease-spring),
+    box-shadow      var(--dur-fast) var(--ease-out);
+}
+button:active:not(:disabled),
+a:active { transform: scale(0.98); }
+
+button:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--cream), 0 0 0 3px var(--ink);
+}
+
+/* Inputs glow a touch on focus instead of bumping. */
+.lg-input { transition:
+  border-color var(--dur-fast) var(--ease-out),
+  box-shadow   var(--dur-fast) var(--ease-out);
+}
+.lg-input:focus {
+  border-bottom-color: var(--ink);
+  box-shadow: 0 1px 0 0 var(--ink);
+}
+
+/* Masthead links pick up a soft hover treatment. */
+.lg-mast-link { position: relative; }
+.lg-mast-link:hover { color: var(--ink); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Reusable entrance animations — drop on any element with a stagger via the
+ * --i custom property:    style={{ '--i': index }} className="lg-enter"
+ * ───────────────────────────────────────────────────────────────────────── */
+@keyframes lg-enter-fade {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+@keyframes lg-enter-pop {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1);    }
+}
+@keyframes lg-pulse-soft {
+  0%, 100% { opacity: 1;   transform: scale(1);    }
+  50%      { opacity: 0.6; transform: scale(0.92); }
+}
+
+.lg-enter {
+  animation: lg-enter-fade var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+.lg-enter-pop {
+  animation: lg-enter-pop var(--dur-base) var(--ease-spring) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+

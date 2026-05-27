@@ -1,18 +1,22 @@
-# Lodgr — Support Ticket Backend
+# Lodgr — IT Support Desk
 
-A self-hosted support ticket system built in Rust. Designed for a single desk agent
-managing a set of clients, with JWT authentication, AES-256-GCM message encryption,
-structured audit logging, and a full security hardening pass against OWASP Top 10.
+A self-hosted support ticket system for a single desk agent managing a set of clients.
+Editorial-style React frontend (Vite + TypeScript) backed by a Rust API (Axum + SQLite).
+
+Features JWT authentication, AES-256-GCM message encryption, structured audit logging,
+account lockout, and a full OWASP hardening pass.
 
 ---
 
 ## Stack
 
+### Backend
+
 | Crate | Purpose |
 |---|---|
 | axum 0.7 | HTTP framework |
-| sqlx 0.8 | Async SQLite driver |
-| tokio 1 | Async runtime (minimal features) |
+| sqlx 0.8 | Async SQLite driver (WAL mode) |
+| tokio 1 | Async runtime |
 | jsonwebtoken 9 | JWT access tokens (HS256) |
 | argon2 0.5 | Password hashing (Argon2id) + AES key derivation |
 | aes-gcm 0.10 | Message body encryption (AES-256-GCM) |
@@ -25,6 +29,17 @@ structured audit logging, and a full security hardening pass against OWASP Top 1
 | printpdf 0.7 | Monthly PDF reports |
 | tracing + tracing-subscriber | Structured logging |
 | tracing-appender 0.2 | Daily log rotation, 30-day retention |
+
+### Frontend
+
+| Package | Purpose |
+|---|---|
+| React 18 + TypeScript | UI framework |
+| Vite 5 | Build tool + dev server (proxies API calls) |
+| React Router 6 | Client-side routing |
+| TanStack Query 5 | Server state, caching, 30 s polling |
+| Axios | HTTP client with auto-retry on 401 |
+| react-qr-code | QR code generation for magic links |
 
 ---
 
@@ -99,26 +114,37 @@ ticket_support/
 ├── .env                      local secrets — NEVER commit (in .gitignore)
 ├── .env.example              template for all required variables
 ├── PLANNED.md                upcoming features and design notes
-└── backend/
-    ├── migrations/           9 SQL migrations, run automatically on startup
-    ├── static/index.html     minimal browser test UI
-    └── src/
-        ├── main.rs           startup, router, log rotation
-        ├── auth.rs           login / refresh / logout / change-password handlers
-        ├── config.rs         env var loading + startup validation
-        ├── crypto.rs         AES-256-GCM + Argon2id (only file that touches raw crypto)
-        ├── dto.rs            API response types (only place Serialize is derived)
-        ├── email.rs          SMTP mailer (lettre)
-        ├── error.rs          central AppError → IntoResponse
-        ├── middleware.rs     AuthUser, DeskUser, RefreshTokenCookie extractors
-        ├── models.rs         DB row types — no Serialize
-        ├── notify.rs         in-app notifications
-        ├── rate_limit.rs     per-IP token-bucket rate limiter
-        ├── tasks.rs          background: recurring tickets, user hard-delete cleanup
-        ├── ticket_status.rs  isolated status-transition state machine
-        ├── db/               repository layer — SQL only, no business logic
-        ├── routes/           HTTP handlers — HTTP concerns only
-        └── services/         business logic layer
+├── backend/
+│   ├── migrations/           SQL migrations, run automatically on startup
+│   └── src/
+│       ├── main.rs           startup, router, log rotation
+│       ├── auth.rs           login / refresh / logout / change-password handlers
+│       ├── config.rs         env var loading + startup validation
+│       ├── crypto.rs         AES-256-GCM + Argon2id (only file that touches raw crypto)
+│       ├── dto.rs            API response types (only place Serialize is derived)
+│       ├── email.rs          SMTP mailer (lettre)
+│       ├── error.rs          central AppError → IntoResponse
+│       ├── middleware.rs     AuthUser, DeskUser, RefreshTokenCookie extractors
+│       ├── models.rs         DB row types — no Serialize
+│       ├── notify.rs         in-app notifications
+│       ├── rate_limit.rs     per-IP token-bucket rate limiter
+│       ├── tasks.rs          background: recurring tickets, user hard-delete cleanup
+│       ├── ticket_status.rs  isolated status-transition state machine
+│       ├── db/               repository layer — SQL only, no business logic
+│       ├── routes/           HTTP handlers — HTTP concerns only
+│       └── services/         business logic layer
+└── frontend/
+    ├── src/
+    │   ├── api/              Axios wrappers for every backend route
+    │   ├── auth/             AuthContext, token store, refresh interceptor
+    │   ├── components/       Masthead, modals, PasswordGenerator, BottomTabBar, etc.
+    │   ├── pages/            LoginPage, TicketListPage, TicketDetailPage, ClientsPage,
+    │   │                     ReportsPage, SettingsPage, MagicLandingPage
+    │   ├── styles/           tokens.css, list.css, detail.css, v2.css, login.css
+    │   ├── theme/            ThemeContext (light/dark with View Transitions API)
+    │   └── utils/            format.ts (timeAgo, daysUntil, fmtDateTime)
+    ├── vite.config.ts        API proxy for dev (all /auth /tickets /admin /reports → :3000)
+    └── package.json
 ```
 
 ---
@@ -138,7 +164,7 @@ openssl rand -hex 32   # → JWT_SECRET
 openssl rand -hex 16   # → ENCRYPTION_SALT (set once, never change after first run)
 ```
 
-### 2. Run
+### 2. Run the backend
 
 ```bash
 cargo run -p backend
@@ -149,14 +175,15 @@ are created relative to the working directory.
 
 **First-run behaviour:**
 1. Creates `logs/` for structured log files (daily rotation, 30-day retention)
-2. Creates `data/support.db` and runs all 9 migrations
+2. Creates `data/support.db` and runs all migrations
 3. Creates `uploads/` and `exports/` directories
 4. Derives the AES-256-GCM encryption key (~2–4 s, Argon2id 64 MiB)
 5. Cleans up expired and revoked sessions
-6. Seeds `desk@local / changeme` and warns loudly if the default password is still set
+6. Seeds `desk@local` with the password from `DESK_INITIAL_PASSWORD` (default: `changeme`)
 7. Starts background tasks: recurring ticket spawner, expired-user cleanup
 
-**Change the desk password immediately:**
+**Change the desk password immediately** (or set `DESK_INITIAL_PASSWORD` in `.env`
+before first run):
 
 ```bash
 curl -sc cookies.txt -X POST http://localhost:3000/auth/login \
@@ -168,6 +195,20 @@ curl -X PATCH http://localhost:3000/auth/password \
   -H 'Content-Type: application/json' \
   -d '{"current_password":"changeme","new_password":"your-strong-password"}'
 ```
+
+### 3. Run the frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Opens at `http://localhost:5173`. The Vite dev server proxies all API calls to the
+backend at `:3000` — no CORS configuration needed in development.
+
+For production, build with `npm run build` and serve `frontend/dist/` from the same
+origin as the backend (already handled if you point `ServeDir` at the dist folder).
 
 ---
 
@@ -186,6 +227,7 @@ curl -X PATCH http://localhost:3000/auth/password \
 | `COOKIE_SECURE` | no | `true` | Adds `; Secure` to the refresh cookie. Set `false` for local plain-HTTP dev only |
 | `ENCRYPTION_PASSPHRASE` | **yes** | — | Passphrase for AES key derivation (min 16 chars) |
 | `ENCRYPTION_SALT` | **yes** | — | Hex salt, **fixed for the lifetime of the database**. Generate once: `openssl rand -hex 16` |
+| `DESK_INITIAL_PASSWORD` | no | `changeme` | Password for `desk@local` on first run. Set before first run or change immediately after. |
 | `SMTP_HOST` | no | — | SMTP server hostname. Email is disabled if not set |
 | `SMTP_PORT` | no | `587` | SMTP port |
 | `SMTP_USER` | no | — | SMTP username |
@@ -364,14 +406,14 @@ curl -X DELETE http://localhost:3000/admin/clients/CLIENT_ID \
   -d '{"confirm":"permanently delete client@example.com"}'
 ```
 
-**Export client data** *(decrypted JSON archive)*
+**Export client data** *(decrypted JSON archive — deleted from disk after download)*
 ```bash
 curl -X POST http://localhost:3000/admin/clients/CLIENT_ID/export \
   -H 'Authorization: Bearer TOKEN'
 # → { "export_id": "...", "download_url": "/admin/exports/CLIENT_ID/uuid.json" }
 ```
 
-**Download export file**
+**Download export file** *(file is deleted from disk immediately after)*
 ```bash
 curl http://localhost:3000/admin/exports/CLIENT_ID/EXPORT_FILE \
   -H 'Authorization: Bearer TOKEN' \
@@ -518,7 +560,6 @@ curl http://localhost:3000/reports/monthly/CLIENT_ID/2026/05 \
 | `ticket_type` | `standard`, `maintenance`, `security_log` | Default: `standard` |
 | `category` | any string | Max 100 chars, optional |
 | `due_date` | `YYYY-MM-DD` | Optional |
-| `estimated_completion` | `YYYY-MM-DD` | Optional |
 | `recurring` | `true` / `false` | Creates recurring ticket template |
 | `recurring_interval_days` | integer ≥ 1 | Required when `recurring: true` |
 
@@ -548,5 +589,5 @@ Applied on account creation and password change:
 
 ## Planned Features
 
-See [PLANNED.md](PLANNED.md) for upcoming features including multi-desk support
-and magic-link-based account lockout recovery.
+See [PLANNED.md](PLANNED.md) for upcoming features including client password
+self-service, auto-ticket on account lockout, and multi-desk support.

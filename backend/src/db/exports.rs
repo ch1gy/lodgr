@@ -39,15 +39,3 @@ pub async fn exists_for_client(pool: &SqlitePool, client_id: &str) -> AppResult<
     Ok(count.0 > 0)
 }
 
-pub async fn find_latest_for_client(
-    pool: &SqlitePool,
-    client_id: &str,
-) -> AppResult<Option<ClientExport>> {
-    Ok(sqlx::query_as::<_, ClientExport>(
-        "SELECT id, client_id, file_path, created_at
-         FROM client_exports WHERE client_id = ? ORDER BY created_at DESC LIMIT 1",
-    )
-    .bind(client_id)
-    .fetch_optional(pool)
-    .await?)
-}

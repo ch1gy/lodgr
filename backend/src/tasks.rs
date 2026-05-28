@@ -2,7 +2,7 @@ use chrono::Utc;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::db;
+use crate::{crypto::EncryptionKey, db, services::export::export_client};
 
 /// Runs every hour. For each recurring ticket template whose interval has
 /// elapsed, creates a new non-recurring open ticket and updates the template.
@@ -58,7 +58,9 @@ pub async fn recurring_tickets(pool: SqlitePool) {
 }
 
 /// Runs every 24 h. Hard-deletes users soft-deleted more than 30 days ago.
-pub async fn hard_delete_expired_users(pool: SqlitePool) {
+/// Mirrors the manual path: ensures a pre-deletion export exists, generating
+/// one if none has been taken, before cascading the delete.
+pub async fn hard_delete_expired_users(pool: SqlitePool, enc_key: EncryptionKey) {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(86_400));
     interval.tick().await; // skip first tick — already ran at startup
     loop {
@@ -67,6 +69,40 @@ pub async fn hard_delete_expired_users(pool: SqlitePool) {
         match db::users::find_expired_soft_deleted(&pool, &cutoff).await {
             Ok(users) => {
                 for u in users {
+                    // Ensure a pre-deletion export record exists. If not, generate
+                    // one now — mirrors the guard in services::admin::hard_delete_client.
+                    let has_export = match db::exports::exists_for_client(&pool, &u.id).await {
+                        Ok(v) => v,
+                        Err(e) => {
+                            tracing::warn!(
+                                user_id = %u.id,
+                                err = %e,
+                                "auto hard-delete: export check failed — skipping"
+                            );
+                            continue;
+                        }
+                    };
+                    if !has_export {
+                        tracing::info!(
+                            user_id = %u.id,
+                            "auto hard-delete: no prior export found — generating now"
+                        );
+                        match export_client(&pool, &enc_key, &u.id).await {
+                            Ok(_) => tracing::info!(
+                                user_id = %u.id,
+                                "auto hard-delete: export generated"
+                            ),
+                            Err(e) => {
+                                tracing::warn!(
+                                    user_id = %u.id,
+                                    err = %e,
+                                    "auto hard-delete: export failed — skipping delete"
+                                );
+                                continue;
+                            }
+                        }
+                    }
+
                     // Collect ticket IDs before deletion for filesystem cleanup.
                     let ticket_ids: Vec<String> = sqlx::query_scalar(
                         "SELECT id FROM tickets WHERE client_id = ?",
@@ -78,7 +114,7 @@ pub async fn hard_delete_expired_users(pool: SqlitePool) {
 
                     match cascade_hard_delete_user(&pool, &u.id).await {
                         Ok(()) => {
-                            tracing::info!("hard deleted expired user {}", u.id);
+                            tracing::info!(user_id = %u.id, "auto hard-delete: user deleted");
                             for ticket_id in &ticket_ids {
                                 let dir = format!("uploads/{ticket_id}");
                                 if let Err(e) = tokio::fs::remove_dir_all(&dir).await {
@@ -92,7 +128,7 @@ pub async fn hard_delete_expired_users(pool: SqlitePool) {
                                 }
                             }
                         }
-                        Err(e) => tracing::warn!("hard delete of {} failed: {e}", u.id),
+                        Err(e) => tracing::warn!(user_id = %u.id, err = %e, "hard delete failed"),
                     }
                 }
             }

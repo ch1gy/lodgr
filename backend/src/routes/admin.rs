@@ -77,6 +77,33 @@ pub async fn soft_delete_client(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+pub struct UpdateClientRequest {
+    pub name: Option<String>,
+    pub email: Option<String>,
+}
+
+pub async fn update_client(
+    State(pool): State<SqlitePool>,
+    DeskUser(claims): DeskUser,
+    Path(client_id): Path<String>,
+    Json(body): Json<UpdateClientRequest>,
+) -> AppResult<impl IntoResponse> {
+    let user = services::admin::update_client_profile(
+        &pool,
+        &client_id,
+        body.name,
+        body.email,
+    )
+    .await?;
+    tracing::info!(
+        desk_user_id = %claims.sub,
+        client_id = %client_id,
+        "client profile updated"
+    );
+    Ok(Json(ClientResponse::from(user)))
+}
+
 pub async fn unlock_client(
     State(pool): State<SqlitePool>,
     DeskUser(claims): DeskUser,

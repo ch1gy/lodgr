@@ -154,7 +154,14 @@ async fn main() -> anyhow::Result<()> {
     // and the task is relaunched after a 5-second cooldown.
     routes::health::init();
     spawn_with_restart("recurring_tickets", pool.clone(), tasks::recurring_tickets);
-    spawn_with_restart("hard_delete_expired_users", pool.clone(), tasks::hard_delete_expired_users);
+    {
+        // Clone the key before it moves into AppState so the task can own a copy.
+        let enc_key_for_task = Arc::clone(&enc_key);
+        spawn_with_restart("hard_delete_expired_users", pool.clone(), move |pool| {
+            let key = Arc::clone(&enc_key_for_task);
+            tasks::hard_delete_expired_users(pool, key)
+        });
+    }
 
     {
         let cleanup_pool = pool.clone();
@@ -212,6 +219,7 @@ async fn main() -> anyhow::Result<()> {
         // ── Auth — no rate limit ───────────────────────────────────────────
         .route("/auth/logout",   post(auth::logout))
         .route("/auth/password", patch(auth::change_password))
+        .route("/auth/me",       get(auth::me))
         // ── Admin ──────────────────────────────────────────────────────────
         .route("/admin/clients",                          post(routes::admin::create_client))
         .route("/admin/clients",                          get(routes::admin::list_clients))
@@ -219,7 +227,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/admin/clients/:id/soft-delete",          post(routes::admin::soft_delete_client))
         .route("/admin/clients/:id/restore",              post(routes::admin::restore_client))
         .route("/admin/clients/:id/unlock",               post(routes::admin::unlock_client))
-        .route("/admin/clients/:id",                      delete(routes::admin::hard_delete_client))
+        .route("/admin/clients/:id",                      patch(routes::admin::update_client).delete(routes::admin::hard_delete_client))
         .route("/admin/clients/:id/export",               post(routes::admin::export_client))
         .route("/admin/clients/:id/magic-link",           post(routes::admin::create_full_magic_link))
         .route("/admin/exports/:client_id/:filename",     get(routes::admin::get_export_file))

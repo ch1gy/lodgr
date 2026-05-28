@@ -35,6 +35,9 @@ struct ExportEntry {
 #[derive(Serialize)]
 struct ExportDocument {
     client_id: String,
+    client_name: String,
+    client_email: String,
+    client_created_at: String,
     exported_at: String,
     tickets: Vec<ExportTicket>,
 }
@@ -99,6 +102,9 @@ pub async fn export_client(
     let exported_at = chrono::Utc::now().to_rfc3339();
     let doc = ExportDocument {
         client_id: client_id.to_owned(),
+        client_name: user.name.clone(),
+        client_email: user.email.clone(),
+        client_created_at: user.created_at.clone(),
         exported_at: exported_at.clone(),
         tickets: export_tickets,
     };

@@ -231,6 +231,56 @@ pub async fn do_export(
     export_client(pool, enc_key, client_id).await
 }
 
+pub async fn update_client_profile(
+    pool: &SqlitePool,
+    client_id: &str,
+    new_name: Option<String>,
+    new_email: Option<String>,
+) -> AppResult<User> {
+    let user = db::users::find_by_id(pool, client_id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if user.role != "client" {
+        return Err(AppError::BadRequest("target user is not a client".into()));
+    }
+
+    // Nothing to update — return current state without a DB round-trip.
+    if new_name.is_none() && new_email.is_none() {
+        return Ok(user);
+    }
+
+    let name = match new_name {
+        Some(ref n) => {
+            if n.is_empty() || n.len() > 100 {
+                return Err(AppError::BadRequest("name must be 1–100 characters".into()));
+            }
+            n.clone()
+        }
+        None => user.name.clone(),
+    };
+
+    let email = match new_email {
+        Some(ref e) => {
+            validate_email(e)?;
+            e.clone()
+        }
+        None => user.email.clone(),
+    };
+
+    db::users::update_profile(pool, client_id, &name, &email)
+        .await
+        .map_err(|e| match e {
+            AppError::Internal(ref msg) if msg.contains("UNIQUE") => {
+                AppError::Conflict(format!("email '{email}' is already registered"))
+            }
+            other => other,
+        })?;
+
+    db::users::find_by_id(pool, client_id)
+        .await?
+        .ok_or_else(|| AppError::Internal("user vanished after update".into()))
+}
+
 pub async fn unlock_client(pool: &SqlitePool, client_id: &str) -> AppResult<()> {
     let user = db::users::find_by_id(pool, client_id)
         .await?

@@ -59,7 +59,7 @@ impl SmtpMailer {
         };
 
         if let Err(e) = self.transport.send(email).await {
-            tracing::warn!("failed to send email to {to_email}: {e}");
+            tracing::warn!(recipient = %mask_email(to_email), "failed to send email: {e}");
         }
     }
 
@@ -89,8 +89,18 @@ impl SmtpMailer {
         };
 
         if let Err(e) = self.transport.send(email).await {
-            tracing::warn!("failed to send magic link email to {to_email}: {e}");
+            tracing::warn!(recipient = %mask_email(to_email), "failed to send magic link email: {e}");
         }
+    }
+}
+
+fn mask_email(email: &str) -> String {
+    match email.split_once('@') {
+        Some((local, domain)) => {
+            let first = local.chars().next().unwrap_or('?');
+            format!("{first}***@{domain}")
+        }
+        None => "***".to_owned(),
     }
 }
 

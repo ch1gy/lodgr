@@ -4,6 +4,120 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — L3 fix: mask recipient email in SMTP failure logs
+
+### Backend (`backend/src/email.rs`)
+Both SMTP send-failure log lines (`send_ticket_notification` and `send_magic_link`)
+previously logged the full recipient email address in plaintext. Replaced with a
+masked form via a new private `mask_email` helper: `alice@example.com` →
+`a***@example.com`. The domain and first character are retained for diagnostic
+value; the full address no longer appears in log files. Closes L3 from the Phase 2
+OWASP review.
+
+---
+
+## [Unreleased] — Phase 3 CI pipeline
+
+### CI — automated build, lint, and security audit
+
+#### `.github/workflows/ci.yml` (new file)
+GitHub Actions workflow triggered on push and pull requests to `master`.
+Runs on `ubuntu-latest` from the workspace root (where `Cargo.lock` lives).
+Steps: `cargo fmt --check`, `cargo clippy --deny warnings`, `cargo test`,
+`cargo audit`. The audit step explicitly ignores `RUSTSEC-2023-0071` (Marvin
+Attack on the `rsa` crate — already documented as no-risk in this project; `rsa`
+is a transitive dep of `sqlx-mysql` and the affected code path is never reachable).
+Cargo registry and build artifacts are cached keyed on `Cargo.lock` hash.
+Closes H5 from the Phase 2 OWASP review.
+
+---
+
+## [Unreleased] — Phase 2 FADP documentation
+
+### Docs — five compliance documents in new `/docs` directory
+
+#### `docs/PRIVACY-NOTICE.md` (new file)
+Client-facing data processing notice. Covers: what data Lodgr stores (name, email,
+ticket content, encrypted message threads, attachments, session info, login events),
+why it is stored, how long it is kept (30 days post soft-delete for accounts; 30
+days log rotation; 24h for export files), who can access it, SMTP transfer note,
+and all data subject rights. Includes deployer fill-in placeholders for contact
+details. Carries the multi-jurisdiction disclaimer (FADP / Kenya DPA).
+
+#### `docs/ROPA.md` (new file)
+Internal Record of Processing Activities. Five processing activities documented in a
+structured table: ticket management, authentication, audit logging, email
+notifications, data export. Each row covers data categories, data subjects, legal
+basis, retention period, recipients, and cross-border transfer risk. SMTP provider
+row flags the transfer risk and requires deployer action to name their actual
+provider. Carries the disclaimer.
+
+#### `docs/DATA-SUBJECT-REQUESTS.md` (new file)
+Process document for handling data subject rights requests. Covers all four rights
+(access, rectification, erasure, portability), explains what happens technically for
+each one (export via `POST /admin/clients/:id/export`, profile update via
+`PATCH /admin/clients/:id`, soft/hard delete flow), gives response time guidance
+(30 days), provides a copy-paste client request email template, and includes
+desk-operator handling instructions. Carries the disclaimer.
+
+#### `docs/INCIDENT-RESPONSE.md` (new file)
+One-page incident response plan. Covers what counts as a reportable breach, a
+five-step response procedure (contain, assess, document, notify clients, report to
+authority), jurisdiction-specific guidance for Switzerland (FDPIC, 72-hour window
+under nFADP Art. 24) and Kenya (ODPC), and a reference to Lodgr's built-in
+detection capabilities: structured audit logs, refresh token reuse detection, account
+lockout events. Carries the disclaimer.
+
+#### `docs/DATA-RETENTION-SCHEDULE.md` (new file)
+Complete retention schedule with source file references for every deletion mechanism
+in the codebase. Covers: user accounts, tickets, message threads, attachments,
+internal notes, sessions, magic links, log files, export files, audit events, and
+export event records. Each row links the retention period to the specific task,
+function, or struct that enforces it. Carries the disclaimer.
+
+---
+
+## [Unreleased] — v1 completion (FADP gap closures)
+
+### Backend — five items from Phase 3 FADP assessment
+
+#### 1. `hard_delete_expired_users` now ensures export exists before deleting (`backend/src/tasks.rs`)
+The background 30-day expiry task called `cascade_hard_delete_user` directly with no
+export guard — a silent divergence from the manual `hard_delete_client` path, which
+requires a prior export. The task now mirrors that guard: it checks
+`db::exports::exists_for_client` before proceeding. If no export exists it calls
+`export_client` first; if that fails the user is skipped and a warning is logged.
+Both the export-generated and deleted events are logged with `user_id`.
+
+#### 2. `PATCH /admin/clients/:id` — client profile update (`backend/src/routes/admin.rs`, `backend/src/services/admin.rs`, `backend/src/db/users.rs`)
+New desk-only endpoint accepting `{ name?: string, email?: string }`. Either or both
+fields may be omitted; omitting both is a no-op that returns the current state.
+Applies the same email format validation used at client creation. Email uniqueness is
+enforced at the DB level and mapped to a `409 Conflict`. Returns the updated
+`ClientResponse`. Change is logged with `desk_user_id` and `client_id`.
+New DB helper: `db::users::update_profile(pool, user_id, name, email)`.
+
+#### 3. Export includes client profile fields (`backend/src/services/export.rs`)
+`ExportDocument` previously contained `client_id` (a UUID) but not the client's
+human-readable identity. Added `client_name`, `client_email`, and `client_created_at`
+fields populated from the user record already fetched at the top of `export_client`.
+An export without profile data was incomplete for FADP data-portability purposes.
+
+#### 4. `GET /auth/me` — authenticated profile endpoint (`backend/src/auth.rs`, `backend/src/dto.rs`)
+New endpoint available to any authenticated user (desk or client, full or scoped
+session). Returns `{ id, name, email, role, created_at }` — no sensitive fields
+(no password hash, no failed_attempts, no locked_until). Clients previously had no
+way to retrieve their own profile data from the API. New DTO: `MeResponse`.
+
+#### 5. Migration 011: drop notifications table (`backend/migrations/011_drop_notifications.sql`)
+The notifications table has received no writes since the L6 fix (Phase 3) removed
+the DB write path from `notify.rs`. It existed only as dead schema that accumulated
+cascade-delete compatibility. Dropping it removes audit confusion without affecting
+any live functionality. All cascade-delete SQL that referenced the table is preserved
+for forward compatibility with databases that haven't yet run this migration.
+
+---
+
 ## [Unreleased] — Documentation update
 
 ### README.md

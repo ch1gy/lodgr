@@ -19,6 +19,29 @@ pub struct MagicLinkResponse {
     pub url: String,
 }
 
+// ── Auth / Me ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct MeResponse {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub role: String,
+    pub created_at: String,
+}
+
+impl From<User> for MeResponse {
+    fn from(u: User) -> Self {
+        MeResponse {
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            role: u.role,
+            created_at: u.created_at,
+        }
+    }
+}
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]

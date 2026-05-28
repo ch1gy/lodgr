@@ -10,9 +10,10 @@ use std::{net::SocketAddr, str::FromStr};
 
 use crate::{
     config::Config,
-    dto::AccessTokenResponse,
+    db,
+    dto::{AccessTokenResponse, MeResponse},
     error::{AppError, AppResult},
-    middleware::{clear_refresh_cookie, set_refresh_cookie, DeskUser, RefreshTokenCookie},
+    middleware::{clear_refresh_cookie, set_refresh_cookie, AuthUser, DeskUser, RefreshTokenCookie},
     services,
 };
 
@@ -105,6 +106,19 @@ pub async fn change_password(
         output.refresh_ttl_secs,
         config.cookie_secure,
     )
+}
+
+/// GET /auth/me — any authenticated user (desk or client, full or scoped session).
+/// Returns the caller's own profile. No sensitive fields (no password hash,
+/// no failed_attempts, no locked_until).
+pub async fn me(
+    State(pool): State<SqlitePool>,
+    AuthUser(claims): AuthUser,
+) -> AppResult<impl IntoResponse> {
+    let user = db::users::find_by_id(&pool, &claims.sub)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+    Ok(Json(MeResponse::from(user)))
 }
 
 fn build_token_response(

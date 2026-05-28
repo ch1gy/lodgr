@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  check:
+    name: Build & Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: cargo fmt --check
+        run: cargo fmt --check
+
+      - name: cargo clippy
+        run: cargo clippy --deny warnings
+
+      - name: cargo test
+        run: cargo test
+
+      - name: cargo audit
+        run: |
+          cargo install cargo-audit --quiet
+          # RUSTSEC-2023-0071: Marvin Attack on the `rsa` crate — no-risk for this
+          # project. `rsa` is a transitive dependency of sqlx-mysql (via
+          # sqlx-macros-core) even though this project uses only SQLite. The affected
+          # code path is never reachable. Documented in CHANGELOG.md.
+          cargo audit --ignore RUSTSEC-2023-0071

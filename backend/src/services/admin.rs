@@ -165,6 +165,9 @@ pub async fn hard_delete_client(
         ));
     }
 
+    // Collect ticket IDs before deletion so we can clean up upload directories.
+    let tickets = db::tickets::list_all_for_client(pool, client_id).await.unwrap_or_default();
+
     // Final export — must succeed before any data is deleted.
     export_client(pool, enc_key, client_id).await?;
 
@@ -202,6 +205,21 @@ pub async fn hard_delete_client(
         .bind(client_id).execute(&mut *tx).await?;
 
     tx.commit().await?;
+
+    // Remove per-ticket upload directories after the DB rows are gone.
+    for ticket in &tickets {
+        let dir = format!("uploads/{}", ticket.id);
+        if let Err(e) = tokio::fs::remove_dir_all(&dir).await {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(
+                    dir = %dir,
+                    err = %e,
+                    "failed to remove upload dir during client hard delete"
+                );
+            }
+        }
+    }
+
     Ok(())
 }
 

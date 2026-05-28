@@ -58,16 +58,6 @@ pub struct InternalNote {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
-#[allow(dead_code)] // mirrors the notifications table; not yet queried as a Rust type
-pub struct Notification {
-    pub id: String,
-    pub ticket_id: String,
-    pub recipient_id: String,
-    pub message: String,
-    pub sent_at: String,
-}
-
-#[derive(Debug, Clone, sqlx::FromRow)]
 #[allow(dead_code)]
 pub struct Session {
     pub id: String,

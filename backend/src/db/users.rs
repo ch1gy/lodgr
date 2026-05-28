@@ -99,14 +99,6 @@ pub async fn reset_lockout(pool: &SqlitePool, user_id: &str) -> AppResult<()> {
     Ok(())
 }
 
-pub async fn hard_delete(pool: &SqlitePool, id: &str) -> AppResult<()> {
-    sqlx::query("DELETE FROM users WHERE id = ?")
-        .bind(id)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
-
 /// Returns users whose `deleted_at` is older than the given cutoff (RFC-3339).
 pub async fn find_expired_soft_deleted(
     pool: &SqlitePool,

@@ -116,11 +116,10 @@ link to the desk's registered email. Requires SMTP to be configured.
 ### What's needed
 
 - Logic in `exchange_magic_link` to clear `failed_attempts` and `locked_until` when
-  the token is exchanged (or clear unconditionally — already safe, token is single-use).
+  the token is exchanged (already safe — token is single-use).
 - Auto-send the magic link email when permanent lockout is reached for `desk@local`.
 - Rate-limit magic link sends per account to prevent email-spam vectors.
-- DB recovery remains the break-glass option if SMTP is not configured or email is
-  also compromised.
+- DB recovery remains the break-glass option if SMTP is not configured.
 
 ---
 
@@ -162,13 +161,28 @@ enabling multi-desk in production:
 
 ## Smaller backend items
 
-| Item | Why | Effort |
-|------|-----|--------|
-| `GET /health` | Every load balancer and uptime monitor needs this. Currently no way to check server health without an authed request. | Trivial |
-| File download endpoint | Attachments are uploaded and paths are stored, but files are not serveable — broken feature. | Small |
-| Ticket server-side filtering | `?status=open&priority=high&q=login`. Currently fetch-all and filter client-side. | Medium |
-| Unread message count | `unread_count` on `TicketResponse`. Without it every ticket has to be polled to know if there are new messages. | Small |
-| SSE for real-time updates | Currently the desk and clients poll every 30 s. SSE would push updates instantly. | Medium |
-| `spawn_blocking` for PDF/export | Both block the async executor. Should be `tokio::task::spawn_blocking`. | Small |
-| Background task restart logic | Both background tasks die silently on panic. Needs a respawn loop or panic handler. | Small |
-| Paginate `GET /admin/clients` | Consistent with tickets. Needed at any real scale. | Small |
+| Item | Why | Effort | Status |
+|------|-----|--------|--------|
+| Ticket server-side filtering | `?status=open&priority=high&q=login`. Currently fetch-all and filter client-side. | Medium | Open |
+| Unread message count | `unread_count` on `TicketResponse`. Without it every ticket has to be polled. | Small | Open |
+| SSE for real-time updates | Currently polls every 30 s. SSE would push updates instantly. | Medium | Open |
+| Paginate `GET /admin/clients` | Consistent with tickets. Needed at any real scale. | Small | Open |
+| CI pipeline + `cargo audit` | No automated test/audit run on push. `cargo audit` currently manual. | Small | Open |
+| ~~`GET /health`~~ | ~~Every load balancer needs this.~~ | ~~Trivial~~ | ✅ Done |
+| ~~File download endpoint~~ | ~~Attachments not serveable.~~ | ~~Small~~ | ✅ Done |
+| ~~`spawn_blocking` for PDF/export~~ | ~~Both blocked the async executor.~~ | ~~Small~~ | ✅ Done |
+| ~~Background task restart logic~~ | ~~Both tasks died silently on panic.~~ | ~~Small~~ | ✅ Done |
+
+---
+
+## Security hardening backlog
+
+From the Phase 2 OWASP review — findings not yet fixed:
+
+| # | Severity | Finding |
+|---|----------|---------|
+| M4 | MEDIUM | Attachment download loads full file into memory; no download rate limit |
+| M7 | MEDIUM | No CORS middleware — needed for non-same-origin deploys |
+| M8 | MEDIUM | Magic-link JWTs non-revocable, 24-hour TTL |
+| H5 | HIGH | No CI pipeline; `cargo audit` not automated |
+| L3 | LOW | Email addresses in SMTP failure logs |

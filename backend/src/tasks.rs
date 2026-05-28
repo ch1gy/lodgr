@@ -67,9 +67,31 @@ pub async fn hard_delete_expired_users(pool: SqlitePool) {
         match db::users::find_expired_soft_deleted(&pool, &cutoff).await {
             Ok(users) => {
                 for u in users {
-                    let _ = db::sessions::delete_all_for_user(&pool, &u.id).await;
-                    match db::users::hard_delete(&pool, &u.id).await {
-                        Ok(_) => tracing::info!("hard deleted expired user {}", u.id),
+                    // Collect ticket IDs before deletion for filesystem cleanup.
+                    let ticket_ids: Vec<String> = sqlx::query_scalar(
+                        "SELECT id FROM tickets WHERE client_id = ?",
+                    )
+                    .bind(&u.id)
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or_default();
+
+                    match cascade_hard_delete_user(&pool, &u.id).await {
+                        Ok(()) => {
+                            tracing::info!("hard deleted expired user {}", u.id);
+                            for ticket_id in &ticket_ids {
+                                let dir = format!("uploads/{ticket_id}");
+                                if let Err(e) = tokio::fs::remove_dir_all(&dir).await {
+                                    if e.kind() != std::io::ErrorKind::NotFound {
+                                        tracing::warn!(
+                                            dir = %dir,
+                                            err = %e,
+                                            "failed to remove upload dir during user hard delete"
+                                        );
+                                    }
+                                }
+                            }
+                        }
                         Err(e) => tracing::warn!("hard delete of {} failed: {e}", u.id),
                     }
                 }
@@ -77,4 +99,66 @@ pub async fn hard_delete_expired_users(pool: SqlitePool) {
             Err(e) => tracing::warn!("expired user query failed: {e}"),
         }
     }
+}
+
+/// Scans `exports/` and removes any file older than 24 hours.
+/// Returns the number of files removed.
+pub async fn clean_old_exports() -> std::io::Result<u32> {
+    let cutoff = std::time::SystemTime::now()
+        .checked_sub(std::time::Duration::from_secs(24 * 3600))
+        .unwrap_or(std::time::UNIX_EPOCH);
+
+    let mut removed = 0u32;
+    let mut client_dirs = match tokio::fs::read_dir("exports").await {
+        Ok(d) => d,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(e),
+    };
+
+    while let Ok(Some(client_dir)) = client_dirs.next_entry().await {
+        let Ok(mut files) = tokio::fs::read_dir(client_dir.path()).await else {
+            continue;
+        };
+        while let Ok(Some(file)) = files.next_entry().await {
+            let Ok(meta) = file.metadata().await else { continue };
+            let Ok(modified) = meta.modified() else { continue };
+            if modified < cutoff && tokio::fs::remove_file(file.path()).await.is_ok() {
+                removed += 1;
+            }
+        }
+    }
+
+    Ok(removed)
+}
+
+async fn cascade_hard_delete_user(
+    pool: &SqlitePool,
+    user_id: &str,
+) -> crate::error::AppResult<()> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("DELETE FROM magic_links WHERE user_id = ?")
+        .bind(user_id).execute(&mut *tx).await?;
+    sqlx::query(
+        "DELETE FROM notifications WHERE ticket_id IN
+         (SELECT id FROM tickets WHERE client_id = ?)",
+    )
+    .bind(user_id).execute(&mut *tx).await?;
+    sqlx::query(
+        "DELETE FROM thread_entries WHERE ticket_id IN
+         (SELECT id FROM tickets WHERE client_id = ?)",
+    )
+    .bind(user_id).execute(&mut *tx).await?;
+    sqlx::query(
+        "DELETE FROM internal_notes WHERE ticket_id IN
+         (SELECT id FROM tickets WHERE client_id = ?)",
+    )
+    .bind(user_id).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM sessions WHERE user_id = ?")
+        .bind(user_id).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM tickets WHERE client_id = ?")
+        .bind(user_id).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM users WHERE id = ?")
+        .bind(user_id).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(())
 }

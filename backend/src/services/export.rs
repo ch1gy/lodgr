@@ -103,8 +103,12 @@ pub async fn export_client(
         tickets: export_tickets,
     };
 
-    let json = serde_json::to_string_pretty(&doc)
-        .map_err(|e| AppError::Internal(format!("serialise export: {e}")))?;
+    let json = tokio::task::spawn_blocking(move || {
+        serde_json::to_string_pretty(&doc)
+            .map_err(|e| AppError::Internal(format!("serialise export: {e}")))
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("export thread: {e}")))??;
 
     let dir = format!("exports/{client_id}");
     tokio::fs::create_dir_all(&dir)

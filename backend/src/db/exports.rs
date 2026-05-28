@@ -39,3 +39,19 @@ pub async fn exists_for_client(pool: &SqlitePool, client_id: &str) -> AppResult<
     Ok(count.0 > 0)
 }
 
+pub async fn recent_export_exists(
+    pool: &SqlitePool,
+    client_id: &str,
+    within_secs: i64,
+) -> AppResult<bool> {
+    let cutoff = (chrono::Utc::now() - chrono::Duration::seconds(within_secs)).to_rfc3339();
+    let count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM client_exports WHERE client_id = ? AND created_at > ?",
+    )
+    .bind(client_id)
+    .bind(&cutoff)
+    .fetch_one(pool)
+    .await?;
+    Ok(count.0 > 0)
+}
+

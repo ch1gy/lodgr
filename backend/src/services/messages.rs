@@ -78,7 +78,7 @@ pub async fn post_message(
     };
 
     if let Some(rid) = &recipient_id {
-        notify::notify(pool, rid, &input.ticket_id, "New message on your ticket.").await;
+        notify::notify(rid, &input.ticket_id, "New message on your ticket.");
 
         // Fire-and-forget email — failure is non-fatal but logged.
         if let Some(m) = mailer {

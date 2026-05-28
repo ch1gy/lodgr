@@ -2,7 +2,7 @@ use axum::{
     extract::{FromRef, FromRequestParts},
     http::request::Parts,
 };
-use jsonwebtoken::{decode, Validation};
+use jsonwebtoken::{decode, Algorithm, Validation};
 
 use crate::{
     config::Config,
@@ -31,7 +31,9 @@ where
             .and_then(|v| v.strip_prefix("Bearer "))
             .ok_or(AppError::Unauthorized)?;
 
-        let data = decode::<Claims>(token, &config.decoding_key(), &Validation::default())
+        let mut v = Validation::new(Algorithm::HS256);
+        v.set_required_spec_claims(&["sub", "exp"]);
+        let data = decode::<Claims>(token, &config.decoding_key(), &v)
             .map_err(|_| AppError::Unauthorized)?;
 
         Ok(AuthUser(data.claims))

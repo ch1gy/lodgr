@@ -44,6 +44,31 @@ pub async fn find_by_token_hash(
     .await?)
 }
 
+/// Delete all unconsumed links for a given user + scope combination before
+/// creating a new one — caps outstanding links to 1 per user/scope/ticket.
+pub async fn delete_unused_for_user_scope(
+    pool: &SqlitePool,
+    user_id: &str,
+    scope: &str,
+    ticket_id: Option<&str>,
+) -> AppResult<()> {
+    match ticket_id {
+        Some(tid) => {
+            sqlx::query(
+                "DELETE FROM magic_links WHERE user_id = ? AND scope = ? AND ticket_id = ? AND used_at IS NULL",
+            )
+            .bind(user_id).bind(scope).bind(tid).execute(pool).await?;
+        }
+        None => {
+            sqlx::query(
+                "DELETE FROM magic_links WHERE user_id = ? AND scope = ? AND ticket_id IS NULL AND used_at IS NULL",
+            )
+            .bind(user_id).bind(scope).execute(pool).await?;
+        }
+    }
+    Ok(())
+}
+
 pub async fn mark_used(pool: &SqlitePool, id: &str) -> AppResult<()> {
     let used_at = Utc::now().to_rfc3339();
     sqlx::query("UPDATE magic_links SET used_at = ? WHERE id = ?")

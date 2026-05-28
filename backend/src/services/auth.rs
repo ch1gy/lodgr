@@ -1,6 +1,6 @@
 use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
-    Argon2,
+    Algorithm, Argon2, Params, Version,
 };
 use chrono::Utc;
 use jsonwebtoken::{encode, Header};
@@ -38,7 +38,7 @@ fn common_passwords() -> &'static HashSet<&'static str> {
             "football1", "football12", "baseball1", "baseball12", "soccer123",
             "welcome1", "welcome12", "welcome!1", "hello1234", "hello12345",
             "pass1234", "pass12345", "passw0rd1", "p@ssword1", "p@ss1234",
-            "changeme1", "changeme!", "whatever1", "whatever!", "nothing12",
+            "changeme", "changeme1", "changeme!", "whatever1", "whatever!", "nothing12",
             "freedom12", "freedom1!", "starwars1", "starwars12", "starwar12",
             "1q2w3e4r", "q1w2e3r4", "1qaz2wsx", "zxcvbn12", "zaq1zaq1",
             "qazwsx12", "abc12345", "abc123456", "test1234", "testing1",
@@ -59,22 +59,30 @@ pub struct LoginOutput {
 
 /// Pre-computed argon2id hash used to normalise login response time regardless
 /// of whether the queried email exists. Computed once on first use.
-static DUMMY_HASH: OnceLock<String> = OnceLock::new();
+static DUMMY_HASH: OnceLock<Option<String>> = OnceLock::new();
 
-/// Call this at startup to pre-warm the dummy hash so the first real login
-/// request doesn't pay the argon2 cost for the first time.
-pub fn dummy_hash_warmup() -> &'static str {
-    dummy_hash()
+/// Call this at startup to pre-warm the dummy hash. Logs a warning and continues
+/// if Argon2 fails — timing normalization is degraded but the server still starts.
+pub fn dummy_hash_warmup() {
+    if dummy_hash().is_none() {
+        tracing::warn!(
+            "argon2 dummy hash init failed — \
+             timing normalization degraded for unknown-email login attempts"
+        );
+    }
 }
 
-fn dummy_hash() -> &'static str {
-    DUMMY_HASH.get_or_init(|| {
-        let salt = SaltString::generate(&mut OsRng);
-        Argon2::default()
-            .hash_password(b"__dummy_that_never_matches_anything_real__", &salt)
-            .expect("argon2 dummy hash failed")
-            .to_string()
-    })
+fn dummy_hash() -> Option<&'static str> {
+    DUMMY_HASH
+        .get_or_init(|| {
+            let salt = SaltString::generate(&mut OsRng);
+            let params = Params::new(65_536, 3, 4, None).ok()?;
+            Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+                .hash_password(b"__dummy_that_never_matches_anything_real__", &salt)
+                .ok()
+                .map(|h| h.to_string())
+        })
+        .as_deref()
 }
 
 pub async fn login(
@@ -118,7 +126,7 @@ pub async fn login(
     let stored_hash: String = user_opt
         .as_ref()
         .map(|u| u.password_hash.clone())
-        .unwrap_or_else(|| dummy_hash().to_owned());
+        .unwrap_or_else(|| dummy_hash().unwrap_or("").to_owned());
 
     let password_ok = verify_password(password, &stored_hash).unwrap_or(false);
 
@@ -346,21 +354,23 @@ async fn issue_tokens(
 
 pub fn hash_password(password: &str) -> AppResult<String> {
     let salt = SaltString::generate(&mut OsRng);
-    Argon2::default()
+    let params = Params::new(65_536, 3, 4, None)
+        .map_err(|e| AppError::Internal(format!("argon2 params: {e}")))?;
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
         .hash_password(password.as_bytes(), &salt)
         .map(|h| h.to_string())
-        .map_err(|e| AppError::Internal(format!("argon2 hash failed: {e}")))
+        .map_err(|e| AppError::Internal(format!("argon2 hash: {e}")))
 }
 
 /// Validates password strength. Called on account creation and password change.
 /// Rules: at least 8 chars, at most 128, not whitespace-only, not in common list.
 pub fn validate_password_strength(password: &str) -> AppResult<()> {
-    if password.len() < 8 {
+    if password.chars().count() < 8 {
         return Err(AppError::BadRequest(
             "password must be at least 8 characters".into(),
         ));
     }
-    if password.len() > 128 {
+    if password.chars().count() > 128 {
         return Err(AppError::BadRequest(
             "password must be at most 128 characters".into(),
         ));

@@ -51,6 +51,11 @@ pub async fn create_magic_link(
     let expires_at =
         (Utc::now() + chrono::Duration::seconds(config.magic_link_ttl_secs)).to_rfc3339();
 
+    // Invalidate any prior unconsumed links for this user+scope before issuing a new one.
+    // Caps outstanding links to 1 per user/scope/ticket — generating a new link
+    // revokes all previous unexchanged ones.
+    db::magic_links::delete_unused_for_user_scope(pool, target_user_id, scope, ticket_id).await?;
+
     let id = Uuid::new_v4().to_string();
     db::magic_links::create(
         pool,
@@ -69,7 +74,6 @@ pub async fn create_magic_link(
         target_client_id = %target_user_id,
         scope = %scope,
         ticket_id = ?ticket_id,
-        token_hash = %token_hash,
         "magic link created"
     );
 
@@ -102,13 +106,13 @@ pub async fn exchange_magic_link(
     let link = db::magic_links::find_by_token_hash(pool, &token_hash)
         .await?
         .ok_or_else(|| {
-            tracing::warn!(token_hash = %token_hash, "magic link exchange failed — token not found");
+            tracing::warn!("magic link exchange failed — token not found");
             AppError::Unauthorized
         })?;
 
     if link.used_at.is_some() {
         tracing::warn!(
-            token_hash = %token_hash,
+            link_id = %link.id,
             user_id = %link.user_id,
             "magic link exchange failed — already used"
         );
@@ -121,7 +125,7 @@ pub async fn exchange_magic_link(
 
     if expires_at < Utc::now() {
         tracing::warn!(
-            token_hash = %token_hash,
+            link_id = %link.id,
             user_id = %link.user_id,
             "magic link exchange failed — expired"
         );
@@ -136,7 +140,7 @@ pub async fn exchange_magic_link(
 
     if user.deleted_at.is_some() {
         tracing::warn!(
-            token_hash = %token_hash,
+            link_id = %link.id,
             user_id = %link.user_id,
             "magic link exchange failed — user deleted"
         );
@@ -166,7 +170,7 @@ pub async fn exchange_magic_link(
         .map_err(|e| AppError::Internal(format!("jwt encode: {e}")))?;
 
     tracing::info!(
-        token_hash = %token_hash,
+        link_id = %link.id,
         user_id = %user.id,
         session_type = %session_type,
         ticket_scope = ?ticket_scope,

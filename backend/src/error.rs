@@ -15,6 +15,7 @@ pub enum AppError {
     InvalidTransition { from: String, to: String },
     /// Account lockout. `retry_after_secs = None` means permanent.
     Locked { retry_after_secs: Option<u64> },
+    TooManyRequests(String),
     Internal(String),
 }
 
@@ -38,6 +39,7 @@ impl std::fmt::Display for AppError {
             AppError::Locked { retry_after_secs: None } => {
                 write!(f, "Account permanently locked")
             }
+            AppError::TooManyRequests(m) => write!(f, "Too many requests: {m}"),
             AppError::Internal(m) => write!(f, "Internal error: {m}"),
         }
     }
@@ -86,6 +88,7 @@ impl IntoResponse for AppError {
                 StatusCode::BAD_REQUEST,
                 "Invalid status transition".into(),
             ),
+            AppError::TooManyRequests(m) => (StatusCode::TOO_MANY_REQUESTS, m.clone()),
             AppError::Internal(m) => {
                 tracing::error!("internal error: {m}");
                 (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())

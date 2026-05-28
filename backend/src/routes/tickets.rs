@@ -177,18 +177,27 @@ pub async fn delete(
     _: DeskUser,
     Path(id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
-    // Verify the ticket exists first.
-    db::tickets::find_by_id(&pool, &id)
-        .await?
-        .ok_or(crate::error::AppError::NotFound)?;
-
     let mut tx = pool.begin().await?;
     sqlx::query("DELETE FROM thread_entries WHERE ticket_id = ?")   .bind(&id).execute(&mut *tx).await?;
     sqlx::query("DELETE FROM internal_notes WHERE ticket_id = ?")   .bind(&id).execute(&mut *tx).await?;
     sqlx::query("DELETE FROM notifications WHERE ticket_id = ?")    .bind(&id).execute(&mut *tx).await?;
     sqlx::query("DELETE FROM magic_links WHERE ticket_id = ?")      .bind(&id).execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM tickets WHERE id = ?")                 .bind(&id).execute(&mut *tx).await?;
+    let result = sqlx::query("DELETE FROM tickets WHERE id = ?")    .bind(&id).execute(&mut *tx).await?;
+    // Check rows_affected inside the transaction so concurrent deletes return
+    // 404 rather than both returning 204 for the same ticket.
+    if result.rows_affected() == 0 {
+        return Err(crate::error::AppError::NotFound);
+    }
     tx.commit().await?;
+
+    // Remove the upload directory for this ticket. NotFound is fine — ticket
+    // may never have had attachments.
+    let upload_dir = format!("uploads/{id}");
+    if let Err(e) = tokio::fs::remove_dir_all(&upload_dir).await {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            tracing::warn!(dir = %upload_dir, err = %e, "failed to remove upload dir for deleted ticket");
+        }
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }

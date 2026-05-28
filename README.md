@@ -29,6 +29,7 @@ account lockout, and a full OWASP hardening pass.
 | printpdf 0.7 | Monthly PDF reports |
 | tracing + tracing-subscriber | Structured logging |
 | tracing-appender 0.2 | Daily log rotation, 30-day retention |
+| zeroize 1 | In-memory zeroing of secrets (`jwt_secret`, `smtp_password`, `ENCRYPTION_PASSPHRASE`) on drop |
 
 ### Frontend
 
@@ -77,12 +78,14 @@ Competition, specifically designed to resist GPU and ASIC cracking:
 
 | Site | Memory | Iterations | Parallelism |
 |---|---|---|---|
-| Password hashing | 19 MiB (OWASP minimum) | 2 | 1 |
+| Password hashing | 64 MiB | 3 | 4 |
 | Key derivation | 64 MiB | 3 | 1 |
 
-Key derivation runs once at startup with no latency constraint, so higher parameters
-are used. Password hashing uses OWASP minimum defaults: each guess costs 19 MiB of
-RAM, reducing a 24 GB GPU to ~1,260 parallel guesses — vs millions for SHA-256.
+Both sites use the same memory cost and iteration count; key derivation uses a single
+thread (output is fixed-size, parallelism adds no benefit). Password hashing uses
+4-thread parallelism: each guess costs 64 MiB of RAM, reducing a 24 GB GPU to
+~375 parallel guesses — vs millions for SHA-256. Parameters are set explicitly in
+code (`Params::new(65_536, 3, 4, None)`) rather than relying on crate defaults.
 
 ### SHA-256 hashing of refresh tokens
 
@@ -98,7 +101,7 @@ fields — no raw passwords, tokens, or encrypted content are ever logged:
 
 - Failed and successful login attempts (email, source IP)
 - Magic link creation (desk user, target client, scope)
-- Magic link exchange (token hash, result, user)
+- Magic link exchange (link ID, result, user — token hash never logged)
 - Soft delete, hard delete, export (desk user, target client)
 - Refresh token reuse detection (theft detection)
 - Password changes
@@ -126,9 +129,9 @@ ticket_support/
 │       ├── error.rs          central AppError → IntoResponse
 │       ├── middleware.rs     AuthUser, DeskUser, RefreshTokenCookie extractors
 │       ├── models.rs         DB row types — no Serialize
-│       ├── notify.rs         in-app notifications
+│       ├── notify.rs         structured log dispatch for notification events (no DB write)
 │       ├── rate_limit.rs     per-IP token-bucket rate limiter
-│       ├── tasks.rs          background: recurring tickets, user hard-delete cleanup
+│       ├── tasks.rs          background: recurring tickets, user hard-delete cleanup, stale export cleanup
 │       ├── ticket_status.rs  isolated status-transition state machine
 │       ├── db/               repository layer — SQL only, no business logic
 │       ├── routes/           HTTP handlers — HTTP concerns only
@@ -161,7 +164,7 @@ Generate secrets:
 
 ```bash
 openssl rand -hex 32   # → JWT_SECRET
-openssl rand -hex 16   # → ENCRYPTION_SALT (set once, never change after first run)
+openssl rand -hex 32   # → ENCRYPTION_SALT (set once, never change after first run)
 ```
 
 ### 2. Run the backend
@@ -180,7 +183,7 @@ are created relative to the working directory.
 4. Derives the AES-256-GCM encryption key (~2–4 s, Argon2id 64 MiB)
 5. Cleans up expired and revoked sessions
 6. Seeds `desk@local` with the password from `DESK_INITIAL_PASSWORD` (default: `changeme`)
-7. Starts background tasks: recurring ticket spawner, expired-user cleanup
+7. Starts background tasks: recurring ticket spawner, expired-user cleanup, hourly stale export cleanup
 
 **Change the desk password immediately** (or set `DESK_INITIAL_PASSWORD` in `.env`
 before first run):
@@ -226,7 +229,7 @@ origin as the backend (already handled if you point `ServeDir` at the dist folde
 | `MAGIC_LINK_TTL_SECS` | no | `3600` | Magic link expiry before exchange (1 h) |
 | `COOKIE_SECURE` | no | `true` | Adds `; Secure` to the refresh cookie. Set `false` for local plain-HTTP dev only |
 | `ENCRYPTION_PASSPHRASE` | **yes** | — | Passphrase for AES key derivation (min 16 chars) |
-| `ENCRYPTION_SALT` | **yes** | — | Hex salt, **fixed for the lifetime of the database**. Generate once: `openssl rand -hex 16` |
+| `ENCRYPTION_SALT` | **yes** | — | Hex salt, **fixed for the lifetime of the database**. Minimum 32 hex chars (16 bytes); 32 bytes recommended. Generate once: `openssl rand -hex 32` |
 | `DESK_INITIAL_PASSWORD` | no | `changeme` | Password for `desk@local` on first run. Set before first run or change immediately after. |
 | `SMTP_HOST` | no | — | SMTP server hostname. Email is disabled if not set |
 | `SMTP_PORT` | no | `587` | SMTP port |
@@ -370,6 +373,17 @@ curl -X POST http://localhost:3000/auth/magic \
 
 ---
 
+### Health
+
+**Server health** *(unauthenticated — DB ping cached 10 s)*
+```bash
+curl http://localhost:3000/health
+# → 200 { "status": "ok", "db": "ok", "uptime_secs": 3600 }
+# → 503 { "status": "degraded", "db": "error" }  (if DB unreachable)
+```
+
+---
+
 ### Admin *(desk only)*
 
 **Create client**
@@ -406,11 +420,12 @@ curl -X DELETE http://localhost:3000/admin/clients/CLIENT_ID \
   -d '{"confirm":"permanently delete client@example.com"}'
 ```
 
-**Export client data** *(decrypted JSON archive — deleted from disk after download)*
+**Export client data** *(decrypted JSON archive — deleted from disk after download; rate-limited to 1 per 60 s per client)*
 ```bash
 curl -X POST http://localhost:3000/admin/clients/CLIENT_ID/export \
   -H 'Authorization: Bearer TOKEN'
 # → { "export_id": "...", "download_url": "/admin/exports/CLIENT_ID/uuid.json" }
+# → 429 Too Many Requests if an export was generated in the last 60 s
 ```
 
 **Download export file** *(file is deleted from disk immediately after)*
@@ -426,6 +441,7 @@ curl -X POST http://localhost:3000/admin/clients/CLIENT_ID/magic-link \
   -H 'Authorization: Bearer TOKEN'
 # → { "url": "https://your-domain.com/auth/magic?token=..." }
 # deliver via any channel — email, WhatsApp, SMS
+# generating a new link revokes all prior unconsumed links for this client
 ```
 
 **Revoke all sessions for a client**
@@ -498,6 +514,7 @@ curl -X POST http://localhost:3000/tickets/TICKET_ID/magic-link \
   -H 'Authorization: Bearer TOKEN'
 # → { "url": "https://your-domain.com/auth/magic?token=..." }
 # client can view and reply to this ticket only
+# generating a new link revokes all prior unconsumed scoped links for this ticket
 ```
 
 ---
@@ -511,12 +528,19 @@ curl -X POST http://localhost:3000/tickets/TICKET_ID/message \
   -F 'body=Here is my reply.'
 ```
 
-**Post with attachment** *(max 10 MiB)*
+**Post with attachment** *(max 10 MiB; allowed types: pdf, png, jpg, jpeg, gif, txt, docx, zip)*
 ```bash
 curl -X POST http://localhost:3000/tickets/TICKET_ID/message \
   -H 'Authorization: Bearer TOKEN' \
   -F 'body=See attached.' \
   -F 'file=@/path/to/screenshot.png'
+```
+
+**Download attachment** *(desk: any ticket; client: own tickets only, not soft-deleted)*
+```bash
+curl http://localhost:3000/uploads/TICKET_ID/filename.png \
+  -H 'Authorization: Bearer TOKEN' \
+  -o filename.png
 ```
 
 ---
@@ -561,7 +585,7 @@ curl http://localhost:3000/reports/monthly/CLIENT_ID/2026/05 \
 | `category` | any string | Max 100 chars, optional |
 | `due_date` | `YYYY-MM-DD` | Optional |
 | `recurring` | `true` / `false` | Creates recurring ticket template |
-| `recurring_interval_days` | integer ≥ 1 | Required when `recurring: true` |
+| `recurring_interval_days` | 1–365 | Required when `recurring: true` |
 
 ---
 
@@ -581,9 +605,9 @@ Hard deletion:
 ## Password Rules
 
 Applied on account creation and password change:
-- Minimum 8 characters, maximum 128
+- Minimum 8 characters, maximum 128 (counted in Unicode code points — multi-byte characters count as one)
 - Cannot be whitespace-only
-- Rejected if it matches any of the 100 most common passwords
+- Rejected if it matches any of the 101 most common passwords (including `changeme`)
 
 ---
 

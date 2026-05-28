@@ -16,7 +16,10 @@ impl SmtpMailer {
     pub fn from_config(config: &Config) -> Option<anyhow::Result<Self>> {
         let host = config.smtp_host.as_deref()?;
         let user = config.smtp_user.clone().unwrap_or_default();
-        let password = config.smtp_password.clone().unwrap_or_default();
+        let password: String = config.smtp_password
+            .as_ref()
+            .map(|z| z.as_str().to_owned())
+            .unwrap_or_default();
         let from = config.smtp_from.clone().unwrap_or_else(|| user.clone());
 
         Some((|| {

@@ -86,8 +86,10 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::from_env()?;
 
     let enc_key: EncryptionKey = {
-        let passphrase = std::env::var("ENCRYPTION_PASSPHRASE")
-            .unwrap_or_else(|_| panic!("FATAL: ENCRYPTION_PASSPHRASE not set"));
+        let passphrase = zeroize::Zeroizing::new(
+            std::env::var("ENCRYPTION_PASSPHRASE")
+                .unwrap_or_else(|_| panic!("FATAL: ENCRYPTION_PASSPHRASE not set")),
+        );
         let salt_hex = std::env::var("ENCRYPTION_SALT")
             .unwrap_or_else(|_| panic!("FATAL: ENCRYPTION_SALT not set"));
         tracing::info!("Deriving encryption key — this may take a moment…");
@@ -130,7 +132,8 @@ async fn main() -> anyhow::Result<()> {
 
     let connect_opts = SqliteConnectOptions::from_str(&config.database_url)?
         .create_if_missing(true)
-        .journal_mode(SqliteJournalMode::Wal);
+        .journal_mode(SqliteJournalMode::Wal)
+        .foreign_keys(true);
     let pool = SqlitePoolOptions::new()
         .max_connections(10)
         .connect_with(connect_opts)
@@ -143,13 +146,15 @@ async fn main() -> anyhow::Result<()> {
     }
 
     seed_desk_user(&pool).await?;
-    let _ = services::auth::dummy_hash_warmup();
+    services::auth::dummy_hash_warmup();
     services::auth::check_default_password_warning(&pool).await;
     check_desk_lockout(&pool).await;
 
-    // Background tasks.
-    tokio::spawn(tasks::hard_delete_expired_users(pool.clone()));
-    tokio::spawn(tasks::recurring_tickets(pool.clone()));
+    // Background tasks — wrapped in a restart supervisor so panics are logged
+    // and the task is relaunched after a 5-second cooldown.
+    routes::health::init();
+    spawn_with_restart("recurring_tickets", pool.clone(), tasks::recurring_tickets);
+    spawn_with_restart("hard_delete_expired_users", pool.clone(), tasks::hard_delete_expired_users);
 
     {
         let cleanup_pool = pool.clone();
@@ -164,6 +169,19 @@ async fn main() -> anyhow::Result<()> {
             }
         });
     }
+
+    tokio::spawn(async {
+        let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(3600));
+        iv.tick().await;
+        loop {
+            iv.tick().await;
+            match tasks::clean_old_exports().await {
+                Ok(n) if n > 0 => tracing::info!("export cleanup: removed {n} stale export files"),
+                Err(e) => tracing::warn!("export cleanup failed: {e}"),
+                _ => {}
+            }
+        }
+    });
 
     let auth_limiter = IpRateLimiter::new(5, 10);
     // PDF generation is CPU-intensive: 1 req/5 s per IP, burst of 3.
@@ -187,6 +205,8 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(report_limiter));
 
     let app = Router::new()
+        // ── Health — unauthenticated ───────────────────────────────────────
+        .route("/health", get(routes::health::health))
         // ── Auth (rate-limited) ────────────────────────────────────────────
         .merge(auth_limited)
         // ── Auth — no rate limit ───────────────────────────────────────────
@@ -212,6 +232,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/tickets/:id/message",    post(routes::messages::post_message))
         .route("/tickets/:id/notes",      get(routes::notes::list).post(routes::notes::create))
         .route("/tickets/:id/magic-link", post(routes::magic::create_ticket_scoped))
+        // ── Uploads — auth-gated file downloads ───────────────────────────
+        .route("/uploads/:ticket_id/:filename", get(routes::messages::get_attachment))
         // ── Reports (rate-limited) ─────────────────────────────────────────
         .merge(report_limited)
         // ── Static frontend ────────────────────────────────────────────────
@@ -265,6 +287,38 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     Ok(())
+}
+
+/// Spawns a background task inside a restart supervisor with exponential backoff.
+/// A task that runs for ≥30 s before exiting resets the backoff counter.
+/// Rapid consecutive failures back off: 5 s → 10 s → 30 s → 60 s → 5 min (cap).
+fn spawn_with_restart<F, Fut>(name: &'static str, pool: SqlitePool, make_fut: F)
+where
+    F: Fn(SqlitePool) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    tokio::spawn(async move {
+        const BACKOFF: &[u64] = &[5, 10, 30, 60, 300];
+        let mut fail_count: usize = 0;
+
+        loop {
+            let start = tokio::time::Instant::now();
+            match tokio::spawn(make_fut(pool.clone())).await {
+                Ok(()) => tracing::warn!(task = name, "task exited unexpectedly"),
+                Err(e) => tracing::error!(task = name, err = %e, "task panicked"),
+            }
+
+            if start.elapsed().as_secs() >= 30 {
+                fail_count = 0;
+            } else {
+                fail_count = fail_count.saturating_add(1);
+            }
+
+            let delay = BACKOFF[fail_count.saturating_sub(1).min(BACKOFF.len() - 1)];
+            tracing::info!(task = name, delay_secs = delay, "restarting task");
+            tokio::time::sleep(tokio::time::Duration::from_secs(delay)).await;
+        }
+    });
 }
 
 async fn check_desk_lockout(pool: &SqlitePool) {

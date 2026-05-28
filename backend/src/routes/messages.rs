@@ -1,6 +1,6 @@
 use axum::{
     extract::{Multipart, Path, State},
-    http::StatusCode,
+    http::{header, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -34,7 +34,7 @@ pub async fn post_message(
         .ok_or(AppError::NotFound)?;
 
     if claims.role == "client" && ticket.client_id != claims.sub {
-        return Err(AppError::Forbidden);
+        return Err(AppError::NotFound);
     }
     claims.check_ticket_access(&ticket_id)?;
 
@@ -78,6 +78,20 @@ pub async fn post_message(
                     .and_then(|n| n.to_str())
                     .unwrap_or("upload.bin")
                     .to_owned();
+
+                const ALLOWED_EXT: &[&str] =
+                    &["pdf", "png", "jpg", "jpeg", "gif", "txt", "docx", "zip"];
+                let ext = std::path::Path::new(&safe_name)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.to_ascii_lowercase())
+                    .unwrap_or_default();
+                if !ALLOWED_EXT.contains(&ext.as_str()) {
+                    return Err(AppError::BadRequest(format!(
+                        "file type not allowed — accepted: {}",
+                        ALLOWED_EXT.join(", ")
+                    )));
+                }
 
                 let data = field
                     .bytes()
@@ -136,4 +150,61 @@ pub async fn post_message(
     .await?;
 
     Ok((StatusCode::CREATED, Json(MessageResponse { id: entry.id })))
+}
+
+/// GET /uploads/:ticket_id/:filename — desk or the ticket's owning client only.
+pub async fn get_attachment(
+    State(pool): State<SqlitePool>,
+    AuthUser(claims): AuthUser,
+    Path((ticket_id, filename)): Path<(String, String)>,
+) -> AppResult<impl IntoResponse> {
+    // Sanitize both path segments — same guards as routes/admin.rs.
+    let safe_ticket = PathBuf::from(&ticket_id)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| AppError::BadRequest("invalid ticket_id".into()))?
+        .to_owned();
+
+    let safe_file = PathBuf::from(&filename)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| AppError::BadRequest("invalid filename".into()))?
+        .to_owned();
+
+    // Verify ticket exists and enforce ownership for clients.
+    let ticket = db::tickets::find_by_id(&pool, &safe_ticket)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    if claims.role == "client" && ticket.client_id != claims.sub {
+        return Err(AppError::NotFound);
+    }
+    if claims.role == "client" && ticket.deleted_at.is_some() {
+        return Err(AppError::NotFound);
+    }
+    claims.check_ticket_access(&safe_ticket)?;
+
+    // Canonicalize to block any traversal that slips past the file_name guard.
+    let uploads_root = fs::canonicalize("uploads")
+        .await
+        .map_err(|e| AppError::Internal(format!("resolve uploads root: {e}")))?;
+
+    let target = uploads_root.join(&safe_ticket).join(&safe_file);
+    let canonical = fs::canonicalize(&target)
+        .await
+        .map_err(|_| AppError::NotFound)?;
+
+    if !canonical.starts_with(&uploads_root) {
+        return Err(AppError::Forbidden);
+    }
+
+    let bytes = fs::read(&canonical).await.map_err(|_| AppError::NotFound)?;
+
+    Ok((
+        [
+            (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{safe_file}\"")),
+            (header::CONTENT_TYPE, "application/octet-stream".to_owned()),
+        ],
+        bytes,
+    ))
 }

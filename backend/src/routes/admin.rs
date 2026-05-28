@@ -4,6 +4,16 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+
+/// Deletes a file when dropped — fires even on panic or task cancellation.
+struct DeleteOnDrop(Option<std::path::PathBuf>);
+impl Drop for DeleteOnDrop {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
 use serde::Deserialize;
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -11,6 +21,7 @@ use std::sync::Arc;
 use crate::{
     config::Config,
     crypto::EncryptionKey,
+    db,
     dto::{ClientResponse, DeleteSessionsResponse, ExportResponse, MagicLinkResponse},
     email::SmtpMailer,
     error::{AppError, AppResult},
@@ -116,6 +127,11 @@ pub async fn export_client(
     DeskUser(claims): DeskUser,
     Path(client_id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
+    if db::exports::recent_export_exists(&pool, &client_id, 60).await? {
+        return Err(AppError::TooManyRequests(
+            "an export was generated recently — wait 60 seconds before requesting another".into(),
+        ));
+    }
     let out = services::admin::do_export(&pool, &enc_key, &client_id).await?;
     let filename = std::path::Path::new(&out.file_path)
         .file_name()
@@ -157,10 +173,13 @@ pub async fn get_export_file(
         .await
         .map_err(|_| AppError::NotFound)?;
 
-    // Delete the export file immediately after reading — export files contain
-    // decrypted plaintext and must not persist on disk longer than the download.
+    // Guard ensures the file is removed even if the task is cancelled or
+    // panics between read and the explicit removal below.
+    let _guard = DeleteOnDrop(Some(path.clone()));
+
+    // Explicit async removal for proper logging. The guard's Drop handles the
+    // crash/cancel case; on normal success it silently no-ops on the gone file.
     if let Err(e) = tokio::fs::remove_file(&path).await {
-        // Log but don't fail the response — client already has the file.
         tracing::error!(path = %path.display(), err = %e, "failed to delete export file after download");
     } else {
         tracing::info!(path = %path.display(), "export file deleted after download");

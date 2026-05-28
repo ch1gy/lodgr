@@ -1,9 +1,10 @@
 use jsonwebtoken::{DecodingKey, EncodingKey};
+use zeroize::Zeroizing;
 
 #[derive(Clone)]
 pub struct Config {
     pub database_url: String,
-    pub jwt_secret: String,
+    pub jwt_secret: Zeroizing<String>,
     pub access_token_ttl_secs: i64,
     pub refresh_token_ttl_secs: i64,
     pub cookie_secure: bool,
@@ -16,7 +17,7 @@ pub struct Config {
     pub smtp_host: Option<String>,
     pub smtp_port: u16,
     pub smtp_user: Option<String>,
-    pub smtp_password: Option<String>,
+    pub smtp_password: Option<Zeroizing<String>>,
     pub smtp_from: Option<String>,
 }
 
@@ -27,12 +28,12 @@ impl Config {
         let database_url = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "sqlite://data/support.db".to_string());
 
-        let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
+        let jwt_secret = Zeroizing::new(std::env::var("JWT_SECRET").unwrap_or_else(|_| {
             panic!(
                 "FATAL: JWT_SECRET environment variable is not set. \
                  Generate one with: openssl rand -hex 32"
             )
-        });
+        }));
 
         if jwt_secret.len() < 32 {
             panic!(
@@ -77,7 +78,7 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(587u16);
         let smtp_user = std::env::var("SMTP_USER").ok();
-        let smtp_password = std::env::var("SMTP_PASSWORD").ok();
+        let smtp_password = std::env::var("SMTP_PASSWORD").ok().map(Zeroizing::new);
         let smtp_from = std::env::var("SMTP_FROM").ok();
 
         // Prevent magic links being generated over plain HTTP in production.

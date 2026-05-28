@@ -7,7 +7,7 @@ use crate::{
     db,
     email::{SmtpMailer, TicketEvent},
     error::{AppError, AppResult},
-    models::{Claims, Ticket, ThreadEntry},
+    models::{Claims, Ticket, ThreadEntry, User},
     notify,
     ticket_status::{transition, TransitionAction},
 };
@@ -86,36 +86,41 @@ pub async fn create(
     if let Some(d) = input.estimated_completion { validate_date_format(d)?; }
     if input.recurring {
         match input.recurring_interval_days {
-            Some(days) if days >= 1 => {}
-            _ => return Err(AppError::BadRequest(
-                "recurring_interval_days must be at least 1 when recurring is true".into(),
+            Some(days) if (1..=365).contains(&days) => {}
+            Some(_) => return Err(AppError::BadRequest(
+                "recurring_interval_days must be between 1 and 365".into(),
+            )),
+            None => return Err(AppError::BadRequest(
+                "recurring_interval_days must be set when recurring is true".into(),
             )),
         }
     }
 
     // Resolve client_id: desk may file on behalf of a client; everyone else
-    // always files as themselves.
-    let resolved_client_id: String = if claims.role == "desk" {
-        match input.client_id {
-            Some(cid) => {
-                let client = db::users::find_by_id(pool, cid)
-                    .await?
-                    .ok_or_else(|| AppError::BadRequest("client not found".into()))?;
-                if client.role != "client" {
-                    return Err(AppError::BadRequest("target user is not a client".into()));
+    // always files as themselves. Keep the fetched User to avoid a second
+    // DB round-trip for the email notification below.
+    let (resolved_client_id, prefetched_user): (String, Option<User>) =
+        if claims.role == "desk" {
+            match input.client_id {
+                Some(cid) => {
+                    let client = db::users::find_by_id(pool, cid)
+                        .await?
+                        .ok_or_else(|| AppError::BadRequest("client not found".into()))?;
+                    if client.role != "client" {
+                        return Err(AppError::BadRequest("target user is not a client".into()));
+                    }
+                    if client.deleted_at.is_some() {
+                        return Err(AppError::BadRequest(
+                            "cannot file a ticket for a deleted client".into(),
+                        ));
+                    }
+                    (cid.to_owned(), Some(client))
                 }
-                if client.deleted_at.is_some() {
-                    return Err(AppError::BadRequest(
-                        "cannot file a ticket for a deleted client".into(),
-                    ));
-                }
-                cid.to_owned()
+                None => (claims.sub.clone(), None),
             }
-            None => claims.sub.clone(),
-        }
-    } else {
-        claims.sub.clone()
-    };
+        } else {
+            (claims.sub.clone(), None)
+        };
 
     let id = Uuid::new_v4().to_string();
     let ticket = db::tickets::create(
@@ -137,11 +142,18 @@ pub async fn create(
     )
     .await?;
 
-    notify::notify(pool, &resolved_client_id, &ticket.id, "Your ticket has been created.").await;
+    notify::notify(&resolved_client_id, &ticket.id, "Your ticket has been created.");
 
     // Fire-and-forget email — failure is non-fatal but logged.
+    // Re-use the user we already fetched during desk-on-behalf-of-client
+    // resolution; fall back to a fresh query for self-filed tickets.
     if let Some(m) = mailer {
-        match db::users::find_by_id(pool, &resolved_client_id).await {
+        let user_result = if let Some(user) = prefetched_user {
+            Ok(Some(user))
+        } else {
+            db::users::find_by_id(pool, &resolved_client_id).await
+        };
+        match user_result {
             Ok(Some(user)) => {
                 let m = m.clone();
                 let title = ticket.title.clone();
@@ -179,7 +191,7 @@ pub async fn get_with_thread(
 
     if claims.role == "client" {
         if ticket.client_id != claims.sub {
-            return Err(AppError::Forbidden);
+            return Err(AppError::NotFound);
         }
         claims.check_ticket_access(ticket_id)?;
     }
@@ -218,9 +230,9 @@ pub async fn update(
     if let Some(Some(d)) = f.due_date { validate_date_format(d)?; }
     if let Some(Some(d)) = f.estimated_completion { validate_date_format(d)?; }
     if let Some(Some(days)) = f.recurring_interval_days {
-        if days < 1 {
+        if !(1..=365).contains(&days) {
             return Err(AppError::BadRequest(
-                "recurring_interval_days must be at least 1".into(),
+                "recurring_interval_days must be between 1 and 365".into(),
             ));
         }
     }
@@ -270,7 +282,7 @@ async fn apply_transition(
 
     let new_status = transition(&ticket.status, action)?;
     db::tickets::update_status(pool, ticket_id, new_status.as_str()).await?;
-    notify::notify(pool, &ticket.client_id, ticket_id, notify_msg).await;
+    notify::notify(&ticket.client_id, ticket_id, notify_msg);
 
     // Fire-and-forget email — failure is non-fatal but logged.
     if let Some(m) = mailer {

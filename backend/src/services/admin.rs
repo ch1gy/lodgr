@@ -208,6 +208,13 @@ pub async fn hard_delete_client(
         .execute(&mut *tx)
         .await?;
 
+    // client_exports has a FK on client_id — must be deleted before the user row.
+    // The export event is preserved in structured logs; the DB record is removed here.
+    sqlx::query("DELETE FROM client_exports WHERE client_id = ?")
+        .bind(client_id)
+        .execute(&mut *tx)
+        .await?;
+
     sqlx::query("DELETE FROM users WHERE id = ?")
         .bind(client_id)
         .execute(&mut *tx)

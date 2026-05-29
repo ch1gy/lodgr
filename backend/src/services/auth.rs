@@ -138,6 +138,7 @@ fn common_passwords() -> &'static HashSet<&'static str> {
     })
 }
 
+#[derive(Debug)]
 pub struct LoginOutput {
     pub access_token: String,
     /// Raw token value — caller sets as the httpOnly cookie.

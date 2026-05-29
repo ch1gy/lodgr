@@ -197,6 +197,10 @@ async fn cascade_hard_delete_user(pool: &SqlitePool, user_id: &str) -> crate::er
         .bind(user_id)
         .execute(&mut *tx)
         .await?;
+    sqlx::query("DELETE FROM client_exports WHERE client_id = ?")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM tickets WHERE client_id = ?")
         .bind(user_id)
         .execute(&mut *tx)

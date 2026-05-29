@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — comprehensive test suite
+
+### Tests — 71 tests across 7 integration test files
+
+Added `backend/src/lib.rs` to expose all modules for integration tests; updated
+`main.rs` to import from the lib rather than redeclare modules. Made
+`IpRateLimiter::allow` `pub` for rate-limit tests.
+
+Also found and fixed a production bug discovered by tests: `hard_delete_client`
+and `cascade_hard_delete_user` did not delete `client_exports` rows before
+deleting the user, causing a FK constraint failure when FK enforcement is enabled
+and an export existed. Fixed in both `services/admin.rs` and `tasks.rs`.
+
+| File | Tests | Coverage |
+|---|---|---|
+| `tests/auth.rs` | 16 | Login success/failure, lockout escalation, permanent lock, refresh rotation, replay detection, expired/revoked token, password change |
+| `tests/magic.rs` | 7 | Link generation, exchange, single-use enforcement, expiry, revocation on new link, full/scoped session types |
+| `tests/tickets.rs` | 13 | Create validation (title, priority, type, date), all valid status transitions, invalid transitions, soft-delete visibility, hard-delete guard, upload dir cleanup |
+| `tests/validation.rs` | 15 | Password strength, email format, date format, recurring interval bounds, category length |
+| `tests/crypto.rs` | 5 | Encrypt/decrypt roundtrip, wrong key, wrong nonce, nonce uniqueness, odd-length hex rejection |
+| `tests/rate_limit.rs` | 4 | Burst allow/reject, token bucket refill over time, independent IP buckets |
+| `tests/admin.rs` | 11 | Client create/duplicate/invalid, soft delete, restore, hard delete guard, hard delete success, profile update, export content |
+
+Shared setup in `tests/common/mod.rs`: `setup_test_db`, `test_config`,
+`test_enc_key`, `create_test_client`, `create_test_desk`.
+
+---
+
 ## [Unreleased] — full backend audit fixes (H-1, M-1 through M-11, L-1 through L-7)
 
 ### Backend — 20 findings from the full code audit

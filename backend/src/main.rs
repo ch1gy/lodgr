@@ -1,18 +1,11 @@
-mod auth;
-mod config;
-mod crypto;
-mod db;
-mod dto;
-mod email;
-mod error;
-mod middleware;
-mod models;
-mod notify;
-mod rate_limit;
-mod routes;
-mod services;
-mod tasks;
-mod ticket_status;
+// All modules live in lib.rs so integration tests can import them.
+use backend::{auth, crypto, db, email, routes, services, tasks};
+use backend::{
+    config::Config,
+    crypto::EncryptionKey,
+    email::SmtpMailer,
+    rate_limit::{rate_limit_by_ip, rate_limit_reports, IpRateLimiter, ReportRateLimiter},
+};
 
 use std::{net::SocketAddr, sync::Arc};
 
@@ -33,11 +26,6 @@ use tower_http::{
     set_header::SetResponseHeaderLayer,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
-
-use config::Config;
-use crypto::EncryptionKey;
-use email::SmtpMailer;
-use rate_limit::{rate_limit_by_ip, rate_limit_reports, IpRateLimiter, ReportRateLimiter};
 
 #[derive(Clone)]
 pub struct AppState {

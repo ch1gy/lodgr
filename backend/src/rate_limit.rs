@@ -48,7 +48,7 @@ impl IpRateLimiter {
         }
     }
 
-    async fn allow(&self, ip: IpAddr) -> bool {
+    pub async fn allow(&self, ip: IpAddr) -> bool {
         let mut map = self.state.lock().await;
         let now = Instant::now();
         let rate = self.rate_per_sec;

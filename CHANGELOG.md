@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — default-deny authorization + negative authorization tests
+
+### Backend — invert ownership checks to default-deny (`services/tickets.rs`, `routes/messages.rs`, `services/messages.rs`)
+
+Four sites previously used `if role == "client" { check ownership }` guards,
+which fail open for any role that is neither "desk" nor "client". An unexpected
+or fabricated role string would bypass ownership checks entirely. All four
+sites inverted to `if role == "desk" { full access } else { enforce ownership }`:
+
+- `services::tickets::get_with_thread` — desk/non-desk branch replaces
+  separate `deleted_at` and `role == "client"` checks
+- `routes::messages::post_message` — `role == "client"` → `role != "desk"`
+- `routes::messages::get_attachment` — two `role == "client"` checks collapsed
+  into a single `role != "desk"` block
+- `services::messages::post_message` — `sender_role == "client"` → `sender_role != "desk"`
+
+No behavior change for desk or for a client accessing their own data.
+
+### Tests — `tests/authorization.rs` (7 new tests)
+
+Negative-authorization test suite confirming IDOR and privilege escalation are
+rejected at the service layer:
+
+- `client_cannot_read_another_clients_ticket` — 404 on cross-client ticket read
+- `unknown_role_cannot_read_ticket` — unknown role is ownership-checked, not granted desk access
+- `desk_can_read_any_ticket` — regression guard confirming desk access unchanged
+- `client_filing_ticket_with_another_clients_id_is_filed_as_self` — override silently ignored
+- `client_cannot_post_message_to_another_clients_ticket` — 403 on cross-client message
+- `unknown_role_cannot_post_message_to_another_clients_ticket` — unknown role denied
+- `desk_can_post_message_to_any_ticket` — regression guard for desk message access
+
+---
+
 ## [Unreleased] — comprehensive test suite
 
 ### Tests — 71 tests across 7 integration test files

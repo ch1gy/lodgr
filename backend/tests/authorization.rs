@@ -1,0 +1,275 @@
+// Negative-authorization tests — every check here is an attempt by the *wrong*
+// principal to access data. The correct result is always rejection (404 or
+// Forbidden), never a successful read or a privilege escalation.
+//
+// These tests cover the inverted default-deny guards added across four sites:
+//   services::tickets::get_with_thread
+//   services::messages::post_message (service layer)
+//   services::tickets::create (client_id override attempt)
+//   unknown/unexpected role on every ownership-checked path
+
+mod common;
+
+use backend::{
+    error::AppError,
+    models::Claims,
+    services::{
+        messages::{post_message, PostMessageInput},
+        tickets::{self, CreateTicketInput},
+    },
+};
+use chrono::Utc;
+
+// ── Claim builders ────────────────────────────────────────────────────────────
+
+fn claims_for(user_id: &str, role: &str) -> Claims {
+    Claims {
+        sub: user_id.to_owned(),
+        role: role.to_owned(),
+        exp: (Utc::now() + chrono::Duration::hours(1)).timestamp(),
+        session_type: "full".to_owned(),
+        ticket_scope: None,
+    }
+}
+
+fn client(id: &str) -> Claims {
+    claims_for(id, "client")
+}
+fn desk(id: &str) -> Claims {
+    claims_for(id, "desk")
+}
+fn unknown_role(id: &str) -> Claims {
+    claims_for(id, "superadmin") // a role that doesn't exist in the system
+}
+
+// ── Shared ticket-creation helper ─────────────────────────────────────────────
+
+async fn make_ticket(
+    pool: &sqlx::SqlitePool,
+    desk_id: &str,
+    client_id: &str,
+) -> backend::models::Ticket {
+    tickets::create(
+        pool,
+        None,
+        &desk(desk_id),
+        CreateTicketInput {
+            title: "Auth test ticket",
+            description: "desc",
+            priority: "medium",
+            category: None,
+            due_date: None,
+            estimated_completion: None,
+            ticket_type: "standard",
+            recurring: false,
+            recurring_interval_days: None,
+            client_id: Some(client_id),
+        },
+    )
+    .await
+    .unwrap()
+}
+
+// ── get_with_thread — IDOR ────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn client_cannot_read_another_clients_ticket() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+    let (owner_id, _, _) = common::create_test_client(&pool).await;
+    let (attacker_id, _, _) = common::create_test_client(&pool).await;
+
+    let ticket = make_ticket(&pool, &desk_id, &owner_id).await;
+
+    let result = tickets::get_with_thread(&pool, &ticket.id, &client(&attacker_id), &enc_key).await;
+
+    assert!(
+        matches!(result, Err(AppError::NotFound)),
+        "client accessing another client's ticket must return NotFound, got: {:?}",
+        result
+    );
+}
+
+#[tokio::test]
+async fn unknown_role_cannot_read_ticket() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+    let (owner_id, _, _) = common::create_test_client(&pool).await;
+    let ticket = make_ticket(&pool, &desk_id, &owner_id).await;
+
+    // An unrecognised role must be treated the same as a client (ownership-checked),
+    // not as a desk (full access).
+    let result =
+        tickets::get_with_thread(&pool, &ticket.id, &unknown_role(&owner_id), &enc_key).await;
+
+    // Ownership matches (same sub) so this should succeed — the important thing
+    // is that *different* sub would be denied.  Assert here that the unknown role
+    // does NOT silently get desk-level access to a ticket it doesn't own.
+    let (attacker_id, _, _) = common::create_test_client(&pool).await;
+    let denied =
+        tickets::get_with_thread(&pool, &ticket.id, &unknown_role(&attacker_id), &enc_key).await;
+    assert!(
+        matches!(denied, Err(AppError::NotFound)),
+        "unknown role accessing another user's ticket must be denied, got: {:?}",
+        denied
+    );
+    // Suppress unused binding
+    let _ = result;
+}
+
+#[tokio::test]
+async fn desk_can_read_any_ticket() {
+    // Sanity check that the inversion didn't break desk access.
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let ticket = make_ticket(&pool, &desk_id, &client_id).await;
+
+    let result = tickets::get_with_thread(&pool, &ticket.id, &desk(&desk_id), &enc_key).await;
+    assert!(
+        result.is_ok(),
+        "desk must be able to read any ticket, got: {:?}",
+        result
+    );
+}
+
+// ── ticket create — client_id override attempt ────────────────────────────────
+
+#[tokio::test]
+async fn client_filing_ticket_with_another_clients_id_is_filed_as_self() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+    let (client_a, _, _) = common::create_test_client(&pool).await;
+    let (client_b, _, _) = common::create_test_client(&pool).await;
+
+    // client_a tries to file a ticket that names client_b as the owner.
+    let ticket = tickets::create(
+        &pool,
+        None,
+        &client(&client_a),
+        CreateTicketInput {
+            title: "Impersonation attempt",
+            description: "desc",
+            priority: "medium",
+            category: None,
+            due_date: None,
+            estimated_completion: None,
+            ticket_type: "standard",
+            recurring: false,
+            recurring_interval_days: None,
+            client_id: Some(&client_b), // attempted override
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        ticket.client_id, client_a,
+        "ticket must be filed as the calling client (client_a), not the supplied client_id"
+    );
+    let _ = desk_id; // suppress unused
+}
+
+// ── post_message — IDOR ───────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn client_cannot_post_message_to_another_clients_ticket() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+    let (owner_id, _, _) = common::create_test_client(&pool).await;
+    let (attacker_id, _, _) = common::create_test_client(&pool).await;
+
+    let ticket = make_ticket(&pool, &desk_id, &owner_id).await;
+
+    let result = post_message(
+        &pool,
+        &enc_key,
+        None,
+        PostMessageInput {
+            ticket_id: ticket.id.clone(),
+            sender_id: attacker_id.clone(),
+            sender_role: "client".to_owned(),
+            sender_session_type: "full".to_owned(),
+            ticket_scope: None,
+            body: "I shouldn't be here".to_owned(),
+            attachment_path: None,
+        },
+    )
+    .await;
+
+    assert!(
+        matches!(result, Err(AppError::Forbidden)),
+        "client posting to another client's ticket must return Forbidden, got: {:?}",
+        result
+    );
+}
+
+#[tokio::test]
+async fn unknown_role_cannot_post_message_to_another_clients_ticket() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+    let (owner_id, _, _) = common::create_test_client(&pool).await;
+    let (attacker_id, _, _) = common::create_test_client(&pool).await;
+
+    let ticket = make_ticket(&pool, &desk_id, &owner_id).await;
+
+    let result = post_message(
+        &pool,
+        &enc_key,
+        None,
+        PostMessageInput {
+            ticket_id: ticket.id.clone(),
+            sender_id: attacker_id.clone(),
+            sender_role: "superadmin".to_owned(), // unknown role
+            sender_session_type: "full".to_owned(),
+            ticket_scope: None,
+            body: "Unknown role should not get through".to_owned(),
+            attachment_path: None,
+        },
+    )
+    .await;
+
+    assert!(
+        matches!(result, Err(AppError::Forbidden)),
+        "unknown role posting to another client's ticket must return Forbidden, got: {:?}",
+        result
+    );
+}
+
+// ── desk still has full access ─────────────────────────────────────────────────
+
+#[tokio::test]
+async fn desk_can_post_message_to_any_ticket() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let ticket = make_ticket(&pool, &desk_id, &client_id).await;
+
+    let result = post_message(
+        &pool,
+        &enc_key,
+        None,
+        PostMessageInput {
+            ticket_id: ticket.id.clone(),
+            sender_id: desk_id.clone(),
+            sender_role: "desk".to_owned(),
+            sender_session_type: "full".to_owned(),
+            ticket_scope: None,
+            body: "Desk message".to_owned(),
+            attachment_path: None,
+        },
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "desk must be able to post to any ticket, got: {:?}",
+        result
+    );
+}

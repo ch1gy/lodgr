@@ -44,7 +44,7 @@ pub async fn post_message(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    if input.sender_role == "client" && ticket.client_id != input.sender_id {
+    if input.sender_role != "desk" && ticket.client_id != input.sender_id {
         return Err(AppError::Forbidden);
     }
 

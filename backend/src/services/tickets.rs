@@ -12,6 +12,7 @@ use crate::{
     ticket_status::{transition, TransitionAction},
 };
 
+#[derive(Debug)]
 pub struct TicketWithThread {
     pub ticket: Ticket,
     pub thread: Vec<ThreadEntry>,
@@ -200,11 +201,13 @@ pub async fn get_with_thread(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    if ticket.deleted_at.is_some() && claims.role != "desk" {
-        return Err(AppError::NotFound);
-    }
-
-    if claims.role == "client" {
+    if claims.role == "desk" {
+        // desk sees all tickets, including soft-deleted ones
+    } else {
+        // every non-desk role is ownership-checked by default; unknown roles are denied
+        if ticket.deleted_at.is_some() {
+            return Err(AppError::NotFound);
+        }
         if ticket.client_id != claims.sub {
             return Err(AppError::NotFound);
         }

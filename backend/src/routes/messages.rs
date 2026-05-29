@@ -39,7 +39,7 @@ pub async fn post_message(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    if claims.role == "client" && ticket.client_id != claims.sub {
+    if claims.role != "desk" && ticket.client_id != claims.sub {
         return Err(AppError::NotFound);
     }
     claims.check_ticket_access(&ticket_id)?;
@@ -185,11 +185,14 @@ pub async fn get_attachment(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    if claims.role == "client" && ticket.client_id != claims.sub {
-        return Err(AppError::NotFound);
-    }
-    if claims.role == "client" && ticket.deleted_at.is_some() {
-        return Err(AppError::NotFound);
+    if claims.role != "desk" {
+        // every non-desk role is ownership-checked; unknown roles are denied
+        if ticket.client_id != claims.sub {
+            return Err(AppError::NotFound);
+        }
+        if ticket.deleted_at.is_some() {
+            return Err(AppError::NotFound);
+        }
     }
     claims.check_ticket_access(&safe_ticket)?;
 

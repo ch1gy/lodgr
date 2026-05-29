@@ -89,13 +89,8 @@ pub async fn update_client(
     Path(client_id): Path<String>,
     Json(body): Json<UpdateClientRequest>,
 ) -> AppResult<impl IntoResponse> {
-    let user = services::admin::update_client_profile(
-        &pool,
-        &client_id,
-        body.name,
-        body.email,
-    )
-    .await?;
+    let user =
+        services::admin::update_client_profile(&pool, &client_id, body.name, body.email).await?;
     tracing::info!(
         desk_user_id = %claims.sub,
         client_id = %client_id,
@@ -244,5 +239,8 @@ pub async fn create_full_magic_link(
         scope = "full",
         "magic link created"
     );
-    Ok((StatusCode::CREATED, Json(MagicLinkResponse { url: out.url })))
+    Ok((
+        StatusCode::CREATED,
+        Json(MagicLinkResponse { url: out.url }),
+    ))
 }

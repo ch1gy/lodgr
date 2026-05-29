@@ -1,7 +1,6 @@
 use lettre::{
-    message::header::ContentType,
-    transport::smtp::authentication::Credentials,
-    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+    message::header::ContentType, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
+    AsyncTransport, Message, Tokio1Executor,
 };
 
 use crate::config::Config;
@@ -16,7 +15,8 @@ impl SmtpMailer {
     pub fn from_config(config: &Config) -> Option<anyhow::Result<Self>> {
         let host = config.smtp_host.as_deref()?;
         let user = config.smtp_user.clone().unwrap_or_default();
-        let password: String = config.smtp_password
+        let password: String = config
+            .smtp_password
             .as_ref()
             .map(|z| z.as_str().to_owned())
             .unwrap_or_default();
@@ -127,10 +127,10 @@ impl TicketEvent {
     fn body(self, name: &str, title: &str) -> String {
         let action = match self {
             Self::Created => "A new support ticket has been opened".to_owned(),
-            Self::Acknowledged => "Your ticket has been acknowledged by the support team".to_owned(),
-            Self::Pending => {
-                "Your ticket is awaiting additional information from you".to_owned()
+            Self::Acknowledged => {
+                "Your ticket has been acknowledged by the support team".to_owned()
             }
+            Self::Pending => "Your ticket is awaiting additional information from you".to_owned(),
             Self::Closed => "Your ticket has been resolved".to_owned(),
             Self::NewMessage => "There is a new message on your ticket".to_owned(),
         };

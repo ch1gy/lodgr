@@ -23,9 +23,15 @@ use axum::{
     routing::{delete, get, patch, post},
     Extension, Router,
 };
-use sqlx::{sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions}, SqlitePool};
+use sqlx::{
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
+    SqlitePool,
+};
 use std::str::FromStr;
-use tower_http::{services::{ServeDir, ServeFile}, set_header::SetResponseHeaderLayer};
+use tower_http::{
+    services::{ServeDir, ServeFile},
+    set_header::SetResponseHeaderLayer,
+};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use config::Config;
@@ -42,16 +48,24 @@ pub struct AppState {
 }
 
 impl FromRef<AppState> for SqlitePool {
-    fn from_ref(s: &AppState) -> Self { s.pool.clone() }
+    fn from_ref(s: &AppState) -> Self {
+        s.pool.clone()
+    }
 }
 impl FromRef<AppState> for Config {
-    fn from_ref(s: &AppState) -> Self { s.config.clone() }
+    fn from_ref(s: &AppState) -> Self {
+        s.config.clone()
+    }
 }
 impl FromRef<AppState> for EncryptionKey {
-    fn from_ref(s: &AppState) -> Self { Arc::clone(&s.enc_key) }
+    fn from_ref(s: &AppState) -> Self {
+        Arc::clone(&s.enc_key)
+    }
 }
 impl FromRef<AppState> for Option<Arc<SmtpMailer>> {
-    fn from_ref(s: &AppState) -> Self { s.mailer.clone() }
+    fn from_ref(s: &AppState) -> Self {
+        s.mailer.clone()
+    }
 }
 
 #[tokio::main]
@@ -69,8 +83,7 @@ async fn main() -> anyhow::Result<()> {
 
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
-    let env_filter = EnvFilter::from_default_env()
-        .add_directive("backend=info".parse()?);
+    let env_filter = EnvFilter::from_default_env().add_directive("backend=info".parse()?);
 
     // Single global filter applied to both stdout and file layers.
     tracing_subscriber::registry()
@@ -79,7 +92,7 @@ async fn main() -> anyhow::Result<()> {
         .with(
             tracing_subscriber::fmt::layer()
                 .with_writer(non_blocking)
-                .with_ansi(false),  // no ANSI escape codes in log files
+                .with_ansi(false), // no ANSI escape codes in log files
         )
         .init();
 
@@ -193,21 +206,29 @@ async fn main() -> anyhow::Result<()> {
     let auth_limiter = IpRateLimiter::new(5, 10);
     // PDF generation is CPU-intensive: 1 req/5 s per IP, burst of 3.
     let report_limiter = ReportRateLimiter(IpRateLimiter::with_rate(0.2, 3));
-    let state = AppState { pool, config, enc_key, mailer };
+    let state = AppState {
+        pool,
+        config,
+        enc_key,
+        mailer,
+    };
 
     // ── Rate-limited sub-routers ───────────────────────────────────────────
     // route_layer() in Axum applies to ALL routes currently in the router, so
     // each limiter lives in its own sub-router and is merged in below. This
     // prevents the report limiter (0.2 req/s) from leaking onto ticket/admin routes.
     let auth_limited = Router::new()
-        .route("/auth/login",   post(auth::login))
+        .route("/auth/login", post(auth::login))
         .route("/auth/refresh", post(auth::refresh))
-        .route("/auth/magic",   post(routes::magic::exchange))
+        .route("/auth/magic", post(routes::magic::exchange))
         .route_layer(from_fn(rate_limit_by_ip))
         .layer(Extension(auth_limiter));
 
     let report_limited = Router::new()
-        .route("/reports/monthly/:client_id/:year/:month", get(routes::reports::monthly))
+        .route(
+            "/reports/monthly/:client_id/:year/:month",
+            get(routes::reports::monthly),
+        )
         .route_layer(from_fn(rate_limit_reports))
         .layer(Extension(report_limiter));
 
@@ -217,31 +238,72 @@ async fn main() -> anyhow::Result<()> {
         // ── Auth (rate-limited) ────────────────────────────────────────────
         .merge(auth_limited)
         // ── Auth — no rate limit ───────────────────────────────────────────
-        .route("/auth/logout",   post(auth::logout))
+        .route("/auth/logout", post(auth::logout))
         .route("/auth/password", patch(auth::change_password))
-        .route("/auth/me",       get(auth::me))
+        .route("/auth/me", get(auth::me))
         // ── Admin ──────────────────────────────────────────────────────────
-        .route("/admin/clients",                          post(routes::admin::create_client))
-        .route("/admin/clients",                          get(routes::admin::list_clients))
-        .route("/admin/clients/:id/sessions",             delete(routes::admin::delete_client_sessions))
-        .route("/admin/clients/:id/soft-delete",          post(routes::admin::soft_delete_client))
-        .route("/admin/clients/:id/restore",              post(routes::admin::restore_client))
-        .route("/admin/clients/:id/unlock",               post(routes::admin::unlock_client))
-        .route("/admin/clients/:id",                      patch(routes::admin::update_client).delete(routes::admin::hard_delete_client))
-        .route("/admin/clients/:id/export",               post(routes::admin::export_client))
-        .route("/admin/clients/:id/magic-link",           post(routes::admin::create_full_magic_link))
-        .route("/admin/exports/:client_id/:filename",     get(routes::admin::get_export_file))
+        .route("/admin/clients", post(routes::admin::create_client))
+        .route("/admin/clients", get(routes::admin::list_clients))
+        .route(
+            "/admin/clients/:id/sessions",
+            delete(routes::admin::delete_client_sessions),
+        )
+        .route(
+            "/admin/clients/:id/soft-delete",
+            post(routes::admin::soft_delete_client),
+        )
+        .route(
+            "/admin/clients/:id/restore",
+            post(routes::admin::restore_client),
+        )
+        .route(
+            "/admin/clients/:id/unlock",
+            post(routes::admin::unlock_client),
+        )
+        .route(
+            "/admin/clients/:id",
+            patch(routes::admin::update_client).delete(routes::admin::hard_delete_client),
+        )
+        .route(
+            "/admin/clients/:id/export",
+            post(routes::admin::export_client),
+        )
+        .route(
+            "/admin/clients/:id/magic-link",
+            post(routes::admin::create_full_magic_link),
+        )
+        .route(
+            "/admin/exports/:client_id/:filename",
+            get(routes::admin::get_export_file),
+        )
         // ── Tickets ────────────────────────────────────────────────────────
-        .route("/tickets",           get(routes::tickets::list).post(routes::tickets::create))
-        .route("/tickets/:id",       get(routes::tickets::get).patch(routes::tickets::update).delete(routes::tickets::delete))
-        .route("/tickets/:id/ack",   patch(routes::tickets::ack))
-        .route("/tickets/:id/pend",  patch(routes::tickets::pend))
+        .route(
+            "/tickets",
+            get(routes::tickets::list).post(routes::tickets::create),
+        )
+        .route(
+            "/tickets/:id",
+            get(routes::tickets::get)
+                .patch(routes::tickets::update)
+                .delete(routes::tickets::delete),
+        )
+        .route("/tickets/:id/ack", patch(routes::tickets::ack))
+        .route("/tickets/:id/pend", patch(routes::tickets::pend))
         .route("/tickets/:id/close", patch(routes::tickets::close))
-        .route("/tickets/:id/message",    post(routes::messages::post_message))
-        .route("/tickets/:id/notes",      get(routes::notes::list).post(routes::notes::create))
-        .route("/tickets/:id/magic-link", post(routes::magic::create_ticket_scoped))
+        .route("/tickets/:id/message", post(routes::messages::post_message))
+        .route(
+            "/tickets/:id/notes",
+            get(routes::notes::list).post(routes::notes::create),
+        )
+        .route(
+            "/tickets/:id/magic-link",
+            post(routes::magic::create_ticket_scoped),
+        )
         // ── Uploads — auth-gated file downloads ───────────────────────────
-        .route("/uploads/:ticket_id/:filename", get(routes::messages::get_attachment))
+        .route(
+            "/uploads/:ticket_id/:filename",
+            get(routes::messages::get_attachment),
+        )
         // ── Reports (rate-limited) ─────────────────────────────────────────
         .merge(report_limited)
         // ── Static frontend ────────────────────────────────────────────────
@@ -283,8 +345,7 @@ async fn main() -> anyhow::Result<()> {
         ))
         .with_state(state);
 
-    let bind_addr = std::env::var("BIND_ADDR")
-        .unwrap_or_else(|_| "127.0.0.1:3000".to_string());
+    let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_string());
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
     tracing::info!("Listening on http://{bind_addr}");
 
@@ -361,9 +422,12 @@ async fn check_desk_lockout(pool: &SqlitePool) {
 }
 
 async fn seed_desk_user(pool: &SqlitePool) -> anyhow::Result<()> {
-    if db::users::find_by_email(pool, "desk@local").await?.is_none() {
-        let initial_password = std::env::var("DESK_INITIAL_PASSWORD")
-            .unwrap_or_else(|_| "changeme".to_string());
+    if db::users::find_by_email(pool, "desk@local")
+        .await?
+        .is_none()
+    {
+        let initial_password =
+            std::env::var("DESK_INITIAL_PASSWORD").unwrap_or_else(|_| "changeme".to_string());
         let id = uuid::Uuid::new_v4().to_string();
         let hash = services::auth::hash_password(&initial_password)
             .map_err(|e| anyhow::anyhow!("{e:?}"))?;

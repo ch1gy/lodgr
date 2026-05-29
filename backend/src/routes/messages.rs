@@ -130,7 +130,9 @@ pub async fn post_message(
     }
 
     if body.is_empty() {
-        return Err(AppError::UnprocessableEntity("body field is required".into()));
+        return Err(AppError::UnprocessableEntity(
+            "body field is required".into(),
+        ));
     }
 
     let entry = services::messages::post_message(
@@ -202,7 +204,10 @@ pub async fn get_attachment(
 
     Ok((
         [
-            (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{safe_file}\"")),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{safe_file}\""),
+            ),
             (header::CONTENT_TYPE, "application/octet-stream".to_owned()),
         ],
         bytes,

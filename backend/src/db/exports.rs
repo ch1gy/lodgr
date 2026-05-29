@@ -30,12 +30,10 @@ pub async fn create(
 }
 
 pub async fn exists_for_client(pool: &SqlitePool, client_id: &str) -> AppResult<bool> {
-    let count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM client_exports WHERE client_id = ?",
-    )
-    .bind(client_id)
-    .fetch_one(pool)
-    .await?;
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM client_exports WHERE client_id = ?")
+        .bind(client_id)
+        .fetch_one(pool)
+        .await?;
     Ok(count.0 > 0)
 }
 
@@ -54,4 +52,3 @@ pub async fn recent_export_exists(
     .await?;
     Ok(count.0 > 0)
 }
-

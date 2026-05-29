@@ -13,7 +13,9 @@ use crate::{
     db,
     dto::{AccessTokenResponse, MeResponse},
     error::{AppError, AppResult},
-    middleware::{clear_refresh_cookie, set_refresh_cookie, AuthUser, DeskUser, RefreshTokenCookie},
+    middleware::{
+        clear_refresh_cookie, set_refresh_cookie, AuthUser, DeskUser, RefreshTokenCookie,
+    },
     services,
 };
 
@@ -29,14 +31,8 @@ pub async fn login(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Json(body): Json<LoginRequest>,
 ) -> AppResult<Response> {
-    let output = services::auth::login(
-        &pool,
-        &config,
-        &body.email,
-        &body.password,
-        peer.ip(),
-    )
-    .await?;
+    let output =
+        services::auth::login(&pool, &config, &body.email, &body.password, peer.ip()).await?;
     build_token_response(
         output.access_token,
         &output.refresh_token,

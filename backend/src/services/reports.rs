@@ -89,34 +89,53 @@ fn build_pdf(
 
     put(&title, &bold, 16.0);
     gap(4.0);
-    put(&format!("Client: {user_name} <{user_email}>"), &regular, 11.0);
     put(
-        &format!("Period: {year}/{month:02}   Generated: {}", chrono::Utc::now().format("%Y-%m-%d")),
+        &format!("Client: {user_name} <{user_email}>"),
+        &regular,
+        11.0,
+    );
+    put(
+        &format!(
+            "Period: {year}/{month:02}   Generated: {}",
+            chrono::Utc::now().format("%Y-%m-%d")
+        ),
         &regular,
         11.0,
     );
     gap(4.0);
 
     put("Summary", &bold, 13.0);
-    put(&format!("Total tickets opened this month: {total}"), &regular, 11.0);
+    put(
+        &format!("Total tickets opened this month: {total}"),
+        &regular,
+        11.0,
+    );
     gap(2.0);
 
     put("By status:", &bold, 11.0);
-    for (k, v) in &by_status { put(&format!("  {k}: {v}"), &regular, 11.0); }
+    for (k, v) in &by_status {
+        put(&format!("  {k}: {v}"), &regular, 11.0);
+    }
     gap(2.0);
 
     put("By priority:", &bold, 11.0);
-    for (k, v) in &by_priority { put(&format!("  {k}: {v}"), &regular, 11.0); }
+    for (k, v) in &by_priority {
+        put(&format!("  {k}: {v}"), &regular, 11.0);
+    }
     gap(2.0);
 
     put("By type:", &bold, 11.0);
-    for (k, v) in &by_type { put(&format!("  {k}: {v}"), &regular, 11.0); }
+    for (k, v) in &by_type {
+        put(&format!("  {k}: {v}"), &regular, 11.0);
+    }
     gap(4.0);
 
     put("Tickets", &bold, 13.0);
     let mut shown = 0usize;
     for t in tickets {
-        if y.get() < 20.0 { break; }
+        if y.get() < 20.0 {
+            break;
+        }
         put(
             &format!("[{}] {} ({})", t.status.to_uppercase(), t.title, t.priority),
             &regular,
@@ -137,7 +156,9 @@ fn build_pdf(
     if truncated > 0 {
         gap(2.0);
         put(
-            &format!("... {truncated} ticket(s) not shown — download the full export for complete data."),
+            &format!(
+                "... {truncated} ticket(s) not shown — download the full export for complete data."
+            ),
             &regular,
             9.0,
         );

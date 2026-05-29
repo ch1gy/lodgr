@@ -56,11 +56,9 @@ impl Config {
             .map(|v| v.to_lowercase() != "false")
             .unwrap_or(true);
 
-        let bind_addr = std::env::var("BIND_ADDR")
-            .unwrap_or_else(|_| "127.0.0.1:3000".to_string());
+        let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_string());
 
-        let base_url = std::env::var("BASE_URL")
-            .unwrap_or_else(|_| format!("http://{bind_addr}"));
+        let base_url = std::env::var("BASE_URL").unwrap_or_else(|_| format!("http://{bind_addr}"));
 
         let scoped_token_ttl_secs = std::env::var("SCOPED_TOKEN_TTL_SECS")
             .ok()

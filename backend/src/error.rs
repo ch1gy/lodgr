@@ -12,9 +12,14 @@ pub enum AppError {
     Conflict(String),
     BadRequest(String),
     UnprocessableEntity(String),
-    InvalidTransition { from: String, to: String },
+    InvalidTransition {
+        from: String,
+        to: String,
+    },
     /// Account lockout. `retry_after_secs = None` means permanent.
-    Locked { retry_after_secs: Option<u64> },
+    Locked {
+        retry_after_secs: Option<u64>,
+    },
     TooManyRequests(String),
     Internal(String),
 }
@@ -33,10 +38,14 @@ impl std::fmt::Display for AppError {
             AppError::InvalidTransition { from, to } => {
                 write!(f, "Invalid transition: '{from}' → '{to}'")
             }
-            AppError::Locked { retry_after_secs: Some(s) } => {
+            AppError::Locked {
+                retry_after_secs: Some(s),
+            } => {
                 write!(f, "Account locked, retry after {s}s")
             }
-            AppError::Locked { retry_after_secs: None } => {
+            AppError::Locked {
+                retry_after_secs: None,
+            } => {
                 write!(f, "Account permanently locked")
             }
             AppError::TooManyRequests(m) => write!(f, "Too many requests: {m}"),
@@ -58,9 +67,9 @@ impl IntoResponse for AppError {
         // Locked is the only variant that needs an extra response header.
         if let AppError::Locked { retry_after_secs } = &self {
             let message = match retry_after_secs {
-                Some(secs) => format!(
-                    "Account is temporarily locked. Try again in {secs} seconds."
-                ),
+                Some(secs) => {
+                    format!("Account is temporarily locked. Try again in {secs} seconds.")
+                }
                 None => "Account is permanently locked. Contact support to unlock.".into(),
             };
             let mut resp = (
@@ -84,14 +93,16 @@ impl IntoResponse for AppError {
             AppError::Conflict(m) => (StatusCode::CONFLICT, m.clone()),
             AppError::BadRequest(m) => (StatusCode::BAD_REQUEST, m.clone()),
             AppError::UnprocessableEntity(m) => (StatusCode::UNPROCESSABLE_ENTITY, m.clone()),
-            AppError::InvalidTransition { .. } => (
-                StatusCode::BAD_REQUEST,
-                "Invalid status transition".into(),
-            ),
+            AppError::InvalidTransition { .. } => {
+                (StatusCode::BAD_REQUEST, "Invalid status transition".into())
+            }
             AppError::TooManyRequests(m) => (StatusCode::TOO_MANY_REQUESTS, m.clone()),
             AppError::Internal(m) => {
                 tracing::error!("internal error: {m}");
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".into(),
+                )
             }
             AppError::Locked { .. } => unreachable!(),
         };

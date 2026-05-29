@@ -69,9 +69,8 @@ pub async fn export_client(
 
         for entry in raw_entries {
             let body = if let Some(nonce) = &entry.body_nonce {
-                crypto::decrypt(enc_key, nonce, &entry.body).unwrap_or_else(|_| {
-                    "[decryption failed]".to_owned()
-                })
+                crypto::decrypt(enc_key, nonce, &entry.body)
+                    .unwrap_or_else(|_| "[decryption failed]".to_owned())
             } else {
                 entry.body.clone()
             };
@@ -129,8 +128,7 @@ pub async fn export_client(
         .map_err(|e| AppError::Internal(format!("write export: {e}")))?;
 
     let export_id = Uuid::new_v4().to_string();
-    let record =
-        db::exports::create(pool, &export_id, client_id, &file_path).await?;
+    let record = db::exports::create(pool, &export_id, client_id, &file_path).await?;
 
     Ok(ExportOutput { record, file_path })
 }

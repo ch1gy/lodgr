@@ -33,8 +33,8 @@ pub fn derive_key(passphrase: &str, salt_hex: &str) -> anyhow::Result<[u8; 32]> 
     }
 
     // 64 MiB memory, 3 iterations, 1-thread parallelism, 32-byte output.
-    let params = Params::new(65_536, 3, 1, Some(32))
-        .map_err(|e| anyhow::anyhow!("argon2 params: {e}"))?;
+    let params =
+        Params::new(65_536, 3, 1, Some(32)).map_err(|e| anyhow::anyhow!("argon2 params: {e}"))?;
 
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
 
@@ -84,9 +84,9 @@ pub fn decrypt(key: &[u8; 32], nonce_hex: &str, ciphertext_hex: &str) -> AppResu
     }
 
     let nonce = Nonce::from_slice(&nonce_bytes);
-    let plaintext_bytes = cipher
-        .decrypt(nonce, ciphertext.as_ref())
-        .map_err(|_| AppError::Internal("decryption failed — data corrupted or wrong key".into()))?;
+    let plaintext_bytes = cipher.decrypt(nonce, ciphertext.as_ref()).map_err(|_| {
+        AppError::Internal("decryption failed — data corrupted or wrong key".into())
+    })?;
 
     String::from_utf8(plaintext_bytes)
         .map_err(|_| AppError::Internal("decrypted data is not valid UTF-8".into()))

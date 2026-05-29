@@ -47,7 +47,10 @@ pub async fn recurring_tickets(pool: SqlitePool) {
                             );
                         }
                         Err(e) => {
-                            tracing::warn!("recurring: failed to create from template {}: {e}", t.id);
+                            tracing::warn!(
+                                "recurring: failed to create from template {}: {e}",
+                                t.id
+                            );
                         }
                     }
                 }
@@ -104,13 +107,12 @@ pub async fn hard_delete_expired_users(pool: SqlitePool, enc_key: EncryptionKey)
                     }
 
                     // Collect ticket IDs before deletion for filesystem cleanup.
-                    let ticket_ids: Vec<String> = sqlx::query_scalar(
-                        "SELECT id FROM tickets WHERE client_id = ?",
-                    )
-                    .bind(&u.id)
-                    .fetch_all(&pool)
-                    .await
-                    .unwrap_or_default();
+                    let ticket_ids: Vec<String> =
+                        sqlx::query_scalar("SELECT id FROM tickets WHERE client_id = ?")
+                            .bind(&u.id)
+                            .fetch_all(&pool)
+                            .await
+                            .unwrap_or_default();
 
                     match cascade_hard_delete_user(&pool, &u.id).await {
                         Ok(()) => {
@@ -156,8 +158,12 @@ pub async fn clean_old_exports() -> std::io::Result<u32> {
             continue;
         };
         while let Ok(Some(file)) = files.next_entry().await {
-            let Ok(meta) = file.metadata().await else { continue };
-            let Ok(modified) = meta.modified() else { continue };
+            let Ok(meta) = file.metadata().await else {
+                continue;
+            };
+            let Ok(modified) = meta.modified() else {
+                continue;
+            };
             if modified < cutoff && tokio::fs::remove_file(file.path()).await.is_ok() {
                 removed += 1;
             }
@@ -167,34 +173,45 @@ pub async fn clean_old_exports() -> std::io::Result<u32> {
     Ok(removed)
 }
 
-async fn cascade_hard_delete_user(
-    pool: &SqlitePool,
-    user_id: &str,
-) -> crate::error::AppResult<()> {
+async fn cascade_hard_delete_user(pool: &SqlitePool, user_id: &str) -> crate::error::AppResult<()> {
     let mut tx = pool.begin().await?;
     sqlx::query("DELETE FROM magic_links WHERE user_id = ?")
-        .bind(user_id).execute(&mut *tx).await?;
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query(
         "DELETE FROM notifications WHERE ticket_id IN
          (SELECT id FROM tickets WHERE client_id = ?)",
     )
-    .bind(user_id).execute(&mut *tx).await?;
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
     sqlx::query(
         "DELETE FROM thread_entries WHERE ticket_id IN
          (SELECT id FROM tickets WHERE client_id = ?)",
     )
-    .bind(user_id).execute(&mut *tx).await?;
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
     sqlx::query(
         "DELETE FROM internal_notes WHERE ticket_id IN
          (SELECT id FROM tickets WHERE client_id = ?)",
     )
-    .bind(user_id).execute(&mut *tx).await?;
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
     sqlx::query("DELETE FROM sessions WHERE user_id = ?")
-        .bind(user_id).execute(&mut *tx).await?;
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM tickets WHERE client_id = ?")
-        .bind(user_id).execute(&mut *tx).await?;
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM users WHERE id = ?")
-        .bind(user_id).execute(&mut *tx).await?;
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
     tx.commit().await?;
     Ok(())
 }

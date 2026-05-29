@@ -116,7 +116,9 @@ pub async fn exchange_magic_link(
             user_id = %link.user_id,
             "magic link exchange failed — already used"
         );
-        return Err(AppError::BadRequest("magic link has already been used".into()));
+        return Err(AppError::BadRequest(
+            "magic link has already been used".into(),
+        ));
     }
 
     let expires_at = chrono::DateTime::parse_from_rfc3339(&link.expires_at)
@@ -155,8 +157,7 @@ pub async fn exchange_magic_link(
         ("full".into(), None)
     };
 
-    let exp =
-        (Utc::now() + chrono::Duration::seconds(config.scoped_token_ttl_secs)).timestamp();
+    let exp = (Utc::now() + chrono::Duration::seconds(config.scoped_token_ttl_secs)).timestamp();
 
     let claims = Claims {
         sub: user.id.clone(),

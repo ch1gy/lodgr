@@ -15,7 +15,9 @@ impl TicketStatus {
             "pending" => Ok(Self::Pending),
             "acknowledged" => Ok(Self::Acknowledged),
             "closed" => Ok(Self::Closed),
-            other => Err(AppError::Internal(format!("unknown ticket status: {other}"))),
+            other => Err(AppError::Internal(format!(
+                "unknown ticket status: {other}"
+            ))),
         }
     }
 

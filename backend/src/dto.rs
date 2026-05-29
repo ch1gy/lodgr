@@ -1,7 +1,7 @@
 /// All API-facing response types. DB models must NEVER derive Serialize.
 use serde::Serialize;
 
-use crate::models::{ClientExport, InternalNote, Ticket, ThreadEntry, User};
+use crate::models::{ClientExport, InternalNote, ThreadEntry, Ticket, User};
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -86,10 +86,14 @@ impl From<ClientExport> for ExportResponse {
     fn from(e: ClientExport) -> Self {
         ExportResponse {
             export_id: e.id,
-            download_url: format!("/admin/exports/{}/{}", e.client_id, e.file_path
-                .split(['/', '\\'])
-                .last()
-                .unwrap_or("export.json")),
+            download_url: format!(
+                "/admin/exports/{}/{}",
+                e.client_id,
+                e.file_path
+                    .split(['/', '\\'])
+                    .last()
+                    .unwrap_or("export.json")
+            ),
         }
     }
 }

@@ -58,8 +58,7 @@ impl IpRateLimiter {
         // time it would take to refill from empty — keeps memory bounded.
         let idle_cutoff = cap / rate;
         map.retain(|_, b| {
-            now.duration_since(b.last_refill).as_secs_f64() < idle_cutoff
-                || b.tokens < cap
+            now.duration_since(b.last_refill).as_secs_f64() < idle_cutoff || b.tokens < cap
         });
 
         let bucket = map.entry(ip).or_insert(Bucket {

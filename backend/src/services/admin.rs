@@ -161,12 +161,15 @@ pub async fn hard_delete_client(
 
     if !db::exports::exists_for_client(pool, client_id).await? {
         return Err(AppError::BadRequest(
-            "an export must be created before hard deletion (POST /admin/clients/:id/export)".into(),
+            "an export must be created before hard deletion (POST /admin/clients/:id/export)"
+                .into(),
         ));
     }
 
     // Collect ticket IDs before deletion so we can clean up upload directories.
-    let tickets = db::tickets::list_all_for_client(pool, client_id).await.unwrap_or_default();
+    let tickets = db::tickets::list_all_for_client(pool, client_id)
+        .await
+        .unwrap_or_default();
 
     // Final export — must succeed before any data is deleted.
     export_client(pool, enc_key, client_id).await?;
@@ -175,34 +178,48 @@ pub async fn hard_delete_client(
     let mut tx = pool.begin().await?;
 
     sqlx::query("DELETE FROM magic_links WHERE user_id = ?")
-        .bind(client_id).execute(&mut *tx).await?;
+        .bind(client_id)
+        .execute(&mut *tx)
+        .await?;
 
     sqlx::query(
         "DELETE FROM notifications WHERE ticket_id IN
          (SELECT id FROM tickets WHERE client_id = ?)",
     )
-    .bind(client_id).execute(&mut *tx).await?;
+    .bind(client_id)
+    .execute(&mut *tx)
+    .await?;
 
     sqlx::query(
         "DELETE FROM thread_entries WHERE ticket_id IN
          (SELECT id FROM tickets WHERE client_id = ?)",
     )
-    .bind(client_id).execute(&mut *tx).await?;
+    .bind(client_id)
+    .execute(&mut *tx)
+    .await?;
 
     sqlx::query(
         "DELETE FROM internal_notes WHERE ticket_id IN
          (SELECT id FROM tickets WHERE client_id = ?)",
     )
-    .bind(client_id).execute(&mut *tx).await?;
+    .bind(client_id)
+    .execute(&mut *tx)
+    .await?;
 
     sqlx::query("DELETE FROM tickets WHERE client_id = ?")
-        .bind(client_id).execute(&mut *tx).await?;
+        .bind(client_id)
+        .execute(&mut *tx)
+        .await?;
 
     sqlx::query("DELETE FROM sessions WHERE user_id = ?")
-        .bind(client_id).execute(&mut *tx).await?;
+        .bind(client_id)
+        .execute(&mut *tx)
+        .await?;
 
     sqlx::query("DELETE FROM users WHERE id = ?")
-        .bind(client_id).execute(&mut *tx).await?;
+        .bind(client_id)
+        .execute(&mut *tx)
+        .await?;
 
     tx.commit().await?;
 
@@ -332,9 +349,14 @@ fn validate_email(email: &str) -> AppResult<()> {
             "email local part (before '@') must not be empty".into(),
         ));
     }
-    if domain.is_empty() || !domain.contains('.') || domain.starts_with('.') || domain.ends_with('.') {
+    if domain.is_empty()
+        || !domain.contains('.')
+        || domain.starts_with('.')
+        || domain.ends_with('.')
+    {
         return Err(AppError::BadRequest(
-            "email domain is invalid (must contain at least one dot, no leading/trailing dots)".into(),
+            "email domain is invalid (must contain at least one dot, no leading/trailing dots)"
+                .into(),
         ));
     }
     Ok(())

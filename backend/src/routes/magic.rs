@@ -31,7 +31,9 @@ pub async fn exchange(
     Json(body): Json<MagicExchangeRequest>,
 ) -> AppResult<impl IntoResponse> {
     let token = services::magic::exchange_magic_link(&pool, &config, &body.token).await?;
-    Ok(Json(AccessTokenResponse { access_token: token }))
+    Ok(Json(AccessTokenResponse {
+        access_token: token,
+    }))
 }
 
 /// POST /tickets/:id/magic-link — generate a ticket-scoped link.
@@ -64,5 +66,8 @@ pub async fn create_ticket_scoped(
         "magic link created"
     );
 
-    Ok((StatusCode::CREATED, Json(MagicLinkResponse { url: out.url })))
+    Ok((
+        StatusCode::CREATED,
+        Json(MagicLinkResponse { url: out.url }),
+    ))
 }

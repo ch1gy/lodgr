@@ -7,7 +7,7 @@ use crate::{
     db,
     email::{SmtpMailer, TicketEvent},
     error::{AppError, AppResult},
-    models::{Claims, Ticket, ThreadEntry, User},
+    models::{Claims, ThreadEntry, Ticket, User},
     notify,
     ticket_status::{transition, TransitionAction},
 };
@@ -71,56 +71,67 @@ pub async fn create(
     validate_ticket_type(input.ticket_type)?;
     if let Some(cat) = input.category {
         if cat.len() > 100 {
-            return Err(AppError::BadRequest("category must be at most 100 characters".into()));
+            return Err(AppError::BadRequest(
+                "category must be at most 100 characters".into(),
+            ));
         }
     }
     if input.title.is_empty() || input.title.len() > 200 {
-        return Err(AppError::BadRequest("title must be 1–200 characters".into()));
+        return Err(AppError::BadRequest(
+            "title must be 1–200 characters".into(),
+        ));
     }
     if input.description.is_empty() || input.description.len() > 10_000 {
         return Err(AppError::BadRequest(
             "description must be 1–10,000 characters".into(),
         ));
     }
-    if let Some(d) = input.due_date { validate_date_format(d)?; }
-    if let Some(d) = input.estimated_completion { validate_date_format(d)?; }
+    if let Some(d) = input.due_date {
+        validate_date_format(d)?;
+    }
+    if let Some(d) = input.estimated_completion {
+        validate_date_format(d)?;
+    }
     if input.recurring {
         match input.recurring_interval_days {
             Some(days) if (1..=365).contains(&days) => {}
-            Some(_) => return Err(AppError::BadRequest(
-                "recurring_interval_days must be between 1 and 365".into(),
-            )),
-            None => return Err(AppError::BadRequest(
-                "recurring_interval_days must be set when recurring is true".into(),
-            )),
+            Some(_) => {
+                return Err(AppError::BadRequest(
+                    "recurring_interval_days must be between 1 and 365".into(),
+                ))
+            }
+            None => {
+                return Err(AppError::BadRequest(
+                    "recurring_interval_days must be set when recurring is true".into(),
+                ))
+            }
         }
     }
 
     // Resolve client_id: desk may file on behalf of a client; everyone else
     // always files as themselves. Keep the fetched User to avoid a second
     // DB round-trip for the email notification below.
-    let (resolved_client_id, prefetched_user): (String, Option<User>) =
-        if claims.role == "desk" {
-            match input.client_id {
-                Some(cid) => {
-                    let client = db::users::find_by_id(pool, cid)
-                        .await?
-                        .ok_or_else(|| AppError::BadRequest("client not found".into()))?;
-                    if client.role != "client" {
-                        return Err(AppError::BadRequest("target user is not a client".into()));
-                    }
-                    if client.deleted_at.is_some() {
-                        return Err(AppError::BadRequest(
-                            "cannot file a ticket for a deleted client".into(),
-                        ));
-                    }
-                    (cid.to_owned(), Some(client))
+    let (resolved_client_id, prefetched_user): (String, Option<User>) = if claims.role == "desk" {
+        match input.client_id {
+            Some(cid) => {
+                let client = db::users::find_by_id(pool, cid)
+                    .await?
+                    .ok_or_else(|| AppError::BadRequest("client not found".into()))?;
+                if client.role != "client" {
+                    return Err(AppError::BadRequest("target user is not a client".into()));
                 }
-                None => (claims.sub.clone(), None),
+                if client.deleted_at.is_some() {
+                    return Err(AppError::BadRequest(
+                        "cannot file a ticket for a deleted client".into(),
+                    ));
+                }
+                (cid.to_owned(), Some(client))
             }
-        } else {
-            (claims.sub.clone(), None)
-        };
+            None => (claims.sub.clone(), None),
+        }
+    } else {
+        (claims.sub.clone(), None)
+    };
 
     let id = Uuid::new_v4().to_string();
     let ticket = db::tickets::create(
@@ -142,7 +153,11 @@ pub async fn create(
     )
     .await?;
 
-    notify::notify(&resolved_client_id, &ticket.id, "Your ticket has been created.");
+    notify::notify(
+        &resolved_client_id,
+        &ticket.id,
+        "Your ticket has been created.",
+    );
 
     // Fire-and-forget email — failure is non-fatal but logged.
     // Re-use the user we already fetched during desk-on-behalf-of-client
@@ -220,15 +235,25 @@ pub async fn update(
     ticket_id: &str,
     f: db::tickets::UpdateFields<'_>,
 ) -> AppResult<()> {
-    if let Some(p) = f.priority { validate_priority(p)?; }
-    if let Some(t) = f.ticket_type { validate_ticket_type(t)?; }
+    if let Some(p) = f.priority {
+        validate_priority(p)?;
+    }
+    if let Some(t) = f.ticket_type {
+        validate_ticket_type(t)?;
+    }
     if let Some(Some(cat)) = f.category {
         if cat.len() > 100 {
-            return Err(AppError::BadRequest("category must be at most 100 characters".into()));
+            return Err(AppError::BadRequest(
+                "category must be at most 100 characters".into(),
+            ));
         }
     }
-    if let Some(Some(d)) = f.due_date { validate_date_format(d)?; }
-    if let Some(Some(d)) = f.estimated_completion { validate_date_format(d)?; }
+    if let Some(Some(d)) = f.due_date {
+        validate_date_format(d)?;
+    }
+    if let Some(Some(d)) = f.estimated_completion {
+        validate_date_format(d)?;
+    }
     if let Some(Some(days)) = f.recurring_interval_days {
         if !(1..=365).contains(&days) {
             return Err(AppError::BadRequest(
@@ -247,7 +272,15 @@ pub async fn transition_ack(
     ticket_id: &str,
     mailer: Option<&SmtpMailer>,
 ) -> AppResult<()> {
-    apply_transition(pool, ticket_id, TransitionAction::Acknowledge, TicketEvent::Acknowledged, "Your ticket has been acknowledged.", mailer).await
+    apply_transition(
+        pool,
+        ticket_id,
+        TransitionAction::Acknowledge,
+        TicketEvent::Acknowledged,
+        "Your ticket has been acknowledged.",
+        mailer,
+    )
+    .await
 }
 
 pub async fn transition_pend(
@@ -255,7 +288,15 @@ pub async fn transition_pend(
     ticket_id: &str,
     mailer: Option<&SmtpMailer>,
 ) -> AppResult<()> {
-    apply_transition(pool, ticket_id, TransitionAction::Pend, TicketEvent::Pending, "Your ticket is awaiting your response.", mailer).await
+    apply_transition(
+        pool,
+        ticket_id,
+        TransitionAction::Pend,
+        TicketEvent::Pending,
+        "Your ticket is awaiting your response.",
+        mailer,
+    )
+    .await
 }
 
 pub async fn transition_close(
@@ -263,7 +304,15 @@ pub async fn transition_close(
     ticket_id: &str,
     mailer: Option<&SmtpMailer>,
 ) -> AppResult<()> {
-    apply_transition(pool, ticket_id, TransitionAction::Close, TicketEvent::Closed, "Your ticket has been closed.", mailer).await
+    apply_transition(
+        pool,
+        ticket_id,
+        TransitionAction::Close,
+        TicketEvent::Closed,
+        "Your ticket has been closed.",
+        mailer,
+    )
+    .await
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

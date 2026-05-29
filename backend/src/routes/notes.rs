@@ -8,10 +8,7 @@ use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use crate::{
-    crypto::EncryptionKey,
-    dto::InternalNoteResponse,
-    error::AppResult,
-    middleware::DeskUser,
+    crypto::EncryptionKey, dto::InternalNoteResponse, error::AppResult, middleware::DeskUser,
     services,
 };
 
@@ -27,7 +24,8 @@ pub async fn list(
     Path(ticket_id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
     let notes = services::notes::list_notes(&pool, &enc_key, &ticket_id).await?;
-    let dtos: Vec<InternalNoteResponse> = notes.into_iter().map(InternalNoteResponse::from).collect();
+    let dtos: Vec<InternalNoteResponse> =
+        notes.into_iter().map(InternalNoteResponse::from).collect();
     Ok(Json(dtos))
 }
 
@@ -38,13 +36,7 @@ pub async fn create(
     Path(ticket_id): Path<String>,
     Json(body): Json<CreateNoteRequest>,
 ) -> AppResult<impl IntoResponse> {
-    let note = services::notes::create_note(
-        &pool,
-        &enc_key,
-        &ticket_id,
-        &claims.sub,
-        body.body,
-    )
-    .await?;
+    let note =
+        services::notes::create_note(&pool, &enc_key, &ticket_id, &claims.sub, body.body).await?;
     Ok((StatusCode::CREATED, Json(InternalNoteResponse::from(note))))
 }

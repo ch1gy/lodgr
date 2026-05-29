@@ -11,7 +11,7 @@ use std::sync::Arc;
 use crate::{
     crypto::EncryptionKey,
     db,
-    dto::{PaginatedTickets, TicketResponse, TicketWithThreadResponse, ThreadEntryResponse},
+    dto::{PaginatedTickets, ThreadEntryResponse, TicketResponse, TicketWithThreadResponse},
     email::SmtpMailer,
     error::AppResult,
     middleware::{AuthUser, DeskUser},
@@ -25,8 +25,12 @@ pub struct PaginationQuery {
     #[serde(default = "default_limit")]
     pub limit: u32,
 }
-fn default_page() -> u32 { 1 }
-fn default_limit() -> u32 { 50 }
+fn default_page() -> u32 {
+    1
+}
+fn default_limit() -> u32 {
+    50
+}
 
 pub async fn list(
     State(pool): State<SqlitePool>,
@@ -63,8 +67,12 @@ pub struct CreateTicketRequest {
     pub client_id: Option<String>,
 }
 
-fn default_priority() -> String { "medium".into() }
-fn default_ticket_type() -> String { "standard".into() }
+fn default_priority() -> String {
+    "medium".into()
+}
+fn default_ticket_type() -> String {
+    "standard".into()
+}
 
 pub async fn create(
     State(pool): State<SqlitePool>,
@@ -102,7 +110,11 @@ pub async fn get(
     let result = services::tickets::get_with_thread(&pool, &id, &claims, &enc_key).await?;
     Ok(Json(TicketWithThreadResponse {
         ticket: TicketResponse::from(result.ticket),
-        thread: result.thread.into_iter().map(ThreadEntryResponse::from).collect(),
+        thread: result
+            .thread
+            .into_iter()
+            .map(ThreadEntryResponse::from)
+            .collect(),
     }))
 }
 
@@ -178,11 +190,26 @@ pub async fn delete(
     Path(id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
     let mut tx = pool.begin().await?;
-    sqlx::query("DELETE FROM thread_entries WHERE ticket_id = ?")   .bind(&id).execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM internal_notes WHERE ticket_id = ?")   .bind(&id).execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM notifications WHERE ticket_id = ?")    .bind(&id).execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM magic_links WHERE ticket_id = ?")      .bind(&id).execute(&mut *tx).await?;
-    let result = sqlx::query("DELETE FROM tickets WHERE id = ?")    .bind(&id).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM thread_entries WHERE ticket_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM internal_notes WHERE ticket_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM notifications WHERE ticket_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM magic_links WHERE ticket_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    let result = sqlx::query("DELETE FROM tickets WHERE id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
     // Check rows_affected inside the transaction so concurrent deletes return
     // 404 rather than both returning 204 for the same ticket.
     if result.rows_affected() == 0 {

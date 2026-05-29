@@ -3,32 +3,31 @@ use sqlx::SqlitePool;
 
 use crate::{error::AppResult, models::User};
 
-const USER_COLS: &str =
-    "id, name, email, password_hash, role, created_at, deleted_at,
+const USER_COLS: &str = "id, name, email, password_hash, role, created_at, deleted_at,
      failed_attempts, locked_until";
 
 pub async fn find_by_email(pool: &SqlitePool, email: &str) -> AppResult<Option<User>> {
-    Ok(sqlx::query_as::<_, User>(
-        &format!("SELECT {USER_COLS} FROM users WHERE email = ?"),
+    Ok(
+        sqlx::query_as::<_, User>(&format!("SELECT {USER_COLS} FROM users WHERE email = ?"))
+            .bind(email)
+            .fetch_optional(pool)
+            .await?,
     )
-    .bind(email)
-    .fetch_optional(pool)
-    .await?)
 }
 
 pub async fn find_by_id(pool: &SqlitePool, id: &str) -> AppResult<Option<User>> {
-    Ok(sqlx::query_as::<_, User>(
-        &format!("SELECT {USER_COLS} FROM users WHERE id = ?"),
+    Ok(
+        sqlx::query_as::<_, User>(&format!("SELECT {USER_COLS} FROM users WHERE id = ?"))
+            .bind(id)
+            .fetch_optional(pool)
+            .await?,
     )
-    .bind(id)
-    .fetch_optional(pool)
-    .await?)
 }
 
 pub async fn find_all_clients(pool: &SqlitePool) -> AppResult<Vec<User>> {
-    Ok(sqlx::query_as::<_, User>(
-        &format!("SELECT {USER_COLS} FROM users WHERE role = 'client' ORDER BY created_at DESC"),
-    )
+    Ok(sqlx::query_as::<_, User>(&format!(
+        "SELECT {USER_COLS} FROM users WHERE role = 'client' ORDER BY created_at DESC"
+    ))
     .fetch_all(pool)
     .await?)
 }
@@ -77,25 +76,21 @@ pub async fn increment_failed_attempts(
     new_attempts: i64,
     locked_until: Option<&str>,
 ) -> AppResult<()> {
-    sqlx::query(
-        "UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?",
-    )
-    .bind(new_attempts)
-    .bind(locked_until)
-    .bind(user_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?")
+        .bind(new_attempts)
+        .bind(locked_until)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
 /// Reset lockout state after a successful login.
 pub async fn reset_lockout(pool: &SqlitePool, user_id: &str) -> AppResult<()> {
-    sqlx::query(
-        "UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?",
-    )
-    .bind(user_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
@@ -115,13 +110,10 @@ pub async fn update_profile(
 }
 
 /// Returns users whose `deleted_at` is older than the given cutoff (RFC-3339).
-pub async fn find_expired_soft_deleted(
-    pool: &SqlitePool,
-    cutoff: &str,
-) -> AppResult<Vec<User>> {
-    Ok(sqlx::query_as::<_, User>(
-        &format!("SELECT {USER_COLS} FROM users WHERE deleted_at IS NOT NULL AND deleted_at < ?"),
-    )
+pub async fn find_expired_soft_deleted(pool: &SqlitePool, cutoff: &str) -> AppResult<Vec<User>> {
+    Ok(sqlx::query_as::<_, User>(&format!(
+        "SELECT {USER_COLS} FROM users WHERE deleted_at IS NOT NULL AND deleted_at < ?"
+    ))
     .bind(cutoff)
     .fetch_all(pool)
     .await?)

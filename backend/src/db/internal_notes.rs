@@ -11,10 +11,7 @@ pub struct NewNote<'a> {
     pub body_nonce: &'a str,
 }
 
-pub async fn list_for_ticket(
-    pool: &SqlitePool,
-    ticket_id: &str,
-) -> AppResult<Vec<InternalNote>> {
+pub async fn list_for_ticket(pool: &SqlitePool, ticket_id: &str) -> AppResult<Vec<InternalNote>> {
     Ok(sqlx::query_as::<_, InternalNote>(
         "SELECT id, ticket_id, author_id, body, body_nonce, created_at
          FROM internal_notes WHERE ticket_id = ? ORDER BY created_at ASC",

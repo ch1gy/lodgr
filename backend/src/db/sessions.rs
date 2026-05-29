@@ -58,10 +58,7 @@ pub async fn create_capped(
     Ok(())
 }
 
-pub async fn find_by_token_hash(
-    pool: &SqlitePool,
-    token_hash: &str,
-) -> AppResult<Option<Session>> {
+pub async fn find_by_token_hash(pool: &SqlitePool, token_hash: &str) -> AppResult<Option<Session>> {
     Ok(sqlx::query_as::<_, Session>(
         "SELECT id, user_id, token_hash, created_at, expires_at, revoked_at, replaced_by,
                 session_type, scoped_ticket_id
@@ -80,14 +77,12 @@ pub async fn revoke(
     replaced_by: Option<&str>,
 ) -> AppResult<()> {
     let revoked_at = Utc::now().to_rfc3339();
-    sqlx::query(
-        "UPDATE sessions SET revoked_at = ?, replaced_by = ? WHERE id = ?",
-    )
-    .bind(&revoked_at)
-    .bind(replaced_by)
-    .bind(session_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE sessions SET revoked_at = ?, replaced_by = ? WHERE id = ?")
+        .bind(&revoked_at)
+        .bind(replaced_by)
+        .bind(session_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 

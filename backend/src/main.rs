@@ -203,9 +203,11 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    let auth_limiter = IpRateLimiter::new(5, 10);
-    // PDF generation is CPU-intensive: 1 req/5 s per IP, burst of 3.
-    let report_limiter = ReportRateLimiter(IpRateLimiter::with_rate(0.2, 3));
+    let auth_limiter = IpRateLimiter::new(config.rate_limit_auth_rps, config.rate_limit_auth_burst);
+    let report_limiter = ReportRateLimiter(IpRateLimiter::with_rate(
+        config.rate_limit_report_rps,
+        config.rate_limit_report_burst,
+    ));
     let state = AppState {
         pool,
         config,
@@ -393,7 +395,7 @@ where
 async fn check_desk_lockout(pool: &SqlitePool) {
     if let Ok(Some(user)) = db::users::find_by_email(pool, "desk@local").await {
         if user.locked_until.is_some() {
-            if user.failed_attempts >= 9 {
+            if user.failed_attempts >= services::auth::PERMANENT_LOCKOUT_THRESHOLD {
                 tracing::error!(
                     failed_attempts = user.failed_attempts,
                     "SECURITY: desk@local is PERMANENTLY LOCKED. \

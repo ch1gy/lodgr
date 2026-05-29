@@ -43,7 +43,7 @@ pub async fn list(
     let offset = ((page.max(1) - 1) as i64) * limit;
 
     if claims.role == "desk" {
-        db::tickets::list_all_paginated(pool, false, limit, offset).await
+        db::tickets::list_all_paginated(pool, limit, offset).await
     } else if claims.is_scoped() {
         if let Some(tid) = &claims.ticket_scope {
             // Scoped sessions see exactly one ticket.

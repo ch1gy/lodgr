@@ -69,8 +69,14 @@ pub async fn export_client(
 
         for entry in raw_entries {
             let body = if let Some(nonce) = &entry.body_nonce {
-                crypto::decrypt(enc_key, nonce, &entry.body)
-                    .unwrap_or_else(|_| "[decryption failed]".to_owned())
+                crypto::decrypt(enc_key, nonce, &entry.body).unwrap_or_else(|_| {
+                    tracing::warn!(
+                        entry_id = %entry.id,
+                        ticket_id = %entry.ticket_id,
+                        "decryption failed during export — entry body replaced with placeholder"
+                    );
+                    "[decryption failed]".to_owned()
+                })
             } else {
                 entry.body.clone()
             };

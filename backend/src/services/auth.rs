@@ -17,6 +17,13 @@ use crate::{
     models::Claims,
 };
 
+/// Failed-attempt count at which an account is permanently locked.
+/// Must stay in sync with the `_ =>` arm of `compute_locked_until`.
+pub const PERMANENT_LOCKOUT_THRESHOLD: i64 = 9;
+
+/// Maximum number of concurrent refresh-token sessions per user.
+const MAX_SESSIONS_PER_USER: i64 = 10;
+
 // ── 100 most-common passwords — rejected regardless of length ─────────────────
 // Stored as a HashSet (O(1) lookup) initialised once via OnceLock.
 static COMMON_PASSWORDS: OnceLock<HashSet<&'static str>> = OnceLock::new();
@@ -185,7 +192,7 @@ pub async fn login(
                 .with_timezone(&Utc);
 
             if locked_until > Utc::now() {
-                let retry_after_secs = if user.failed_attempts >= 9 {
+                let retry_after_secs = if user.failed_attempts >= PERMANENT_LOCKOUT_THRESHOLD {
                     None // permanent
                 } else {
                     Some((locked_until - Utc::now()).num_seconds().max(0) as u64)
@@ -328,7 +335,7 @@ pub async fn refresh(
             token_hash: &new_hash,
             expires_at: &new_expires_at,
         },
-        10,
+        MAX_SESSIONS_PER_USER,
     )
     .await?;
 
@@ -419,7 +426,7 @@ async fn issue_tokens(
             token_hash: &token_hash,
             expires_at: &expires_at,
         },
-        10,
+        MAX_SESSIONS_PER_USER,
     )
     .await?;
 
@@ -471,9 +478,13 @@ pub fn validate_password_strength(password: &str) -> AppResult<()> {
 pub fn verify_password(password: &str, stored_hash: &str) -> AppResult<bool> {
     let parsed = PasswordHash::new(stored_hash)
         .map_err(|e| AppError::Internal(format!("parse hash: {e}")))?;
-    Ok(Argon2::default()
-        .verify_password(password.as_bytes(), &parsed)
-        .is_ok())
+    // Params are read from the PHC string embedded in stored_hash, so the
+    // explicit Argon2id algorithm and version are the only values that matter here.
+    Ok(
+        Argon2::new(Algorithm::Argon2id, Version::V0x13, Params::default())
+            .verify_password(password.as_bytes(), &parsed)
+            .is_ok(),
+    )
 }
 
 fn generate_access_token(config: &Config, user_id: &str, role: &str) -> AppResult<String> {

@@ -104,11 +104,16 @@ pub async fn delete_all_for_user(pool: &SqlitePool, user_id: &str) -> AppResult<
     Ok(result.rows_affected())
 }
 
-/// Remove sessions that are expired or whose rotation record is older than 7 days.
-/// Safe to run repeatedly; returns the number of rows deleted.
+/// Revoked sessions are retained for this many days so that replaying a rotated
+/// token still triggers theft detection. Must be ≥ REFRESH_TOKEN_TTL_SECS / 86400
+/// to guarantee the replayed token would still be in the table when presented.
+const REVOKED_SESSION_RETENTION_DAYS: i64 = 7;
+
+/// Remove sessions that are expired or whose rotation record is older than
+/// REVOKED_SESSION_RETENTION_DAYS. Safe to run repeatedly; returns rows deleted.
 pub async fn delete_expired_and_revoked(pool: &SqlitePool) -> AppResult<u64> {
     let now = Utc::now().to_rfc3339();
-    let cutoff = (Utc::now() - chrono::Duration::days(7)).to_rfc3339();
+    let cutoff = (Utc::now() - chrono::Duration::days(REVOKED_SESSION_RETENTION_DAYS)).to_rfc3339();
 
     let result = sqlx::query(
         "DELETE FROM sessions

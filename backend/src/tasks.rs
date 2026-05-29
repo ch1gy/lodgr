@@ -180,13 +180,6 @@ async fn cascade_hard_delete_user(pool: &SqlitePool, user_id: &str) -> crate::er
         .execute(&mut *tx)
         .await?;
     sqlx::query(
-        "DELETE FROM notifications WHERE ticket_id IN
-         (SELECT id FROM tickets WHERE client_id = ?)",
-    )
-    .bind(user_id)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query(
         "DELETE FROM thread_entries WHERE ticket_id IN
          (SELECT id FROM tickets WHERE client_id = ?)",
     )

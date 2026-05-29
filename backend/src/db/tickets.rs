@@ -32,25 +32,20 @@ pub struct UpdateFields<'a> {
     pub recurring_interval_days: Option<Option<i64>>,
 }
 
-/// Returns (page of tickets, total matching count).
+/// Returns (page of active tickets, total matching count). Soft-deleted tickets
+/// are excluded; the desk accesses them by ID via `find_by_id`.
 pub async fn list_all_paginated(
     pool: &SqlitePool,
-    include_deleted: bool,
     limit: i64,
     offset: i64,
 ) -> AppResult<(Vec<Ticket>, i64)> {
-    let where_clause = if include_deleted {
-        ""
-    } else {
-        "WHERE deleted_at IS NULL"
-    };
-
-    let total: (i64,) = sqlx::query_as(&format!("SELECT COUNT(*) FROM tickets {where_clause}"))
+    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM tickets WHERE deleted_at IS NULL")
         .fetch_one(pool)
         .await?;
 
     let tickets = sqlx::query_as::<_, Ticket>(&format!(
-        "SELECT {TICKET_COLS} FROM tickets {where_clause} ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        "SELECT {TICKET_COLS} FROM tickets WHERE deleted_at IS NULL
+         ORDER BY created_at DESC LIMIT ? OFFSET ?"
     ))
     .bind(limit)
     .bind(offset)
@@ -144,11 +139,16 @@ pub async fn create(pool: &SqlitePool, t: NewTicket<'_>) -> AppResult<Ticket> {
 /// The only place ticket status is written to the database.
 /// Callers must validate via `ticket_status::transition` first.
 pub async fn update_status(pool: &SqlitePool, id: &str, new_status: &str) -> AppResult<()> {
-    sqlx::query("UPDATE tickets SET status = ? WHERE id = ?")
+    let result = sqlx::query("UPDATE tickets SET status = ? WHERE id = ?")
         .bind(new_status)
         .bind(id)
         .execute(pool)
         .await?;
+    if result.rows_affected() == 0 {
+        return Err(crate::error::AppError::Internal(
+            "ticket vanished during status update".into(),
+        ));
+    }
     Ok(())
 }
 

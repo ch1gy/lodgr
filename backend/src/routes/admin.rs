@@ -170,7 +170,6 @@ pub async fn export_client(
 
 /// Serve an export file — desk only, never via ServeDir.
 pub async fn get_export_file(
-    State(_pool): State<SqlitePool>,
     _: DeskUser,
     Path((client_id, filename)): Path<(String, String)>,
 ) -> AppResult<impl IntoResponse> {

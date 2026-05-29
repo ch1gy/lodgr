@@ -26,7 +26,7 @@ pub async fn post_message(
     mailer: Option<&SmtpMailer>,
     input: PostMessageInput,
 ) -> AppResult<ThreadEntry> {
-    if input.body.is_empty() || input.body.len() > 10_000 {
+    if input.body.is_empty() || input.body.chars().count() > 10_000 {
         return Err(AppError::BadRequest(
             "message body must be 1–10,000 characters".into(),
         ));
@@ -68,11 +68,8 @@ pub async fn post_message(
 
     // Determine who to notify: the other party.
     let recipient_id = if input.sender_id == ticket.client_id {
-        // Client sent — notify a desk agent.
-        sqlx::query_as::<_, (String,)>("SELECT id FROM users WHERE role = 'desk' LIMIT 1")
-            .fetch_optional(pool)
-            .await?
-            .map(|(id,)| id)
+        // Client sent — notify the desk agent.
+        db::users::find_desk_user(pool).await?.map(|u| u.id)
     } else {
         Some(ticket.client_id.clone())
     };

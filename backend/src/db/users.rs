@@ -94,6 +94,14 @@ pub async fn reset_lockout(pool: &SqlitePool, user_id: &str) -> AppResult<()> {
     Ok(())
 }
 
+pub async fn find_desk_user(pool: &SqlitePool) -> AppResult<Option<User>> {
+    Ok(sqlx::query_as::<_, User>(&format!(
+        "SELECT {USER_COLS} FROM users WHERE role = 'desk' LIMIT 1"
+    ))
+    .fetch_optional(pool)
+    .await?)
+}
+
 pub async fn update_profile(
     pool: &SqlitePool,
     user_id: &str,

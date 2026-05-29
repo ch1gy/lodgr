@@ -198,10 +198,6 @@ pub async fn delete(
         .bind(&id)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("DELETE FROM notifications WHERE ticket_id = ?")
-        .bind(&id)
-        .execute(&mut *tx)
-        .await?;
     sqlx::query("DELETE FROM magic_links WHERE ticket_id = ?")
         .bind(&id)
         .execute(&mut *tx)

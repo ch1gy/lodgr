@@ -35,7 +35,7 @@ pub async fn create_note(
     author_id: &str,
     body: String,
 ) -> AppResult<InternalNote> {
-    if body.is_empty() || body.len() > 10_000 {
+    if body.is_empty() || body.chars().count() > 10_000 {
         return Err(AppError::BadRequest(
             "note body must be 1–10,000 characters".into(),
         ));

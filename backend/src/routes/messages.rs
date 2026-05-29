@@ -7,6 +7,7 @@ use axum::{
 use sqlx::SqlitePool;
 use std::{path::PathBuf, sync::Arc};
 use tokio::fs;
+use uuid::Uuid;
 
 use crate::{
     crypto::EncryptionKey,
@@ -18,7 +19,12 @@ use crate::{
     services::{self, messages::PostMessageInput},
 };
 
+/// Per-file size limit for attachment uploads.
+/// Keep in sync with `DefaultBodyLimit` in main.rs — the global limit must be
+/// at least this large or multipart parsing will reject the request first.
 const MAX_FILE_BYTES: usize = 10 * 1024 * 1024;
+
+const ALLOWED_EXT: &[&str] = &["pdf", "png", "jpg", "jpeg", "gif", "txt", "docx", "zip"];
 
 pub async fn post_message(
     State(pool): State<SqlitePool>,
@@ -79,8 +85,6 @@ pub async fn post_message(
                     .unwrap_or("upload.bin")
                     .to_owned();
 
-                const ALLOWED_EXT: &[&str] =
-                    &["pdf", "png", "jpg", "jpeg", "gif", "txt", "docx", "zip"];
                 let ext = std::path::Path::new(&safe_name)
                     .extension()
                     .and_then(|e| e.to_str())
@@ -117,13 +121,16 @@ pub async fn post_message(
                     return Err(AppError::BadRequest("invalid upload path".into()));
                 }
 
-                let dest = canonical_dir.join(&safe_name);
+                // Prefix with a short UUID segment to prevent overwriting an
+                // existing attachment with the same original filename.
+                let unique_name = format!("{}-{safe_name}", &Uuid::new_v4().to_string()[..8]);
+                let dest = canonical_dir.join(&unique_name);
                 fs::write(&dest, &data)
                     .await
                     .map_err(|e| AppError::Internal(format!("write upload: {e}")))?;
 
                 // Store a relative URL, not an absolute filesystem path.
-                attachment_path = Some(format!("/uploads/{safe_ticket_dir}/{safe_name}"));
+                attachment_path = Some(format!("/uploads/{safe_ticket_dir}/{unique_name}"));
             }
             _ => {}
         }

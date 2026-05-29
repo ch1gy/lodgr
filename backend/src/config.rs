@@ -19,6 +19,14 @@ pub struct Config {
     pub smtp_user: Option<String>,
     pub smtp_password: Option<Zeroizing<String>>,
     pub smtp_from: Option<String>,
+    /// Requests per second allowed per IP on auth endpoints (login, refresh, magic exchange).
+    pub rate_limit_auth_rps: u32,
+    /// Burst capacity for the auth rate limiter.
+    pub rate_limit_auth_burst: u32,
+    /// Requests per second allowed per IP on CPU-intensive report endpoints (fractional OK).
+    pub rate_limit_report_rps: f64,
+    /// Burst capacity for the report rate limiter.
+    pub rate_limit_report_burst: u32,
 }
 
 impl Config {
@@ -79,6 +87,23 @@ impl Config {
         let smtp_password = std::env::var("SMTP_PASSWORD").ok().map(Zeroizing::new);
         let smtp_from = std::env::var("SMTP_FROM").ok();
 
+        let rate_limit_auth_rps = std::env::var("RATE_LIMIT_AUTH_RPS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(5u32);
+        let rate_limit_auth_burst = std::env::var("RATE_LIMIT_AUTH_BURST")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10u32);
+        let rate_limit_report_rps = std::env::var("RATE_LIMIT_REPORT_RPS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.2f64);
+        let rate_limit_report_burst = std::env::var("RATE_LIMIT_REPORT_BURST")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(3u32);
+
         // Prevent magic links being generated over plain HTTP in production.
         if cookie_secure && base_url.starts_with("http://") {
             panic!(
@@ -104,6 +129,10 @@ impl Config {
             smtp_user,
             smtp_password,
             smtp_from,
+            rate_limit_auth_rps,
+            rate_limit_auth_burst,
+            rate_limit_report_rps,
+            rate_limit_report_burst,
         })
     }
 

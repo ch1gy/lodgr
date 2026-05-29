@@ -183,14 +183,6 @@ pub async fn hard_delete_client(
         .await?;
 
     sqlx::query(
-        "DELETE FROM notifications WHERE ticket_id IN
-         (SELECT id FROM tickets WHERE client_id = ?)",
-    )
-    .bind(client_id)
-    .execute(&mut *tx)
-    .await?;
-
-    sqlx::query(
         "DELETE FROM thread_entries WHERE ticket_id IN
          (SELECT id FROM tickets WHERE client_id = ?)",
     )

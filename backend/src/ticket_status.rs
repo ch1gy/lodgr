@@ -9,7 +9,7 @@ pub enum TicketStatus {
 }
 
 impl TicketStatus {
-    fn from_str(s: &str) -> AppResult<Self> {
+    fn parse(s: &str) -> AppResult<Self> {
         match s {
             "open" => Ok(Self::Open),
             "pending" => Ok(Self::Pending),
@@ -59,7 +59,7 @@ impl TransitionAction {
 ///
 /// pending → open is intentionally not allowed — use acknowledge, then close.
 pub fn transition(current: &str, action: TransitionAction) -> AppResult<TicketStatus> {
-    let from = TicketStatus::from_str(current)?;
+    let from = TicketStatus::parse(current)?;
     match (from, action) {
         (TicketStatus::Open, TransitionAction::Acknowledge) => Ok(TicketStatus::Acknowledged),
         (TicketStatus::Open, TransitionAction::Pend) => Ok(TicketStatus::Pending),

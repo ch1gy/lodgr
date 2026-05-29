@@ -4,6 +4,85 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — full backend audit fixes (H-1, M-1 through M-11, L-1 through L-7)
+
+### Backend — 20 findings from the full code audit
+
+#### H-1. `DELETE FROM notifications` removed from three sites (`routes/tickets.rs`, `services/admin.rs`, `tasks.rs`)
+Migration 011 dropped the `notifications` table, but `DELETE FROM notifications`
+SQL remained in three places. Every call to `DELETE /tickets/:id`, the hard-delete
+cascade in `services::admin`, and the background `cascade_hard_delete_user` in
+`tasks.rs` would return a 500 "no such table" error. All three statements removed.
+
+#### M-1. Ad-hoc SQL moved to `db::users::find_desk_user` (`db/users.rs`, `services/messages.rs`)
+`services/messages.rs` contained a raw `SELECT id FROM users WHERE role = 'desk' LIMIT 1`
+query, violating the layer discipline (SQL belongs in `db/`). Extracted to
+`db::users::find_desk_user() -> AppResult<Option<User>>` and updated the call site.
+
+#### M-2. Body length uses `chars().count()` not `.len()` (`services/messages.rs`, `services/notes.rs`)
+Message and note body limits checked byte count (`.len()`), inconsistent with
+password validation which uses `chars().count()`. Both changed to `chars().count()`
+so a 10,000-character limit means 10,000 visible characters regardless of encoding.
+
+#### M-3. Decryption failure during export now logs a warning (`services/export.rs`)
+Silent `unwrap_or_else(|_| "[decryption failed]")` replaced with a
+`tracing::warn!` call including `entry_id` and `ticket_id` before falling back
+to the placeholder. Operators now see which entries failed during an export.
+
+#### M-4. `PERMANENT_LOCKOUT_THRESHOLD: i64 = 9` replaces duplicate magic number (`services/auth.rs`, `main.rs`)
+The permanent-lockout threshold `9` appeared twice. Now a single `pub const
+PERMANENT_LOCKOUT_THRESHOLD` in `services/auth.rs`, referenced from both sites.
+
+#### M-5. `ALLOWED_EXT` moved to module level (`routes/messages.rs`)
+The file extension allowlist was declared as a `const` inside a `match` arm
+inside a `while` loop. Moved to module level for discoverability.
+
+#### M-6. Upload filename prefixed with UUID to prevent overwrite (`routes/messages.rs`)
+Two messages to the same ticket with the same filename would silently overwrite
+the first attachment. The saved filename is now `{8-char-uuid}-{original_name}`.
+The stored URL in the DB reflects the unique name.
+
+#### M-7. `REVOKED_SESSION_RETENTION_DAYS: i64 = 7` constant with documented rationale (`db/sessions.rs`)
+The 7-day window for retaining revoked sessions was a bare magic number with no
+comment. Named constant added, with a note that it must be ≥ `REFRESH_TOKEN_TTL_SECS / 86400`.
+
+#### M-8. `MAX_SESSIONS_PER_USER: i64 = 10` replaces duplicate literal (`services/auth.rs`)
+The per-user session cap `10` appeared in two `create_capped` call sites. Named constant.
+
+#### M-9. `include_deleted` parameter removed from `list_all_paginated` (`db/tickets.rs`, `services/tickets.rs`)
+The parameter was always passed as `false`; the `true` code path was dead. Removed
+from the function signature and the single call site. The WHERE clause is now
+unconditional. The desk can still access soft-deleted tickets individually by ID.
+
+#### M-10. Rate limiter parameters configurable via env (`config.rs`, `main.rs`, `.env.example`)
+Auth and report rate limiter values (RPS, burst) were hardcoded in `main.rs`.
+Added `RATE_LIMIT_AUTH_RPS`, `RATE_LIMIT_AUTH_BURST`, `RATE_LIMIT_REPORT_RPS`,
+`RATE_LIMIT_REPORT_BURST` to `Config` with the previous values as defaults.
+Documented in `.env.example`.
+
+#### M-11. `Argon2::default()` in `verify_password` replaced with explicit constructor (`services/auth.rs`)
+Consistent with every other argon2 call in the file. Uses
+`Argon2::new(Algorithm::Argon2id, Version::V0x13, Params::default())`.
+Params are still read from the PHC string; the explicit constructor just pins
+the algorithm and version the same way hashing does.
+
+#### L-1. `TicketStatus::from_str` renamed to `parse` (`ticket_status.rs`)
+The private method name shadowed the standard `std::str::FromStr` trait convention
+with a different signature. Renamed to `parse` to avoid the ambiguity.
+
+#### L-4. `update_status` checks `rows_affected()` (`db/tickets.rs`)
+Previously returned `Ok(())` silently if the ticket ID didn't exist. Now returns
+`AppError::Internal("ticket vanished during status update")` if no row was updated.
+
+#### L-6. `MAX_FILE_BYTES` comment cross-references `DefaultBodyLimit` (`routes/messages.rs`)
+Added a comment noting that the per-file limit must be ≤ the global body limit in
+`main.rs`, so a future change to one flags the need to update the other.
+
+#### L-7. Unused `State(_pool)` removed from `get_export_file` (`routes/admin.rs`)
+The handler extracted `SqlitePool` from state but never used it. Removed.
+
+---
+
 ## [Unreleased] — resolve clippy warnings
 
 #### Four clippy lints fixed (no logic changes)

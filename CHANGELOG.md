@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — resolve clippy warnings
+
+#### Four clippy lints fixed (no logic changes)
+
+- `crypto.rs:102` — `s.len() % 2 != 0` → `!s.len().is_multiple_of(2)`
+- `dto.rs:94` — `.last()` → `.next_back()` on the split iterator in `ExportResponse::from`
+- `routes/tickets.rs:40` — `pagination.limit.max(1).min(100)` → `pagination.limit.clamp(1, 100)`
+- `services/tickets.rs:42` — `limit.max(1).min(100)` → `limit.clamp(1, 100)`
+
+---
+
 ## [Unreleased] — L3 fix: mask recipient email in SMTP failure logs
 
 ### Backend (`backend/src/email.rs`)

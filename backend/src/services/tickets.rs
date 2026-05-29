@@ -39,7 +39,7 @@ pub async fn list(
     page: u32,
     limit: u32,
 ) -> AppResult<(Vec<Ticket>, i64)> {
-    let limit = (limit.max(1).min(100)) as i64;
+    let limit = limit.clamp(1, 100) as i64;
     let offset = ((page.max(1) - 1) as i64) * limit;
 
     if claims.role == "desk" {

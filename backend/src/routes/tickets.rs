@@ -37,7 +37,7 @@ pub async fn list(
     AuthUser(claims): AuthUser,
     Query(pagination): Query<PaginationQuery>,
 ) -> AppResult<impl IntoResponse> {
-    let limit = pagination.limit.max(1).min(100);
+    let limit = pagination.limit.clamp(1, 100);
     let page = pagination.page.max(1);
     let (tickets, total) = services::tickets::list(&pool, &claims, page, limit).await?;
     Ok(Json(PaginatedTickets {

@@ -91,7 +91,7 @@ impl From<ClientExport> for ExportResponse {
                 e.client_id,
                 e.file_path
                     .split(['/', '\\'])
-                    .last()
+                    .next_back()
                     .unwrap_or("export.json")
             ),
         }

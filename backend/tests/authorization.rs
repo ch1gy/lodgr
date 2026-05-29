@@ -2,11 +2,12 @@
 // principal to access data. The correct result is always rejection (404 or
 // Forbidden), never a successful read or a privilege escalation.
 //
-// These tests cover the inverted default-deny guards added across four sites:
-//   services::tickets::get_with_thread
-//   services::messages::post_message (service layer)
-//   services::tickets::create (client_id override attempt)
-//   unknown/unexpected role on every ownership-checked path
+// Role set is currently DB-constrained to ('desk', 'client') via the CHECK
+// constraint in migrations/001_init.sql, so the "unknown role" cases below
+// cannot be triggered with a validly-issued JWT today. They are regression
+// guards against future role additions — if a new role is ever added, these
+// tests will fail immediately, forcing an explicit authorization decision
+// rather than silent fail-open.
 
 mod common;
 
@@ -38,8 +39,10 @@ fn client(id: &str) -> Claims {
 fn desk(id: &str) -> Claims {
     claims_for(id, "desk")
 }
+/// Simulates a hypothetical future role. The DB currently rejects any role
+/// outside ('desk', 'client'), so this cannot appear in a real JWT today.
 fn unknown_role(id: &str) -> Claims {
-    claims_for(id, "superadmin") // a role that doesn't exist in the system
+    claims_for(id, "superadmin")
 }
 
 // ── Shared ticket-creation helper ─────────────────────────────────────────────
@@ -92,7 +95,7 @@ async fn client_cannot_read_another_clients_ticket() {
 }
 
 #[tokio::test]
-async fn unknown_role_cannot_read_ticket() {
+async fn future_role_addition_falls_through_to_ownership_check_on_read() {
     let (pool, _dir) = common::setup_test_db().await;
     let enc_key = common::test_enc_key();
     let (desk_id, _, _) = common::create_test_desk(&pool).await;
@@ -209,7 +212,7 @@ async fn client_cannot_post_message_to_another_clients_ticket() {
 }
 
 #[tokio::test]
-async fn unknown_role_cannot_post_message_to_another_clients_ticket() {
+async fn future_role_addition_falls_through_to_ownership_check_on_post_message() {
     let (pool, _dir) = common::setup_test_db().await;
     let enc_key = common::test_enc_key();
     let (desk_id, _, _) = common::create_test_desk(&pool).await;

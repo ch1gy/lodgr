@@ -4,9 +4,9 @@
 
 ## Current Status (2026-05-28)
 
-The backend is feature-complete for v1. Three full OWASP security passes have been
-completed and logged in CHANGELOG.md. The frontend is shipped. No actively broken
-features remain.
+The backend is feature-complete for v1. The backend has been reviewed against the
+OWASP Top 10 across three passes; findings and open items are logged in CHANGELOG.md
+and PLANNED.md. The frontend is shipped. No actively broken features remain.
 
 **What's still open (backend):**
 - Client password self-service — `PATCH /auth/password` is desk-only; frontend form exists
@@ -21,8 +21,9 @@ See [PLANNED.md](PLANNED.md) for full detail on each.
 
 ## Security Posture
 
-Three OWASP passes completed: Phase 1 (v1 fixes), Phase 2 (OWASP Top 10 2025 /
-ASVS v5.0 / API Security Top 10 2023), Phase 3 (remaining findings from Phase 2).
+Reviewed against the OWASP Top 10 across three passes: Phase 1 (v1 fixes), Phase 2
+(OWASP Top 10 2025 / ASVS v5.0 / API Security Top 10 2023), Phase 3 (remaining
+findings from Phase 2). Open findings are tracked in PLANNED.md.
 
 **What's strong**
 - AES-256-GCM with per-entry nonces on all message bodies and internal notes

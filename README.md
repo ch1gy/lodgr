@@ -4,7 +4,8 @@ A self-hosted support ticket system for a single desk agent managing a set of cl
 Editorial-style React frontend (Vite + TypeScript) backed by a Rust API (Axum + SQLite).
 
 Features JWT authentication, AES-256-GCM message encryption, structured audit logging,
-account lockout, and a full OWASP hardening pass.
+account lockout, and has been reviewed against the OWASP Top 10; open findings are
+tracked in PLANNED.md.
 
 ---
 

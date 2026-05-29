@@ -185,16 +185,7 @@ pub async fn get_attachment(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    if claims.role != "desk" {
-        // every non-desk role is ownership-checked; unknown roles are denied
-        if ticket.client_id != claims.sub {
-            return Err(AppError::NotFound);
-        }
-        if ticket.deleted_at.is_some() {
-            return Err(AppError::NotFound);
-        }
-    }
-    claims.check_ticket_access(&safe_ticket)?;
+    services::tickets::assert_ticket_access(&claims, &ticket)?;
 
     // Canonicalize to block any traversal that slips past the file_name guard.
     let uploads_root = fs::canonicalize("uploads")

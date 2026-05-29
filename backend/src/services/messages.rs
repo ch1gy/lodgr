@@ -44,6 +44,10 @@ pub async fn post_message(
         .await?
         .ok_or(AppError::NotFound)?;
 
+    // Ownership check: sender_role/sender_id come from PostMessageInput (strings),
+    // not from &Claims directly, and the error is Forbidden (not NotFound).
+    // Both differ from assert_ticket_access semantics, so this check is kept
+    // inline rather than routed through that helper.
     if input.sender_role != "desk" && ticket.client_id != input.sender_id {
         return Err(AppError::Forbidden);
     }

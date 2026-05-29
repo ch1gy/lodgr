@@ -191,6 +191,28 @@ pub async fn create(
     Ok(ticket)
 }
 
+/// Enforce ticket ownership for any non-desk principal.
+///
+/// Rules (desk always passes):
+///   • soft-deleted ticket → NotFound
+///   • ticket.client_id != claims.sub → NotFound
+///   • scoped session whose scope doesn't match ticket.id → Forbidden
+///
+/// Pure and synchronous — no I/O, no async. Both `get_with_thread` and
+/// `get_attachment` delegate to this so the logic lives in exactly one place.
+pub fn assert_ticket_access(claims: &Claims, ticket: &Ticket) -> AppResult<()> {
+    if claims.role != "desk" {
+        if ticket.deleted_at.is_some() {
+            return Err(AppError::NotFound);
+        }
+        if ticket.client_id != claims.sub {
+            return Err(AppError::NotFound);
+        }
+    }
+    claims.check_ticket_access(&ticket.id)?;
+    Ok(())
+}
+
 pub async fn get_with_thread(
     pool: &SqlitePool,
     ticket_id: &str,
@@ -201,18 +223,7 @@ pub async fn get_with_thread(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    if claims.role == "desk" {
-        // desk sees all tickets, including soft-deleted ones
-    } else {
-        // every non-desk role is ownership-checked by default; unknown roles are denied
-        if ticket.deleted_at.is_some() {
-            return Err(AppError::NotFound);
-        }
-        if ticket.client_id != claims.sub {
-            return Err(AppError::NotFound);
-        }
-        claims.check_ticket_access(ticket_id)?;
-    }
+    assert_ticket_access(claims, &ticket)?;
 
     let encrypted_thread = db::thread::list_for_ticket(pool, &ticket.id).await?;
 
@@ -379,5 +390,92 @@ fn validate_ticket_type(t: &str) -> AppResult<()> {
         _ => Err(AppError::BadRequest(
             "ticket_type must be one of: standard, maintenance, security_log".into(),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{Claims, Ticket};
+
+    fn stub_ticket(client_id: &str, deleted: bool) -> Ticket {
+        Ticket {
+            id: "ticket-1".into(),
+            title: "T".into(),
+            description: "D".into(),
+            status: "open".into(),
+            created_by: "creator".into(),
+            client_id: client_id.into(),
+            created_at: "2024-01-01T00:00:00Z".into(),
+            priority: "medium".into(),
+            category: None,
+            due_date: None,
+            estimated_completion: None,
+            ticket_type: "standard".into(),
+            recurring: 0,
+            recurring_interval_days: None,
+            last_recurred_at: None,
+            deleted_at: if deleted {
+                Some("2024-01-02T00:00:00Z".into())
+            } else {
+                None
+            },
+        }
+    }
+
+    fn claims(sub: &str, role: &str, session_type: &str, scope: Option<&str>) -> Claims {
+        Claims {
+            sub: sub.into(),
+            role: role.into(),
+            exp: 9_999_999_999,
+            session_type: session_type.into(),
+            ticket_scope: scope.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn desk_always_allowed() {
+        let t = stub_ticket("c1", false);
+        assert!(assert_ticket_access(&claims("desk-1", "desk", "full", None), &t).is_ok());
+    }
+
+    #[test]
+    fn desk_allowed_on_soft_deleted_ticket() {
+        let t = stub_ticket("c1", true);
+        assert!(assert_ticket_access(&claims("desk-1", "desk", "full", None), &t).is_ok());
+    }
+
+    #[test]
+    fn owner_client_allowed() {
+        let t = stub_ticket("c1", false);
+        assert!(assert_ticket_access(&claims("c1", "client", "full", None), &t).is_ok());
+    }
+
+    #[test]
+    fn wrong_sub_denied() {
+        let t = stub_ticket("c1", false);
+        let r = assert_ticket_access(&claims("c2", "client", "full", None), &t);
+        assert!(matches!(r, Err(AppError::NotFound)));
+    }
+
+    #[test]
+    fn deleted_ticket_denied_for_non_desk() {
+        let t = stub_ticket("c1", true);
+        let r = assert_ticket_access(&claims("c1", "client", "full", None), &t);
+        assert!(matches!(r, Err(AppError::NotFound)));
+    }
+
+    #[test]
+    fn scoped_session_wrong_scope_denied() {
+        let t = stub_ticket("c1", false);
+        let r = assert_ticket_access(&claims("c1", "client", "scoped", Some("ticket-other")), &t);
+        assert!(matches!(r, Err(AppError::Forbidden)));
+    }
+
+    #[test]
+    fn unknown_role_wrong_sub_denied() {
+        let t = stub_ticket("c1", false);
+        let r = assert_ticket_access(&claims("c2", "superadmin", "full", None), &t);
+        assert!(matches!(r, Err(AppError::NotFound)));
     }
 }

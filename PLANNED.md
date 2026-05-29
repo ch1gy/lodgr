@@ -175,6 +175,44 @@ enabling multi-desk in production:
 
 ---
 
+## `client_exports` FK schema fix (v1.x)
+
+`client_exports.client_id` has a `REFERENCES users(id)` FK but no `ON DELETE CASCADE`.
+The current code deletes `client_exports` rows explicitly in `cascade_delete_user_data`
+(services/admin.rs) before deleting the user row. This works, but it means every future
+addition of a child table requires updating the shared cascade function — the same
+structural gap that caused the FK bug that the test suite caught on day one.
+
+### The right fix
+
+Migrate `client_exports` to use `ON DELETE CASCADE` (or `ON DELETE SET NULL` if the
+audit-trail intent is to keep the row with a null client_id).
+
+### Why it isn't done yet
+
+SQLite does not support `ALTER TABLE … ADD CONSTRAINT` or `ALTER TABLE … DROP CONSTRAINT`.
+Changing a FK constraint requires recreating the table:
+
+```sql
+-- 1. Create replacement table with CASCADE
+CREATE TABLE client_exports_new (
+    id         TEXT PRIMARY KEY,
+    client_id  TEXT REFERENCES users(id) ON DELETE CASCADE,
+    file_path  TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+-- 2. Copy existing rows
+INSERT INTO client_exports_new SELECT * FROM client_exports;
+-- 3. Drop old table, rename
+DROP TABLE client_exports;
+ALTER TABLE client_exports_new RENAME TO client_exports;
+```
+
+This is low-risk for a small table with no external dependencies, but it is a
+destructive operation that needs explicit human review before running in production.
+
+---
+
 ## Magic link JWT revocation (v1.x) — M8
 
 ### The problem

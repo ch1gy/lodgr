@@ -176,50 +176,7 @@ pub async fn hard_delete_client(
 
     // Single transaction: cascade all child rows then delete the user.
     let mut tx = pool.begin().await?;
-
-    sqlx::query("DELETE FROM magic_links WHERE user_id = ?")
-        .bind(client_id)
-        .execute(&mut *tx)
-        .await?;
-
-    sqlx::query(
-        "DELETE FROM thread_entries WHERE ticket_id IN
-         (SELECT id FROM tickets WHERE client_id = ?)",
-    )
-    .bind(client_id)
-    .execute(&mut *tx)
-    .await?;
-
-    sqlx::query(
-        "DELETE FROM internal_notes WHERE ticket_id IN
-         (SELECT id FROM tickets WHERE client_id = ?)",
-    )
-    .bind(client_id)
-    .execute(&mut *tx)
-    .await?;
-
-    sqlx::query("DELETE FROM tickets WHERE client_id = ?")
-        .bind(client_id)
-        .execute(&mut *tx)
-        .await?;
-
-    sqlx::query("DELETE FROM sessions WHERE user_id = ?")
-        .bind(client_id)
-        .execute(&mut *tx)
-        .await?;
-
-    // client_exports has a FK on client_id — must be deleted before the user row.
-    // The export event is preserved in structured logs; the DB record is removed here.
-    sqlx::query("DELETE FROM client_exports WHERE client_id = ?")
-        .bind(client_id)
-        .execute(&mut *tx)
-        .await?;
-
-    sqlx::query("DELETE FROM users WHERE id = ?")
-        .bind(client_id)
-        .execute(&mut *tx)
-        .await?;
-
+    cascade_delete_user_data(&mut tx, client_id).await?;
     tx.commit().await?;
 
     // Remove per-ticket upload directories after the DB rows are gone.
@@ -319,6 +276,63 @@ pub async fn generate_magic_link(
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+/// Run the full child-row cascade for a user inside an *existing* transaction.
+///
+/// Deletes in FK-safe order:
+///   magic_links → thread_entries → internal_notes → tickets
+///   → sessions → client_exports → users
+///
+/// Callers own the transaction and must call `tx.commit()` after this returns.
+/// Called from both `hard_delete_client` (desk-initiated) and
+/// `cascade_hard_delete_user` (background 30-day expiry task).
+///
+/// # TODO
+/// `client_exports.client_id` has a FK to `users.id` that should be
+/// `ON DELETE CASCADE` at the schema level, which would make this DELETE
+/// unnecessary and remove an entire class of "forgot one call site" bug.
+/// SQLite requires a full table-recreation migration to alter FKs — see
+/// PLANNED.md for the tracked item.
+pub(crate) async fn cascade_delete_user_data(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    user_id: &str,
+) -> AppResult<()> {
+    sqlx::query("DELETE FROM magic_links WHERE user_id = ?")
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query(
+        "DELETE FROM thread_entries WHERE ticket_id IN
+         (SELECT id FROM tickets WHERE client_id = ?)",
+    )
+    .bind(user_id)
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query(
+        "DELETE FROM internal_notes WHERE ticket_id IN
+         (SELECT id FROM tickets WHERE client_id = ?)",
+    )
+    .bind(user_id)
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query("DELETE FROM tickets WHERE client_id = ?")
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query("DELETE FROM sessions WHERE user_id = ?")
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query("DELETE FROM client_exports WHERE client_id = ?")
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query("DELETE FROM users WHERE id = ?")
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
 
 /// Basic RFC-5321 email validation without external crates.
 /// Checks for a single '@', non-empty local part, and a valid domain.

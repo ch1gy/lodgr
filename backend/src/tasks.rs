@@ -175,40 +175,7 @@ pub async fn clean_old_exports() -> std::io::Result<u32> {
 
 async fn cascade_hard_delete_user(pool: &SqlitePool, user_id: &str) -> crate::error::AppResult<()> {
     let mut tx = pool.begin().await?;
-    sqlx::query("DELETE FROM magic_links WHERE user_id = ?")
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query(
-        "DELETE FROM thread_entries WHERE ticket_id IN
-         (SELECT id FROM tickets WHERE client_id = ?)",
-    )
-    .bind(user_id)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query(
-        "DELETE FROM internal_notes WHERE ticket_id IN
-         (SELECT id FROM tickets WHERE client_id = ?)",
-    )
-    .bind(user_id)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query("DELETE FROM sessions WHERE user_id = ?")
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("DELETE FROM client_exports WHERE client_id = ?")
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("DELETE FROM tickets WHERE client_id = ?")
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("DELETE FROM users WHERE id = ?")
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await?;
+    crate::services::admin::cascade_delete_user_data(&mut tx, user_id).await?;
     tx.commit().await?;
     Ok(())
 }

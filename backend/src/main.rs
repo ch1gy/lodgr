@@ -134,7 +134,10 @@ async fn main() -> anyhow::Result<()> {
     let connect_opts = SqliteConnectOptions::from_str(&config.database_url)?
         .create_if_missing(true)
         .journal_mode(SqliteJournalMode::Wal)
-        .foreign_keys(true);
+        .foreign_keys(true)
+        // Retry for up to 5 s when a concurrent write holds the lock.
+        // Without this, simultaneous writes return SQLITE_BUSY immediately.
+        .busy_timeout(std::time::Duration::from_millis(5_000));
     let pool = SqlitePoolOptions::new()
         .max_connections(10)
         .connect_with(connect_opts)

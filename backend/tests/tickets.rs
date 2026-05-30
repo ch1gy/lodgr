@@ -6,6 +6,7 @@ use backend::{
     models::Claims,
     services::{
         admin,
+        messages::{post_message, PostMessageInput},
         tickets::{self, CreateTicketInput},
     },
 };
@@ -371,4 +372,45 @@ async fn ticket_delete_cleans_up_upload_directory() {
         tokio::fs::metadata(&upload_dir).await.is_err(),
         "upload directory should be gone after delete"
     );
+}
+
+// ── post_message success path ─────────────────────────────────────────────────
+
+#[tokio::test]
+async fn client_post_message_is_stored_and_appears_in_thread() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+    let ticket = create_ticket_for_client(&pool, &desk_id, &client_id).await;
+
+    post_message(
+        &pool,
+        &enc_key,
+        None,
+        PostMessageInput {
+            ticket_id: ticket.id.clone(),
+            sender_id: client_id.clone(),
+            sender_role: "client".into(),
+            sender_session_type: "full".into(),
+            ticket_scope: None,
+            body: "Hello from the client.".into(),
+            attachment_path: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let with_thread =
+        tickets::get_with_thread(&pool, &ticket.id, &client_claims(&client_id), &enc_key)
+            .await
+            .unwrap();
+
+    assert_eq!(
+        with_thread.thread.len(),
+        1,
+        "thread must have exactly one entry"
+    );
+    assert_eq!(with_thread.thread[0].body, "Hello from the client.");
+    assert_eq!(with_thread.thread[0].sender_id, client_id);
 }

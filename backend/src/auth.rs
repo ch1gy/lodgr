@@ -14,8 +14,7 @@ use crate::{
     dto::{AccessTokenResponse, MeResponse},
     error::{AppError, AppResult},
     middleware::{
-        clear_refresh_cookie, set_refresh_cookie, AuthUser, DeskUser, FullSessionUser,
-        RefreshTokenCookie,
+        clear_refresh_cookie, set_refresh_cookie, AuthUser, FullSessionUser, RefreshTokenCookie,
     },
     services,
 };

@@ -284,7 +284,7 @@ pub async fn generate_magic_link(
 ///
 /// Deletes in FK-safe order:
 ///   magic_links → thread_entries → internal_notes → tickets
-///   → sessions → client_exports → users
+///   → sessions → jwt_revocations → client_exports → users
 ///
 /// Callers own the transaction and must call `tx.commit()` after this returns.
 /// Called from both `hard_delete_client` (desk-initiated) and
@@ -323,6 +323,11 @@ pub(crate) async fn cascade_delete_user_data(
         .execute(&mut **tx)
         .await?;
     sqlx::query("DELETE FROM sessions WHERE user_id = ?")
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+    // jwt_revocations has a FK to users — must be deleted before the user row.
+    sqlx::query("DELETE FROM jwt_revocations WHERE user_id = ?")
         .bind(user_id)
         .execute(&mut **tx)
         .await?;

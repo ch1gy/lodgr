@@ -3,6 +3,7 @@ mod common;
 use backend::{
     db,
     error::AppError,
+    models::Claims,
     services::auth::{self, validate_password_strength},
 };
 use std::net::IpAddr;
@@ -407,6 +408,58 @@ async fn client_can_change_their_own_password() {
             .await
             .is_ok(),
         "new password must work after client changes it"
+    );
+}
+
+// ── Scoped session cannot change password ────────────────────────────────────
+
+#[test]
+fn scoped_session_cannot_change_password() {
+    // The FullSessionUser extractor calls require_full_session(), which must
+    // return Forbidden for scoped magic-link tokens regardless of role.
+    let scoped = Claims {
+        sub: "some-client".into(),
+        role: "client".into(),
+        exp: 9_999_999_999,
+        session_type: "scoped".into(),
+        ticket_scope: Some("some-ticket".into()),
+        jti: Some("some-jti".into()),
+    };
+    assert!(
+        matches!(scoped.require_full_session(), Err(AppError::Forbidden)),
+        "scoped session must be rejected by require_full_session"
+    );
+}
+
+// ── Password change revokes outstanding magic-link JTIs ──────────────────────
+
+#[tokio::test]
+async fn change_password_revokes_outstanding_magic_jtis() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let config = common::test_config();
+    let (id, _, current_password) = common::create_test_client(&pool).await;
+
+    // Plant an active JTI simulating an outstanding magic-link session.
+    let expires_at = (chrono::Utc::now() + chrono::Duration::hours(24)).to_rfc3339();
+    db::jwt_revocations::create(&pool, "jti-before-pw-change", &id, &expires_at)
+        .await
+        .unwrap();
+    assert!(
+        db::jwt_revocations::is_active(&pool, "jti-before-pw-change")
+            .await
+            .unwrap(),
+        "JTI must be active before password change"
+    );
+
+    auth::change_password(&pool, &config, &id, &current_password, "BrandNewPass99!")
+        .await
+        .unwrap();
+
+    assert!(
+        !db::jwt_revocations::is_active(&pool, "jti-before-pw-change")
+            .await
+            .unwrap(),
+        "outstanding JTI must be revoked after password change"
     );
 }
 

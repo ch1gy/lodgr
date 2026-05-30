@@ -1,6 +1,14 @@
 mod common;
 
-use backend::{db, error::AppError, services::admin};
+use backend::{
+    db,
+    error::AppError,
+    services::{
+        admin,
+        messages::{post_message, PostMessageInput},
+        notes,
+    },
+};
 
 // ── Create client ─────────────────────────────────────────────────────────────
 
@@ -239,4 +247,143 @@ async fn export_includes_all_ticket_content() {
     tokio::fs::remove_dir_all(format!("exports/{client_id}"))
         .await
         .ok();
+}
+
+// ── Hard-delete orphan check ──────────────────────────────────────────────────
+
+#[tokio::test]
+async fn hard_delete_leaves_no_orphaned_rows_in_any_child_table() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (client_id, email, _) = common::create_test_client(&pool).await;
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+
+    // Build a full data graph: ticket + message + internal note + magic-link JTI.
+    let ticket_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO tickets
+         (id, title, description, status, created_by, client_id, created_at,
+          priority, ticket_type, recurring)
+         VALUES (?, 'Orphan test', 'desc', 'open', ?, ?, ?, 'medium', 'standard', 0)",
+    )
+    .bind(&ticket_id)
+    .bind(&desk_id)
+    .bind(&client_id)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    post_message(
+        &pool,
+        &enc_key,
+        None,
+        PostMessageInput {
+            ticket_id: ticket_id.clone(),
+            sender_id: client_id.clone(),
+            sender_role: "client".into(),
+            sender_session_type: "full".into(),
+            ticket_scope: None,
+            body: "Message".into(),
+            attachment_path: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    notes::create_note(
+        &pool,
+        &enc_key,
+        &ticket_id,
+        &desk_id,
+        "Internal note.".into(),
+    )
+    .await
+    .unwrap();
+
+    let expires_at = (chrono::Utc::now() + chrono::Duration::hours(24)).to_rfc3339();
+    db::jwt_revocations::create(&pool, "orphan-jti", &client_id, &expires_at)
+        .await
+        .unwrap();
+
+    // Export then hard-delete.
+    admin::do_export(&pool, &enc_key, &client_id).await.unwrap();
+    admin::hard_delete_client(
+        &pool,
+        &enc_key,
+        &client_id,
+        &format!("permanently delete {email}"),
+    )
+    .await
+    .unwrap();
+    tokio::fs::remove_dir_all(format!("exports/{client_id}"))
+        .await
+        .ok();
+
+    // Every child table must be clean — no orphaned rows anywhere.
+    macro_rules! count {
+        ($q:expr, $id:expr) => {{
+            sqlx::query_scalar::<_, i64>($q)
+                .bind($id)
+                .fetch_one(&pool)
+                .await
+                .unwrap()
+        }};
+    }
+
+    assert_eq!(
+        count!(
+            "SELECT COUNT(*) FROM tickets WHERE client_id = ?",
+            &client_id
+        ),
+        0,
+        "tickets"
+    );
+    assert_eq!(
+        count!(
+            "SELECT COUNT(*) FROM thread_entries WHERE ticket_id = ?",
+            &ticket_id
+        ),
+        0,
+        "thread_entries"
+    );
+    assert_eq!(
+        count!(
+            "SELECT COUNT(*) FROM internal_notes WHERE ticket_id = ?",
+            &ticket_id
+        ),
+        0,
+        "internal_notes"
+    );
+    assert_eq!(
+        count!(
+            "SELECT COUNT(*) FROM magic_links WHERE user_id = ?",
+            &client_id
+        ),
+        0,
+        "magic_links"
+    );
+    assert_eq!(
+        count!(
+            "SELECT COUNT(*) FROM sessions WHERE user_id = ?",
+            &client_id
+        ),
+        0,
+        "sessions"
+    );
+    assert_eq!(
+        count!(
+            "SELECT COUNT(*) FROM jwt_revocations WHERE user_id = ?",
+            &client_id
+        ),
+        0,
+        "jwt_revocations"
+    );
+    assert!(
+        db::users::find_by_id(&pool, &client_id)
+            .await
+            .unwrap()
+            .is_none(),
+        "user must not exist after hard delete"
+    );
 }

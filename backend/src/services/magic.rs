@@ -157,7 +157,14 @@ pub async fn exchange_magic_link(
         ("full".into(), None)
     };
 
-    let exp = (Utc::now() + chrono::Duration::seconds(config.scoped_token_ttl_secs)).timestamp();
+    // Compute exp and expires_at together so they refer to the same instant.
+    let exp_dt = Utc::now() + chrono::Duration::seconds(config.scoped_token_ttl_secs);
+    let exp = exp_dt.timestamp();
+    let expires_at = exp_dt.to_rfc3339();
+
+    // Every magic-link JWT carries a jti so it can be individually revoked.
+    // Password-login access tokens are stateless and never carry jti.
+    let jti = Uuid::new_v4().to_string();
 
     let claims = Claims {
         sub: user.id.clone(),
@@ -165,14 +172,21 @@ pub async fn exchange_magic_link(
         exp,
         session_type: session_type.clone(),
         ticket_scope: ticket_scope.clone(),
+        jti: Some(jti.clone()),
     };
 
     let jwt = encode(&Header::default(), &claims, &config.encoding_key())
         .map_err(|e| AppError::Internal(format!("jwt encode: {e}")))?;
 
+    // Insert the active jti row BEFORE returning the token.
+    // If this insert fails the client never receives the token, so there is
+    // no window in which a token without a DB record can be presented.
+    db::jwt_revocations::create(pool, &jti, &user.id, &expires_at).await?;
+
     tracing::info!(
         link_id = %link.id,
         user_id = %user.id,
+        jti = %jti,
         session_type = %session_type,
         ticket_scope = ?ticket_scope,
         "magic link exchanged successfully"

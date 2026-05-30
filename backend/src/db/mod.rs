@@ -1,5 +1,6 @@
 pub mod exports;
 pub mod internal_notes;
+pub mod jwt_revocations;
 pub mod magic_links;
 pub mod sessions;
 pub mod thread;

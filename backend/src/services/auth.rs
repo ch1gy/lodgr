@@ -496,6 +496,7 @@ fn generate_access_token(config: &Config, user_id: &str, role: &str) -> AppResul
         exp,
         session_type: "full".into(),
         ticket_scope: None,
+        jti: None, // password-login tokens are stateless — no revocation check
     };
     encode(&Header::default(), &claims, &config.encoding_key())
         .map_err(|e| AppError::Internal(format!("jwt encode: {e}")))

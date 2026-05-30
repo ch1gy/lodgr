@@ -430,6 +430,7 @@ mod tests {
             exp: 9_999_999_999,
             session_type: session_type.into(),
             ticket_scope: scope.map(str::to_owned),
+            jti: None,
         }
     }
 

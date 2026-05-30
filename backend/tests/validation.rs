@@ -89,6 +89,7 @@ fn desk_claims(user_id: &str) -> Claims {
         exp: (Utc::now() + chrono::Duration::hours(1)).timestamp(),
         session_type: "full".to_owned(),
         ticket_scope: None,
+        jti: None,
     }
 }
 

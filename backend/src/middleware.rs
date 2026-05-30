@@ -3,9 +3,11 @@ use axum::{
     http::request::Parts,
 };
 use jsonwebtoken::{decode, Algorithm, Validation};
+use sqlx::SqlitePool;
 
 use crate::{
     config::Config,
+    db,
     error::{AppError, AppResult},
     models::Claims,
 };
@@ -18,11 +20,13 @@ impl<S> FromRequestParts<S> for AuthUser
 where
     S: Send + Sync,
     Config: FromRef<S>,
+    SqlitePool: FromRef<S>,
 {
     type Rejection = AppError;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> AppResult<Self> {
         let config = Config::from_ref(state);
+        let pool = SqlitePool::from_ref(state);
 
         let token = parts
             .headers
@@ -36,6 +40,17 @@ where
         let data = decode::<Claims>(token, &config.decoding_key(), &v)
             .map_err(|_| AppError::Unauthorized)?;
 
+        // jti check — only for magic-link-issued tokens.
+        // Password-login access tokens have jti: None and skip this block entirely.
+        // Fail-closed: missing row, revoked row, or DB error all return 401.
+        if let Some(ref jti) = data.claims.jti {
+            match db::jwt_revocations::is_active(&pool, jti).await {
+                Ok(true) => {}                                   // active — allow
+                Ok(false) => return Err(AppError::Unauthorized), // revoked or missing row
+                Err(_) => return Err(AppError::Unauthorized),    // DB error — fail closed
+            }
+        }
+
         Ok(AuthUser(data.claims))
     }
 }
@@ -48,6 +63,7 @@ impl<S> FromRequestParts<S> for DeskUser
 where
     S: Send + Sync,
     Config: FromRef<S>,
+    SqlitePool: FromRef<S>,
 {
     type Rejection = AppError;
 

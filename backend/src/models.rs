@@ -97,8 +97,9 @@ fn default_session_type() -> String {
     "full".to_owned()
 }
 
-/// JWT payload. `session_type` and `ticket_scope` default gracefully so existing
-/// tokens (without those fields) decode as full-session tokens.
+/// JWT payload. Optional fields use `#[serde(default)]` so tokens issued
+/// before those fields existed (and password-login tokens that never carry them)
+/// still deserialise correctly.
 #[derive(Debug, Clone, serde::Serialize, Deserialize)]
 pub struct Claims {
     pub sub: String,
@@ -108,6 +109,11 @@ pub struct Claims {
     pub session_type: String,
     #[serde(default)]
     pub ticket_scope: Option<String>,
+    /// JWT ID — present only on magic-link-issued tokens.
+    /// Password-login access tokens are stateless and never carry this field.
+    /// When Some, the AuthUser extractor verifies the jti against jwt_revocations.
+    #[serde(default)]
+    pub jti: Option<String>,
 }
 
 impl Claims {

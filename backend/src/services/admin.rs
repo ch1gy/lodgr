@@ -56,6 +56,9 @@ pub async fn delete_client_sessions(pool: &SqlitePool, client_id: &str) -> AppRe
     if user.role != "client" {
         return Err(AppError::BadRequest("target user is not a client".into()));
     }
+    // Revoke any outstanding magic-link JTIs so those tokens are immediately
+    // invalid even before their exp. Must run alongside the refresh-token wipe.
+    db::jwt_revocations::revoke_for_user(pool, client_id).await?;
     db::sessions::delete_all_for_user(pool, client_id).await
 }
 

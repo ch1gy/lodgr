@@ -145,6 +145,11 @@ async fn main() -> anyhow::Result<()> {
     if let Ok(n) = db::sessions::delete_expired_and_revoked(&pool).await {
         tracing::info!("startup: removed {n} expired/revoked sessions");
     }
+    if let Ok(n) = db::jwt_revocations::delete_expired(&pool).await {
+        if n > 0 {
+            tracing::info!("startup: removed {n} expired jti rows");
+        }
+    }
 
     seed_desk_user(&pool).await?;
     services::auth::dummy_hash_warmup();
@@ -173,6 +178,11 @@ async fn main() -> anyhow::Result<()> {
                 iv.tick().await;
                 if let Ok(n) = db::sessions::delete_expired_and_revoked(&cleanup_pool).await {
                     tracing::info!("session cleanup: removed {n} rows");
+                }
+                if let Ok(n) = db::jwt_revocations::delete_expired(&cleanup_pool).await {
+                    if n > 0 {
+                        tracing::info!("jti cleanup: removed {n} expired rows");
+                    }
                 }
             }
         });

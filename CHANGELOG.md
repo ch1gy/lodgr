@@ -4,6 +4,59 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — M8: magic-link JWT revocation
+
+### Backend — closes the last open OWASP finding with a real breach angle
+
+Magic-link JWTs were non-revocable for up to 24h after exchange. A leaked link
+URL could not be invalidated before expiry. This implements the design from
+PLANNED.md §M8.
+
+#### Schema — `backend/migrations/012_jwt_revocations.sql`
+New table `jwt_revocations(jti PRIMARY KEY, user_id REFERENCES users(id),
+revoked_at TEXT, expires_at TEXT NOT NULL)` with indexes on `expires_at` and
+`user_id`.
+
+#### Claims (`backend/src/models.rs`)
+Added `#[serde(default)] pub jti: Option<String>`. `Option` + serde default
+means existing tokens and password-login tokens (which carry no jti) decode
+unchanged — no live-session breakage.
+
+#### Issuance (`backend/src/services/magic.rs::exchange_magic_link`)
+Generates a UUID jti, inserts an active row into `jwt_revocations` (with
+`expires_at` = JWT `exp`), and sets `jti: Some(...)` on the Claims before
+encoding. The DB insert happens before the token is returned — no window where
+a token without a DB record can be presented.
+
+#### Check (`backend/src/middleware.rs::AuthUser`)
+After JWT decode, if `claims.jti` is `Some(jti)`, the extractor looks up the
+row. Fail-closed contract: missing row → 401 (forged/out-of-sync), revoked_at
+non-NULL → 401, DB error → 401. Only a present, active, non-expired row
+allows the request. Password-login tokens (`jti: None`) skip this block
+entirely — zero DB overhead on the hot path.
+
+#### Revocation (`backend/src/services/admin.rs::delete_client_sessions`)
+Extended to call `db::jwt_revocations::revoke_for_user` alongside the existing
+refresh-token wipe. The existing frontend "Revoke sessions" button now kills
+both refresh tokens and outstanding magic-link JWTs with no UI change.
+
+#### Cleanup (`backend/src/main.rs`)
+`db::jwt_revocations::delete_expired` is called at startup and in the existing
+daily cleanup loop. Cleanup deletes only rows past `expires_at` — the JWT
+`exp` check in `AuthUser` already rejects expired tokens before the jti check
+fires, so cleanup cannot prematurely deny a live token.
+
+#### Tests — `backend/tests/magic_revocation.rs` (9 new tests)
+Active jti allowed; revoked jti denied; missing jti denied (fail-closed);
+access token with no jti allowed without lookup; `revoke_for_user` marks all
+active rows; `revoke_for_user` does not affect other users; cleanup removes
+expired rows only; full exchange flow creates jti row and preserves
+ticket_scope; `delete_client_sessions` revokes magic JTIs.
+
+Total: 94 tests, all passing.
+
+---
+
 ## [Unreleased] — default-deny authorization + negative authorization tests
 
 ### Backend — invert ownership checks to default-deny (`services/tickets.rs`, `routes/messages.rs`, `services/messages.rs`)

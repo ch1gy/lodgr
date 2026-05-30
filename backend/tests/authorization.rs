@@ -30,6 +30,7 @@ fn claims_for(user_id: &str, role: &str) -> Claims {
         exp: (Utc::now() + chrono::Duration::hours(1)).timestamp(),
         session_type: "full".to_owned(),
         ticket_scope: None,
+        jti: None,
     }
 }
 

@@ -2,7 +2,17 @@
 
 ---
 
-## Client password self-service (v1.x)
+## ~~Client password self-service~~ ✅ Done
+
+Shipped in commit `38c3311`. Clients can now change their own password via
+`PATCH /auth/password`. A new `FullSessionUser` extractor accepts desk or client
+full-sessions and rejects scoped magic-link tokens. On success, all existing sessions
+and outstanding magic-link JTIs are revoked. The `SettingsPage` password form was
+already built; the placeholder was removed and the form now renders for all roles.
+
+---
+
+## ~~Client password self-service (v1.x) — original plan~~
 
 Clients currently cannot change their own password. `PATCH /auth/password` is
 desk-only (enforced by the `DeskUser` extractor). The Settings page already shows
@@ -341,6 +351,6 @@ From the Phase 2 OWASP review — findings not yet fixed:
 |---|----------|---------|
 | M4 | MEDIUM | Attachment download loads full file into memory; no download rate limit |
 | M7 | MEDIUM | No CORS middleware — needed for non-same-origin deploys |
-| M8 | MEDIUM | Magic-link JWTs non-revocable — **see detailed plan above** |
+| ~~M8~~ | ~~MEDIUM~~ | ~~Magic-link JWTs non-revocable~~ ✅ Done — `jwt_revocations` table, jti claim, fail-closed AuthUser check, `f3e0cb1` |
 | ~~H5~~ | ~~HIGH~~ | ~~No CI pipeline; `cargo audit` not automated~~ ✅ Done — `.github/workflows/ci.yml` |
 | ~~L3~~ | ~~LOW~~ | ~~Email addresses in SMTP failure logs~~ ✅ Done — masked to `a***@example.com` |

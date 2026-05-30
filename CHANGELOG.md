@@ -4,6 +4,54 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — extended test suite + cascade bug fix
+
+### Bug fix — `cascade_delete_user_data` missing `jwt_revocations` delete
+`jwt_revocations` has a `REFERENCES users(id)` FK. Hard-deleting a client who
+had exchanged a magic link since M8 shipped would fail with an FK constraint
+violation. Added `DELETE FROM jwt_revocations WHERE user_id = ?` to the cascade
+in `services/admin.rs`. Caught by the new orphan-check test.
+
+### Tests (7 new across 4 files)
+
+**`tests/auth.rs`**
+- `scoped_session_cannot_change_password` — `require_full_session()` returns
+  Forbidden for scoped magic-link Claims; verifies the `FullSessionUser` gate
+- `change_password_revokes_outstanding_magic_jtis` — after a password change,
+  any active JTI for that user is revoked (M8 + self-service interaction)
+
+**`tests/tickets.rs`**
+- `client_post_message_is_stored_and_appears_in_thread` — `post_message` success
+  path; the most-used write operation had no success-case test
+
+**`tests/admin.rs`**
+- `hard_delete_leaves_no_orphaned_rows_in_any_child_table` — builds a full graph
+  (ticket + message + note + JTI), hard-deletes, asserts all child tables clean;
+  this test would have caught the `jwt_revocations` cascade bug above
+
+**`tests/notes.rs`** (new file)
+- `desk_can_create_note_and_list_it_back` — `create_note` + `list_notes` round-trip
+- `note_body_is_encrypted_at_rest` — raw DB column must be hex ciphertext, not plaintext
+
+---
+
+## [Unreleased] — client password self-service
+
+### Backend (`backend/src/middleware.rs`, `backend/src/auth.rs`, `backend/src/services/auth.rs`)
+New `FullSessionUser` extractor accepts desk or client full-sessions and rejects
+scoped magic-link tokens. `PATCH /auth/password` now uses `FullSessionUser` instead
+of `DeskUser`. On success, `change_password` also calls
+`db::jwt_revocations::revoke_for_user` so any outstanding magic-link JTIs are
+revoked alongside the refresh-token wipe.
+
+### Frontend (`frontend/src/pages/SettingsPage.tsx`)
+Removed the `isDesk` guard on the password section. The `PasswordSection` form
+was already fully built; the client placeholder is replaced with the same form
+desk users see. No API changes needed — it wires to `PATCH /auth/password`
+which now accepts client tokens.
+
+---
+
 ## [Unreleased] — M8: magic-link JWT revocation
 
 ### Backend — closes the last open OWASP finding with a real breach angle

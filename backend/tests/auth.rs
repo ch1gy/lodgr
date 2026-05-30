@@ -502,6 +502,27 @@ async fn logout_writes_logout_event() {
     assert_eq!(events[1].event_type, "login_ok");
 }
 
+#[tokio::test]
+async fn auth_event_failure_does_not_block_login() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let config = common::test_config();
+    let (_, email, password) = common::create_test_client(&pool).await;
+
+    // Simulate a DB failure by dropping the auth_events table.
+    // The login must still succeed — event writes are non-fatal.
+    sqlx::query("DROP TABLE auth_events")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let result = auth::login(&pool, &config, &email, &password, peer_ip()).await;
+    assert!(
+        result.is_ok(),
+        "login must succeed even when auth_events write fails, got: {:?}",
+        result
+    );
+}
+
 // ── validate_password_strength (unit, no DB needed) ──────────────────────────
 // These are already covered in validation.rs; kept here as a quick smoke-check
 // alongside the auth service tests.

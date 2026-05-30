@@ -295,3 +295,27 @@ async fn delete_client_sessions_revokes_magic_jtis() {
         "jti must be revoked after delete_client_sessions"
     );
 }
+
+// ── magic_ok auth event ───────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn exchange_magic_link_writes_magic_ok_auth_event() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let config = common::test_config();
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+
+    let out = magic::create_magic_link(&pool, &config, None, &client_id, "full", None)
+        .await
+        .unwrap();
+    let token = out.url.split("token=").nth(1).unwrap().to_owned();
+
+    magic::exchange_magic_link(&pool, &config, &token)
+        .await
+        .unwrap();
+
+    let events = backend::db::auth_events::list_recent_for_user(&pool, &client_id, 10)
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 1, "one event must be written on exchange");
+    assert_eq!(events[0].event_type, "magic_ok");
+}

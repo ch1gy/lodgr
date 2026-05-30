@@ -305,6 +305,10 @@ async fn hard_delete_leaves_no_orphaned_rows_in_any_child_table() {
     db::jwt_revocations::create(&pool, "orphan-jti", &client_id, &expires_at)
         .await
         .unwrap();
+    // Plant an auth event so the cascade assertion is meaningful.
+    backend::db::auth_events::create(&pool, &client_id, "login_ok")
+        .await
+        .unwrap();
 
     // Export then hard-delete.
     admin::do_export(&pool, &enc_key, &client_id).await.unwrap();
@@ -378,6 +382,14 @@ async fn hard_delete_leaves_no_orphaned_rows_in_any_child_table() {
         ),
         0,
         "jwt_revocations"
+    );
+    assert_eq!(
+        count!(
+            "SELECT COUNT(*) FROM auth_events WHERE user_id = ?",
+            &client_id
+        ),
+        0,
+        "auth_events"
     );
     assert!(
         db::users::find_by_id(&pool, &client_id)

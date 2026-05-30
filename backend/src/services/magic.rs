@@ -183,6 +183,10 @@ pub async fn exchange_magic_link(
     // no window in which a token without a DB record can be presented.
     db::jwt_revocations::create(pool, &jti, &user.id, &expires_at).await?;
 
+    if let Err(e) = db::auth_events::create(pool, &user.id, "magic_ok").await {
+        tracing::warn!(user_id = %user.id, %e, "failed to write magic_ok auth event");
+    }
+
     tracing::info!(
         link_id = %link.id,
         user_id = %user.id,

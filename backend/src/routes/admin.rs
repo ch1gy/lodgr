@@ -22,7 +22,10 @@ use crate::{
     config::Config,
     crypto::EncryptionKey,
     db,
-    dto::{ClientResponse, DeleteSessionsResponse, ExportResponse, MagicLinkResponse},
+    dto::{
+        AuthEventResponse, ClientResponse, DeleteSessionsResponse, ExportResponse,
+        MagicLinkResponse,
+    },
     email::SmtpMailer,
     error::{AppError, AppResult},
     middleware::DeskUser,
@@ -242,4 +245,22 @@ pub async fn create_full_magic_link(
         StatusCode::CREATED,
         Json(MagicLinkResponse { url: out.url }),
     ))
+}
+
+/// GET /admin/clients/:id/auth-events — recent login/logout events for a client.
+/// Returns the 50 most recent events, newest first. Desk only.
+pub async fn get_auth_events(
+    State(pool): State<SqlitePool>,
+    _: DeskUser,
+    Path(client_id): Path<String>,
+) -> AppResult<impl IntoResponse> {
+    let user = db::users::find_by_id(&pool, &client_id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if user.role != "client" {
+        return Err(AppError::BadRequest("target user is not a client".into()));
+    }
+    let events = db::auth_events::list_recent_for_user(&pool, &client_id, 50).await?;
+    let dtos: Vec<AuthEventResponse> = events.into_iter().map(AuthEventResponse::from).collect();
+    Ok(Json(dtos))
 }

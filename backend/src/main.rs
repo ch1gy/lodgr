@@ -273,6 +273,10 @@ async fn main() -> anyhow::Result<()> {
             post(routes::admin::create_full_magic_link),
         )
         .route(
+            "/admin/clients/:id/auth-events",
+            get(routes::admin::get_auth_events),
+        )
+        .route(
             "/admin/exports/:client_id/:filename",
             get(routes::admin::get_export_file),
         )

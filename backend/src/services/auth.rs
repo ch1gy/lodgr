@@ -224,6 +224,9 @@ pub async fn login(
             db::users::reset_lockout(pool, &u.id).await?;
             let output = issue_tokens(pool, config, &u.id, &u.role).await?;
             tracing::info!(user_id = %u.id, role = %u.role, ip = %peer_ip, "successful login");
+            if let Err(e) = db::auth_events::create(pool, &u.id, "login_ok").await {
+                tracing::warn!(user_id = %u.id, %e, "failed to write login_ok auth event");
+            }
             Ok(output)
         }
         (Some(u), true) => {
@@ -353,6 +356,9 @@ pub async fn logout(pool: &SqlitePool, raw_token: &str) -> AppResult<()> {
     let token_hash = hash_token(raw_token);
     if let Some(session) = db::sessions::find_by_token_hash(pool, &token_hash).await? {
         db::sessions::delete(pool, &session.id).await?;
+        if let Err(e) = db::auth_events::create(pool, &session.user_id, "logout").await {
+            tracing::warn!(user_id = %session.user_id, %e, "failed to write logout auth event");
+        }
     }
     Ok(())
 }

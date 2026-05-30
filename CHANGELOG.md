@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — auth_events: per-client login activity
+
+### Backend — `GET /admin/clients/:id/auth-events` (desk only)
+
+Adds a queryable record of login and logout events per client. No IP addresses
+stored — the 30-day rotating log files already serve security monitoring; this
+table answers "when did this client last log in?" and "is the account being used?"
+
+**New migration** `013_auth_events.sql`: table `auth_events(id, user_id FK,
+event_type, created_at)` with indexes on `user_id` and `created_at`.
+
+**Events written** (non-fatal — failures are logged, never block the operation):
+- `login_ok` in `services/auth.rs::login` on successful password login
+- `magic_ok` in `services/magic.rs::exchange_magic_link` on successful magic link exchange
+- `logout` in `services/auth.rs::logout` when a session is explicitly ended
+
+**Route** `GET /admin/clients/:id/auth-events` — desk only, returns the 50 most
+recent events for that client, newest first. Response: `[{ id, event_type, created_at }]`.
+
+**Cascade**: `auth_events` rows are deleted with the user in
+`cascade_delete_user_data` (added alongside the existing `jwt_revocations` delete).
+
+**Tests** (2 new in `tests/auth.rs`):
+- `successful_login_writes_login_ok_event`
+- `logout_writes_logout_event`
+
+---
+
 ## [Unreleased] — extended test suite + cascade bug fix
 
 ### Bug fix — `cascade_delete_user_data` missing `jwt_revocations` delete

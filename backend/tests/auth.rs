@@ -463,6 +463,45 @@ async fn change_password_revokes_outstanding_magic_jtis() {
     );
 }
 
+// ── auth_events — login and logout events are recorded ───────────────────────
+
+#[tokio::test]
+async fn successful_login_writes_login_ok_event() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let config = common::test_config();
+    let (id, email, password) = common::create_test_client(&pool).await;
+
+    auth::login(&pool, &config, &email, &password, peer_ip())
+        .await
+        .unwrap();
+
+    let events = backend::db::auth_events::list_recent_for_user(&pool, &id, 10)
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].event_type, "login_ok");
+}
+
+#[tokio::test]
+async fn logout_writes_logout_event() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let config = common::test_config();
+    let (id, email, password) = common::create_test_client(&pool).await;
+
+    let output = auth::login(&pool, &config, &email, &password, peer_ip())
+        .await
+        .unwrap();
+    auth::logout(&pool, &output.refresh_token).await.unwrap();
+
+    let events = backend::db::auth_events::list_recent_for_user(&pool, &id, 10)
+        .await
+        .unwrap();
+    // login_ok + logout, newest first
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].event_type, "logout");
+    assert_eq!(events[1].event_type, "login_ok");
+}
+
 // ── validate_password_strength (unit, no DB needed) ──────────────────────────
 // These are already covered in validation.rs; kept here as a quick smoke-check
 // alongside the auth service tests.

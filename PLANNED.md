@@ -84,23 +84,11 @@ Only create the auto-ticket on the **first** permanent lockout — check if a re
 `security_log` ticket already exists for this client before creating, to prevent a
 brute-force attacker flooding the queue.
 
-**2. Login event audit table** (medium, lower priority)
+**2. ~~Login event audit table~~ ✅ Done** (`013_auth_events.sql`, commit `feat: auth_events`)
 
-Currently login events are in the tracing log files (structured JSON lines) but
-not queryable from the app. An `auth_events` table would let the frontend show
-a client's recent login history.
-
-```sql
-CREATE TABLE auth_events (
-    id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL,
-    event_type  TEXT NOT NULL,  -- 'login_ok' | 'login_fail' | 'lockout' | 'magic_ok' | 'logout'
-    ip_address  TEXT,
-    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-);
-```
-
-Route: `GET /admin/clients/:id/auth-events` — desk only.
+`auth_events(id, user_id, event_type, created_at)` — no IP address column (IP
+monitoring is handled by 30-day rotating log files). Events written: `login_ok`,
+`magic_ok`, `logout`. Route: `GET /admin/clients/:id/auth-events` — desk only.
 
 ### What's needed (frontend)
 

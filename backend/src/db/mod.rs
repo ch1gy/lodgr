@@ -1,3 +1,4 @@
+pub mod auth_events;
 pub mod exports;
 pub mod internal_notes;
 pub mod jwt_revocations;

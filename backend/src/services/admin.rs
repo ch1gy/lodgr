@@ -326,8 +326,12 @@ pub(crate) async fn cascade_delete_user_data(
         .bind(user_id)
         .execute(&mut **tx)
         .await?;
-    // jwt_revocations has a FK to users — must be deleted before the user row.
+    // jwt_revocations and auth_events both FK to users — delete before the user row.
     sqlx::query("DELETE FROM jwt_revocations WHERE user_id = ?")
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query("DELETE FROM auth_events WHERE user_id = ?")
         .bind(user_id)
         .execute(&mut **tx)
         .await?;

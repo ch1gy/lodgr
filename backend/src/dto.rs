@@ -1,7 +1,7 @@
 /// All API-facing response types. DB models must NEVER derive Serialize.
 use serde::Serialize;
 
-use crate::models::{ClientExport, InternalNote, ThreadEntry, Ticket, User};
+use crate::models::{AuthEvent, ClientExport, InternalNote, ThreadEntry, Ticket, User};
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -17,6 +17,25 @@ pub struct MagicLinkResponse {
     /// Full URL the client can open — copyable for any delivery channel
     /// (email, WhatsApp, SMS, etc.).
     pub url: String,
+}
+
+// ── Auth events ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct AuthEventResponse {
+    pub id: String,
+    pub event_type: String,
+    pub created_at: String,
+}
+
+impl From<AuthEvent> for AuthEventResponse {
+    fn from(e: AuthEvent) -> Self {
+        AuthEventResponse {
+            id: e.id,
+            event_type: e.event_type,
+            created_at: e.created_at,
+        }
+    }
 }
 
 // ── Auth / Me ─────────────────────────────────────────────────────────────────

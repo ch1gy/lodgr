@@ -141,3 +141,11 @@ impl Claims {
         }
     }
 }
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct AuthEvent {
+    pub id: String,
+    pub user_id: String,
+    pub event_type: String,
+    pub created_at: String,
+}

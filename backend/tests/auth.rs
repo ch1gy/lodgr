@@ -377,6 +377,39 @@ async fn change_password_rejects_common_password() {
     );
 }
 
+// ── Client password self-service ─────────────────────────────────────────────
+
+#[tokio::test]
+async fn client_can_change_their_own_password() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let config = common::test_config();
+    // Clients use create_test_client, not create_test_desk.
+    let (id, email, old_password) = common::create_test_client(&pool).await;
+    let new_password = "ClientNewPass99!";
+
+    let result = auth::change_password(&pool, &config, &id, &old_password, new_password).await;
+    assert!(
+        result.is_ok(),
+        "client password change must succeed, got: {:?}",
+        result
+    );
+
+    // Old password must now be rejected.
+    let old_attempt = auth::login(&pool, &config, &email, &old_password, peer_ip()).await;
+    assert!(
+        matches!(old_attempt, Err(AppError::Unauthorized)),
+        "old password must be rejected after client changes it"
+    );
+
+    // New password must be accepted.
+    assert!(
+        auth::login(&pool, &config, &email, new_password, peer_ip())
+            .await
+            .is_ok(),
+        "new password must work after client changes it"
+    );
+}
+
 // ── validate_password_strength (unit, no DB needed) ──────────────────────────
 // These are already covered in validation.rs; kept here as a quick smoke-check
 // alongside the auth service tests.

@@ -28,7 +28,7 @@ const NAV_ITEMS: Array<{ key: NavItem; label: string; sub: string }> = [
 ];
 
 export function SettingsPage() {
-  const { user, profile, isDesk } = useAuth();
+  const { user, profile } = useAuth();
   const [section, setSection] = useState<NavItem>('password');
 
   return (
@@ -58,9 +58,7 @@ export function SettingsPage() {
         {/* ── Body ────────────────────────────────────────────────── */}
         <div className="lg-set__body">
           {section === 'password' && (
-            isDesk
-              ? <PasswordSection userEmail={profile?.email ?? user?.email} />
-              : <PlaceholderSection title="Password" note="Client self-serve password change is coming in a future update. Use the magic link your desk sends you to sign in." />
+            <PasswordSection userEmail={profile?.email ?? user?.email} />
           )}
           {section === 'profile' && (
             <PlaceholderSection title="Profile" note="Profile editing is coming soon. Contact the desk to update your name or email." />

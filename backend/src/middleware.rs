@@ -55,6 +55,27 @@ where
     }
 }
 
+/// Accepts any full session (role "desk" or "client") but rejects scoped
+/// magic-link tokens. Used for endpoints both roles can reach but that must
+/// not be accessible from a ticket-only scoped session (e.g. password change).
+pub struct FullSessionUser(pub Claims);
+
+#[axum::async_trait]
+impl<S> FromRequestParts<S> for FullSessionUser
+where
+    S: Send + Sync,
+    Config: FromRef<S>,
+    SqlitePool: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let AuthUser(claims) = AuthUser::from_request_parts(parts, state).await?;
+        claims.require_full_session()?;
+        Ok(FullSessionUser(claims))
+    }
+}
+
 /// Like `AuthUser` but additionally enforces `role == "desk"`.
 pub struct DeskUser(pub Claims);
 

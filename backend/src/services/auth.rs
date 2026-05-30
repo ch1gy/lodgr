@@ -357,9 +357,9 @@ pub async fn logout(pool: &SqlitePool, raw_token: &str) -> AppResult<()> {
     Ok(())
 }
 
-/// Change password for the authenticated desk user.
+/// Change password for any fully-authenticated user (desk or client).
 /// Verifies current password, validates and hashes the new one, revokes all
-/// existing sessions, and issues fresh tokens so the caller stays logged in.
+/// existing sessions and outstanding magic-link JTIs, and issues fresh tokens.
 pub async fn change_password(
     pool: &SqlitePool,
     config: &Config,
@@ -381,10 +381,12 @@ pub async fn change_password(
     let new_hash = hash_password(new_password)?;
     db::users::update_password_hash(pool, user_id, &new_hash).await?;
 
-    // Invalidate all existing sessions; issue_tokens creates a fresh one.
+    // Invalidate all existing sessions and any outstanding magic-link JTIs.
+    // issue_tokens creates one fresh session for the caller.
     db::sessions::delete_all_for_user(pool, user_id).await?;
+    db::jwt_revocations::revoke_for_user(pool, user_id).await?;
 
-    tracing::info!(user_id = %user_id, "password changed — all previous sessions revoked");
+    tracing::info!(user_id = %user_id, "password changed — all sessions and magic-link JTIs revoked");
 
     issue_tokens(pool, config, user_id, &user.role).await
 }

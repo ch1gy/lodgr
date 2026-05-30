@@ -14,7 +14,8 @@ use crate::{
     dto::{AccessTokenResponse, MeResponse},
     error::{AppError, AppResult},
     middleware::{
-        clear_refresh_cookie, set_refresh_cookie, AuthUser, DeskUser, RefreshTokenCookie,
+        clear_refresh_cookie, set_refresh_cookie, AuthUser, DeskUser, FullSessionUser,
+        RefreshTokenCookie,
     },
     services,
 };
@@ -79,13 +80,14 @@ pub struct ChangePasswordRequest {
     pub new_password: String,
 }
 
-/// PATCH /auth/password — desk full-session only.
-/// Verifies the current password, applies strength rules to the new one,
-/// invalidates all existing sessions, and returns fresh tokens.
+/// PATCH /auth/password — any full session (desk or client).
+/// Scoped magic-link sessions are rejected. Verifies the current password,
+/// applies strength rules to the new one, invalidates all existing sessions
+/// (including any outstanding magic-link JTIs), and returns fresh tokens.
 pub async fn change_password(
     State(pool): State<SqlitePool>,
     State(config): State<Config>,
-    DeskUser(claims): DeskUser,
+    FullSessionUser(claims): FullSessionUser,
     Json(body): Json<ChangePasswordRequest>,
 ) -> AppResult<Response> {
     let output = services::auth::change_password(

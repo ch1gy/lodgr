@@ -76,7 +76,7 @@ impl Config {
         let magic_link_ttl_secs = std::env::var("MAGIC_LINK_TTL_SECS")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(3_600); // 1 h
+            .unwrap_or(86_400); // 24 h — long enough for async email delivery
 
         let smtp_host = std::env::var("SMTP_HOST").ok();
         let smtp_port = std::env::var("SMTP_PORT")

@@ -91,7 +91,7 @@ export function MagicLinkModal({ url, scope, ticketId, onClose, onRegenerate }: 
             {scope === 'full'
               ? <>Full session<span className="sep">/</span></>
               : null}
-            Single use<span className="sep">/</span>Link expires in 1h
+            Single use<span className="sep">/</span>Link expires in 24h
           </div>
 
           {/* Copy URL box */}
@@ -122,7 +122,7 @@ export function MagicLinkModal({ url, scope, ticketId, onClose, onRegenerate }: 
 
         {/* ── Footer ──────────────────────────────────────────────── */}
         <div className="lg-mdl__foot">
-          <span className="meta">Single-use · link expires 1h from generation · session lasts 24h</span>
+          <span className="meta">Single-use · link expires 24h from generation · session lasts 24h</span>
           <div className="lg-mdl__btns">
             {onRegenerate && (
               <button

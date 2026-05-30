@@ -7,36 +7,47 @@
 // We trigger a browser download by creating an <a> with an object URL.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Masthead } from '../components/Masthead';
 import { BottomTabBar } from '../components/BottomTabBar';
 import { admin } from '../api/admin';
 import { api } from '../api/client';
+import { downloadBlob } from '../utils/format';
 import type { Client } from '../api/types';
 import '../styles/v2.css';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
-const NOW = new Date();
-const THIS_YEAR  = NOW.getFullYear();
-const THIS_MONTH = NOW.getMonth(); // 0-indexed
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a   = document.createElement('a');
-  a.href     = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export function ReportsPage() {
+  // Compute now inside the component so the date is accurate at render time,
+  // not frozen at module-load (which would be wrong over midnight on Dec 31).
+  const now = new Date();
+  const THIS_YEAR  = now.getFullYear();
+  const THIS_MONTH = now.getMonth(); // 0-indexed
+
+  // Default to the previous completed month.
+  const defaultMonth = THIS_MONTH === 0 ? 11 : THIS_MONTH - 1;
+  const defaultYear  = THIS_MONTH === 0 ? THIS_YEAR - 1 : THIS_YEAR;
+
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [clientSearch, setClientSearch]     = useState('');
-  const [year, setYear]                     = useState(THIS_YEAR);
-  const [month, setMonth]                   = useState(THIS_MONTH === 0 ? 11 : THIS_MONTH - 1); // prev month
+  const [year, setYear]                     = useState(defaultYear);
+  const [month, setMonth]                   = useState(defaultMonth);
+
+  // Close the client picker dropdown when clicking outside.
+  const pickerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!clientSearch || selectedClient) return;
+    function handleOutside(e: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setClientSearch('');
+      }
+    }
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [clientSearch, selectedClient]);
 
   const clientsQ = useQuery({
     queryKey: ['clients'],
@@ -122,7 +133,7 @@ export function ReportsPage() {
           <div className="lg-rp__form">
 
             {/* Client picker */}
-            <div className="lg-f">
+            <div ref={pickerRef} className="lg-f">
               <div className="lg-f__lbl"><span>Client</span><span className="req">Required</span></div>
               <input
                 className="lg-f__inp"

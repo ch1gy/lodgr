@@ -17,7 +17,7 @@
 //                  shows the "Regenerate" button.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import QRCode from 'react-qr-code';
 import '../styles/v2.css';
 
@@ -32,6 +32,12 @@ interface Props {
 export function MagicLinkModal({ url, scope, ticketId, onClose, onRegenerate }: Props) {
   const [copied, setCopied]       = useState(false);
   const [regen, setRegen]         = useState(false);
+
+  useEffect(() => {
+    const handle = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handle);
+    return () => document.removeEventListener('keydown', handle);
+  }, [onClose]);
 
   async function handleCopy() {
     try {
@@ -85,7 +91,7 @@ export function MagicLinkModal({ url, scope, ticketId, onClose, onRegenerate }: 
             {scope === 'full'
               ? <>Full session<span className="sep">/</span></>
               : null}
-            Single use<span className="sep">/</span>Expires in 24h
+            Single use<span className="sep">/</span>Link expires in 1h
           </div>
 
           {/* Copy URL box */}
@@ -116,7 +122,7 @@ export function MagicLinkModal({ url, scope, ticketId, onClose, onRegenerate }: 
 
         {/* ── Footer ──────────────────────────────────────────────── */}
         <div className="lg-mdl__foot">
-          <span className="meta">Single-use · one-time token · expires 24h from generation</span>
+          <span className="meta">Single-use · link expires 1h from generation · session lasts 24h</span>
           <div className="lg-mdl__btns">
             {onRegenerate && (
               <button

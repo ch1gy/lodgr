@@ -32,15 +32,15 @@ function issueLabel(now = new Date()): string {
 }
 
 export function Masthead({ active = 'tickets' }: Props) {
-  const { user, isDesk, logout } = useAuth();
+  const { user, profile, isDesk, logout } = useAuth();
   const { theme, toggle } = useTheme();
 
-  // Initials for the avatar. Magic-link sessions have no email — show "—".
-  const email = user?.email ?? '';
+  // Use server-side profile for email — JWT does not carry the email field.
+  const email = profile?.email ?? '';
+  const displayName = profile?.name ?? email;
   const initials =
-    email
-      .split('@')[0]
-      .split(/[.\-_+]/)
+    (profile?.name ?? email)
+      .split(/[\s@.\-_+]/)
       .map((s) => s[0]?.toUpperCase())
       .filter(Boolean)
       .slice(0, 2)
@@ -51,7 +51,7 @@ export function Masthead({ active = 'tickets' }: Props) {
       <div className="lg-mast-left">
         <span className="lg-mast-issue">{issueLabel()}</span>
         <span className="lg-mast-issue">
-          {isDesk ? 'Desk' : 'Client'} · <b>{email || 'signed in'}</b>
+          {isDesk ? 'Desk' : 'Client'} · <b>{displayName || 'signed in'}</b>
         </span>
       </div>
 
@@ -103,7 +103,7 @@ export function Masthead({ active = 'tickets' }: Props) {
         </button>
         <div className="lg-mast-user" title={email || undefined}>
           <span className="av">{initials}</span>
-          <span className="nm">{email || '—'}</span>
+          <span className="nm">{displayName || '—'}</span>
         </div>
       </div>
     </header>

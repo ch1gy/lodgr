@@ -1,5 +1,17 @@
 import type { TicketType } from '../api/types';
 
+// ── File download helper ──────────────────────────────────────────────────
+
+/** Trigger a browser download from a Blob. */
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── Time formatters ────────────────────────────────────────────────────────
 
 /** Human "x time ago" for a UTC ISO-8601 timestamp. */

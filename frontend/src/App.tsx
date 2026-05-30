@@ -19,6 +19,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './auth/AuthContext';
 import { ThemeProvider } from './theme/ThemeContext';
@@ -51,6 +52,7 @@ const queryClient = new QueryClient({
 
 export function App() {
   return (
+    <ErrorBoundary>
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
@@ -112,5 +114,6 @@ export function App() {
         </ThemeProvider>
       </QueryClientProvider>
     </BrowserRouter>
+    </ErrorBoundary>
   );
 }

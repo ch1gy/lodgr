@@ -9,13 +9,14 @@
 // validates the target is an active client-role user.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tickets as ticketsApi } from '../api/tickets';
 import { admin } from '../api/admin';
 import type { Client, TicketPriority, TicketType } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
+
 import '../styles/v2.css';
 
 interface Props {
@@ -33,7 +34,15 @@ const TYPE_LABEL: Record<TicketType, string> = {
 export function CreateTicketModal({ onClose }: Props) {
   const nav = useNavigate();
   const qc  = useQueryClient();
-  const { user, isDesk } = useAuth();
+  const { user, profile, isDesk } = useAuth();
+
+  // Close on Escape.
+  const stableClose = useCallback(onClose, [onClose]);
+  useEffect(() => {
+    const handle = (e: KeyboardEvent) => { if (e.key === 'Escape') stableClose(); };
+    document.addEventListener('keydown', handle);
+    return () => document.removeEventListener('keydown', handle);
+  }, [stableClose]);
 
   const [title, setTitle]             = useState('');
   const [description, setDescription] = useState('');
@@ -108,7 +117,7 @@ export function CreateTicketModal({ onClose }: Props) {
   }
 
   const now = new Date();
-  const filedAs = user?.email ?? 'you';
+  const filedAs = profile?.name ?? profile?.email ?? user?.email ?? 'you';
   const filedDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
   return (

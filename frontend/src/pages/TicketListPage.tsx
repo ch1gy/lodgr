@@ -55,8 +55,9 @@ function clientInitials(id: string): string {
 export function TicketListPage() {
   const { isDesk } = useAuth();
   const [filter, setFilter]       = useState<Filter>('all');
+  const [search, setSearch]       = useState('');
   const [createOpen, setCreateOpen] = useState(false);
-  const [page] = useState(1);
+  const [page, setPage]           = useState(1);
   const LIMIT = 50;
 
   const query = useQuery({
@@ -86,11 +87,21 @@ export function TicketListPage() {
     [all]
   );
 
-  // ── Client-side filter ───────────────────────────────────────────────
-  const visible = useMemo(
-    () => (filter === 'all' ? all : all.filter((t) => t.status === filter)),
-    [all, filter]
-  );
+  // ── Client-side filter + search ─────────────────────────────────────
+  const visible = useMemo(() => {
+    let list = filter === 'all' ? all : all.filter((t) => t.status === filter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((t) =>
+        t.title.toLowerCase().includes(q) ||
+        t.id.toLowerCase().includes(q) ||
+        (t.category ?? '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [all, filter, search]);
+
+  const totalPages = Math.ceil((query.data?.total ?? 0) / LIMIT);
 
   // ── Headline copy — desk vs client ───────────────────────────────────
   const headline = isDesk ? 'The desk' : 'Your tickets';
@@ -129,7 +140,7 @@ export function TicketListPage() {
                 key={f}
                 type="button"
                 className={'lg-list__filt-tab' + (filter === f ? ' is-active' : '')}
-                onClick={() => setFilter(f)}
+                onClick={() => { setFilter(f); setPage(1); }}
               >
                 {f === 'all' ? 'All' : f[0].toUpperCase() + f.slice(1)}{' '}
                 <b>{f === 'all' ? counts.all : counts[f]}</b>
@@ -137,9 +148,38 @@ export function TicketListPage() {
             ))}
           </div>
           <div className="lg-list__filt-spacer" />
-          <span className="lg-list__filt-search">/ search the desk</span>
+          <input
+            className="lg-list__filt-search"
+            type="search"
+            placeholder="/ search tickets"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            aria-label="Search tickets"
+            style={{ background: 'none', border: 'none', borderBottom: '1px dashed var(--rule)', outline: 'none', fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.12em', color: 'var(--mid)', padding: '4px 0', width: 160 }}
+          />
           {query.isFetching && !query.isLoading && (
             <span className="lg-list__filt-meta">syncing…</span>
+          )}
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.10em' }}>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mid)', fontSize: 12 }}
+              >
+                ←
+              </button>
+              <span style={{ color: 'var(--mid)' }}>{page}/{totalPages}</span>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mid)', fontSize: 12 }}
+              >
+                →
+              </button>
+            </div>
           )}
           <button
             type="button"

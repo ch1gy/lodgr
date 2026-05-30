@@ -28,7 +28,7 @@ const NAV_ITEMS: Array<{ key: NavItem; label: string; sub: string }> = [
 ];
 
 export function SettingsPage() {
-  const { user, isDesk } = useAuth();
+  const { user, profile, isDesk } = useAuth();
   const [section, setSection] = useState<NavItem>('password');
 
   return (
@@ -59,7 +59,7 @@ export function SettingsPage() {
         <div className="lg-set__body">
           {section === 'password' && (
             isDesk
-              ? <PasswordSection userEmail={user?.email} />
+              ? <PasswordSection userEmail={profile?.email ?? user?.email} />
               : <PlaceholderSection title="Password" note="Client self-serve password change is coming in a future update. Use the magic link your desk sends you to sign in." />
           )}
           {section === 'profile' && (
@@ -85,6 +85,8 @@ function PasswordSection({ userEmail }: { userEmail?: string }) {
   const [newPw, setNewPw]       = useState('');
   const [confirm, setConfirm]   = useState('');
   const [done, setDone]         = useState(false);
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew]         = useState(false);
 
   const changeM = useMutation({
     mutationFn: () => authApi.changePassword(current, newPw),
@@ -125,36 +127,58 @@ function PasswordSection({ userEmail }: { userEmail?: string }) {
 
           <div className="lg-f">
             <div className="lg-f__lbl"><span>Current password</span><span className="req">Required</span></div>
-            <input
-              className="lg-f__inp mono"
-              type="password"
-              placeholder="Your current password"
-              value={current}
-              onChange={(e) => setCurrent(e.target.value)}
-              autoComplete="current-password"
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                className="lg-f__inp mono"
+                type={showCurrent ? 'text' : 'password'}
+                placeholder="Your current password"
+                value={current}
+                onChange={(e) => setCurrent(e.target.value)}
+                autoComplete="current-password"
+                style={{ paddingRight: 48 }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowCurrent((v) => !v)}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', color: 'var(--mid)', textTransform: 'uppercase' }}
+                aria-label={showCurrent ? 'Hide password' : 'Show password'}
+              >
+                {showCurrent ? 'hide' : 'show'}
+              </button>
+            </div>
             <span className="lg-f__hint">We re-prompt before every password change</span>
           </div>
 
           <div className="lg-f">
             <div className="lg-f__lbl"><span>New password</span><span className="req">Required · 8–128 chars</span></div>
-            <input
-              className="lg-f__inp mono"
-              type="text"
-              placeholder="Paste from the generator →"
-              value={newPw}
-              onChange={(e) => setNewPw(e.target.value)}
-              autoComplete="new-password"
-              maxLength={128}
-            />
-            <span className="lg-f__hint">Plain text — never logged, hashed server-side</span>
+            <div style={{ position: 'relative' }}>
+              <input
+                className="lg-f__inp mono"
+                type={showNew ? 'text' : 'password'}
+                placeholder="Paste from the generator →"
+                value={newPw}
+                onChange={(e) => setNewPw(e.target.value)}
+                autoComplete="new-password"
+                maxLength={128}
+                style={{ paddingRight: 48 }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowNew((v) => !v)}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', color: 'var(--mid)', textTransform: 'uppercase' }}
+                aria-label={showNew ? 'Hide password' : 'Show password'}
+              >
+                {showNew ? 'hide' : 'show'}
+              </button>
+            </div>
+            <span className="lg-f__hint">Hashed server-side · never logged</span>
           </div>
 
           <div className="lg-f">
             <div className="lg-f__lbl"><span>Confirm new password</span></div>
             <input
               className="lg-f__inp mono"
-              type="text"
+              type={showNew ? 'text' : 'password'}
               placeholder="Repeat the new password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
@@ -199,21 +223,36 @@ function PasswordSection({ userEmail }: { userEmail?: string }) {
 // ── Danger section ────────────────────────────────────────────────────────────
 function DangerSection() {
   const { logout } = useAuth();
+  const [confirming, setConfirming] = useState(false);
   return (
     <>
-      <div className="lg-set__sec-eye">— Sign out everywhere</div>
-      <h2 className="lg-set__h2">Sign out <em>everywhere.</em></h2>
+      <div className="lg-set__sec-eye">— Sign out</div>
+      <h2 className="lg-set__h2">Sign out <em>of this device.</em></h2>
       <div className="lg-set__dek">
-        Revoke every active session on every device. You'll be signed out here too
-        and taken to the login screen.
+        Revokes the refresh token for this browser session. You will be taken to the
+        login screen. Other active sessions on other devices are not affected.
       </div>
-      <button
-        type="button"
-        className="lg-bt lg-bt--danger"
-        onClick={() => { if (confirm('Revoke all sessions and sign out everywhere?')) void logout(); }}
-      >
-        Sign out everywhere ✕
-      </button>
+      {confirming ? (
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
+          <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--mid)' }}>
+            Sign out of this device?
+          </span>
+          <button type="button" className="lg-bt lg-bt--danger" onClick={() => void logout()}>
+            Yes, sign out ✕
+          </button>
+          <button type="button" className="lg-bt lg-bt--text" onClick={() => setConfirming(false)}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="lg-bt lg-bt--danger"
+          onClick={() => setConfirming(true)}
+        >
+          Sign out ✕
+        </button>
+      )}
     </>
   );
 }

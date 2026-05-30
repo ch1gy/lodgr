@@ -18,7 +18,10 @@ import { Masthead } from '../components/Masthead';
 import { BottomTabBar } from '../components/BottomTabBar';
 import { PasswordGenerator } from '../components/PasswordGenerator';
 import { MagicLinkModal } from '../components/MagicLinkModal';
+import { ConfirmModal } from '../components/ConfirmModal';
+import type { ConfirmOptions } from '../components/ConfirmModal';
 import { admin } from '../api/admin';
+import { downloadBlob } from '../utils/format';
 import type { Client } from '../api/types';
 import '../styles/v2.css';
 
@@ -36,22 +39,16 @@ function clientInitials(name: string): string {
   return parts.slice(0, 2).map((w) => w[0] ?? '').join('').toUpperCase() || '??';
 }
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a   = document.createElement('a');
-  a.href     = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 // ── Per-row ───────────────────────────────────────────────────────────────────
 interface RowProps {
   client: Client;
   onAction: (action: string, id: string) => void;
+  /** Disable all action buttons while a mutation is in flight. */
+  disabled?: boolean;
 }
 
-function ClientRow({ client, onAction }: RowProps) {
+function ClientRow({ client, onAction, disabled = false }: RowProps) {
   const status     = clientStatus(client);
   const isArchived = status === 'archived';
   const isLocked   = status === 'locked';
@@ -91,33 +88,33 @@ function ClientRow({ client, onAction }: RowProps) {
       <div className="acts">
         {isArchived ? (
           <>
-            <button type="button" className="a" onClick={() => onAction('restore', client.id)}>
+            <button type="button" className="a" disabled={disabled} onClick={() => onAction('restore', client.id)}>
               Restore ⟲
             </button>
-            <button type="button" className="a" onClick={() => onAction('export', client.id)}>
+            <button type="button" className="a" disabled={disabled} onClick={() => onAction('export', client.id)}>
               Export ↓
             </button>
-            <button type="button" className="a danger" onClick={() => onAction('hard-delete', client.id)}>
+            <button type="button" className="a danger" disabled={disabled} onClick={() => onAction('hard-delete', client.id)}>
               Hard delete ✕
             </button>
           </>
         ) : (
           <>
-            <button type="button" className="a primary" onClick={() => onAction('magic-link', client.id)}>
+            <button type="button" className="a primary" disabled={disabled} onClick={() => onAction('magic-link', client.id)}>
               Magic link ↗
             </button>
             {isLocked && (
-              <button type="button" className="a" onClick={() => onAction('unlock', client.id)}>
+              <button type="button" className="a" disabled={disabled} onClick={() => onAction('unlock', client.id)}>
                 Unlock ⊙
               </button>
             )}
-            <button type="button" className="a" onClick={() => onAction('revoke', client.id)}>
+            <button type="button" className="a" disabled={disabled} onClick={() => onAction('revoke', client.id)}>
               Revoke sessions
             </button>
-            <button type="button" className="a" onClick={() => onAction('export', client.id)}>
+            <button type="button" className="a" disabled={disabled} onClick={() => onAction('export', client.id)}>
               Export ↓
             </button>
-            <button type="button" className="a danger" onClick={() => onAction('archive', client.id)}>
+            <button type="button" className="a danger" disabled={disabled} onClick={() => onAction('archive', client.id)}>
               Archive ⌫
             </button>
           </>
@@ -255,6 +252,11 @@ export function ClientsPage() {
   const [search, setSearch]         = useState('');
   const [newClientOpen, setNewClientOpen] = useState(false);
   const [magicLink, setMagicLink]   = useState<{ url: string; clientId: string } | null>(null);
+  const [confirmOpts, setConfirmOpts] = useState<(ConfirmOptions & { onConfirm: () => void }) | null>(null);
+
+  function showConfirm(opts: ConfirmOptions, onConfirm: () => void) {
+    setConfirmOpts({ ...opts, onConfirm });
+  }
 
   const clientsQ = useQuery({
     queryKey: ['clients'],
@@ -293,7 +295,8 @@ export function ClientsPage() {
   const archiveM = useMutation({ mutationFn: admin.softDeleteClient,      onSuccess: invalidate });
   const restoreM = useMutation({ mutationFn: admin.restoreClient,         onSuccess: invalidate });
   const hardDelM = useMutation({
-    mutationFn: (id: string) => admin.hardDeleteClient(id, 'DELETE'),
+    mutationFn: ({ id, email }: { id: string; email: string }) =>
+      admin.hardDeleteClient(id, `permanently delete ${email}`),
     onSuccess: invalidate,
   });
   const exportM  = useMutation({
@@ -310,20 +313,27 @@ export function ClientsPage() {
     },
   });
 
+  const anyPending =
+    unlockM.isPending || revokeM.isPending || archiveM.isPending ||
+    restoreM.isPending || hardDelM.isPending || exportM.isPending || magicM.isPending;
+
   function handleAction(action: string, id: string) {
+    const client = allClients.find((c) => c.id === id);
     switch (action) {
       case 'unlock':
         unlockM.mutate(id);
         break;
       case 'revoke':
-        if (confirm('Revoke all active sessions for this client?')) {
-          revokeM.mutate(id);
-        }
+        showConfirm(
+          { title: 'Revoke sessions?', body: 'All active sessions for this client will be invalidated. They will need to sign in again.', confirmLabel: 'Revoke', danger: false },
+          () => { revokeM.mutate(id); setConfirmOpts(null); }
+        );
         break;
       case 'archive':
-        if (confirm('Archive this client? They will no longer be able to sign in.')) {
-          archiveM.mutate(id);
-        }
+        showConfirm(
+          { title: 'Archive this client?', body: 'They will no longer be able to sign in. You can restore them within 30 days.', confirmLabel: 'Archive', danger: false },
+          () => { archiveM.mutate(id); setConfirmOpts(null); }
+        );
         break;
       case 'restore':
         restoreM.mutate(id);
@@ -334,11 +344,19 @@ export function ClientsPage() {
       case 'magic-link':
         magicM.mutate(id);
         break;
-      case 'hard-delete':
-        if (confirm('Permanently delete this client and all their data? This cannot be undone.')) {
-          hardDelM.mutate(id);
-        }
+      case 'hard-delete': {
+        const email = client?.email ?? '';
+        showConfirm(
+          {
+            title: 'Permanently delete?',
+            body: `All data for ${email || id.slice(0, 8)} will be erased and cannot be recovered. An export must have been created first.`,
+            confirmLabel: 'Delete permanently',
+            danger: true,
+          },
+          () => { hardDelM.mutate({ id, email }); setConfirmOpts(null); }
+        );
         break;
+      }
     }
   }
 
@@ -437,9 +455,18 @@ export function ClientsPage() {
           </div>
         )}
         {visible.map((c) => (
-          <ClientRow key={c.id} client={c} onAction={handleAction} />
+          <ClientRow key={c.id} client={c} onAction={handleAction} disabled={anyPending} />
         ))}
       </div>
+
+      {/* ── Confirm modal ───────────────────────────────────────────── */}
+      {confirmOpts && (
+        <ConfirmModal
+          {...confirmOpts}
+          onConfirm={confirmOpts.onConfirm}
+          onCancel={() => setConfirmOpts(null)}
+        />
+      )}
 
       {/* ── Modals ──────────────────────────────────────────────────── */}
       {newClientOpen && (

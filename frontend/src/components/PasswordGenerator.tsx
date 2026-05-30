@@ -291,7 +291,7 @@ export function PasswordGenerator({ onUse, compact = false, mode: initialMode = 
               <PwSlider label="Words" value={wordCount} min={3} max={8} onChange={setWordCount} />
               <div className="lg-pw__opts">
                 {([
-                  { label: 'Separator', on: true,       ex: sep,         action: () => setSep(sep === '-' ? ' ' : sep === ' ' ? '.' : '-') },
+                  { label: 'Separator', on: sep !== ' ', ex: sep === ' ' ? '(space)' : sep, action: () => setSep(sep === '-' ? '.' : sep === '.' ? ' ' : '-') },
                   { label: 'Capitalize', on: capitalize, ex: 'Mosaic',   action: () => setCapitalize((v) => !v) },
                   { label: 'Append #',  on: appendNum,  ex: 'Mosaic 42', action: () => setAppendNum((v) => !v) },
                   { label: 'Wordlist',  on: true,        ex: '250 words', action: () => {} },

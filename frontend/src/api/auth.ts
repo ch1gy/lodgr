@@ -1,5 +1,5 @@
 import { api, tokenStore } from './client';
-import type { AccessTokenResponse } from './types';
+import type { AccessTokenResponse, MeResponse } from './types';
 
 export const auth = {
   async login(email: string, password: string): Promise<string> {
@@ -18,6 +18,12 @@ export const auth = {
     const r = await api.post<AccessTokenResponse>('/auth/magic', { token });
     tokenStore.set(r.data.access_token);
     return r.data.access_token;
+  },
+
+  /** Fetch the authenticated user's own profile (name, email, role). */
+  async me(): Promise<MeResponse> {
+    const r = await api.get<MeResponse>('/auth/me');
+    return r.data;
   },
 
   async changePassword(current_password: string, new_password: string): Promise<string> {

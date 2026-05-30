@@ -26,6 +26,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tickets as ticketsApi } from '../api/tickets';
+import { api } from '../api/client';
+import { downloadBlob } from '../utils/format';
+import { ConfirmModal } from '../components/ConfirmModal';
+import type { ConfirmOptions } from '../components/ConfirmModal';
 import type {
   InternalNote,
   PatchTicketPayload,
@@ -82,6 +86,21 @@ export function TicketDetailPage() {
 
   // Edit-properties mode — shared by desktop rail and mobile sheet.
   const [editingProps, setEditingProps] = useState(false);
+
+  // Custom confirm modal (replaces window.confirm).
+  const [confirmOpts, setConfirmOpts] = useState<(ConfirmOptions & { onConfirm: () => void }) | null>(null);
+
+  function showConfirm(opts: ConfirmOptions, onConfirm: () => void) {
+    setConfirmOpts({ ...opts, onConfirm });
+  }
+
+  // Warn on reload/tab-close if editing is unsaved.
+  useEffect(() => {
+    if (!editingProps) return;
+    const handle = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', handle);
+    return () => window.removeEventListener('beforeunload', handle);
+  }, [editingProps]);
 
   // ── Queries ──────────────────────────────────────────────────────────
   const ticketQ = useQuery({
@@ -172,14 +191,18 @@ export function TicketDetailPage() {
     e.preventDefault();
     const body = composerBody.trim();
     if (!body) return;
-    if (composerTab === 'reply') {
-      await replyM.mutateAsync({ body, file: pendingFile ?? undefined });
-    } else {
-      await noteM.mutateAsync(body);
+    try {
+      if (composerTab === 'reply') {
+        await replyM.mutateAsync({ body, file: pendingFile ?? undefined });
+      } else {
+        await noteM.mutateAsync(body);
+      }
+      setComposerBody('');
+      setPendingFile(null);
+      if (fileRef.current) fileRef.current.value = '';
+    } catch {
+      // replyM.error / noteM.error surfaces the error inline; no action needed here.
     }
-    setComposerBody('');
-    setPendingFile(null);
-    if (fileRef.current) fileRef.current.value = '';
   }
 
   // ── Derived ──────────────────────────────────────────────────────────
@@ -318,7 +341,7 @@ export function TicketDetailPage() {
             </div>
 
             {/* Item list. */}
-            {(queueQ.data?.tickets ?? []).slice(0, 12).map((t: TicketResponse) => {
+            {(queueQ.data?.tickets ?? []).map((t: TicketResponse) => {
               const cls =
                 'lg-queue__item' + (t.id === ticket.id ? ' is-active' : '');
               const dotCls = t.status === 'open' ? 'open' : t.status === 'acknowledged' ? 'ack' : '';
@@ -408,9 +431,22 @@ export function TicketDetailPage() {
                     </div>
                     <div className="lg-msg__txt">{m.body}</div>
                     {m.attachment_path && (
-                      <span className="lg-msg__attach" title="Backend doesn't yet expose a download route (see Known Gaps in the handoff).">
-                        📎 {m.attachment_path.split('/').pop()} (download n/a)
-                      </span>
+                      <button
+                        type="button"
+                        className="lg-msg__attach"
+                        onClick={async () => {
+                          try {
+                            const blob = await api.get<Blob>(m.attachment_path!, { responseType: 'blob' }).then((r) => r.data);
+                            downloadBlob(blob, m.attachment_path!.split('/').pop() ?? 'attachment');
+                          } catch {
+                            /* attachment unavailable — no-op */
+                          }
+                        }}
+                        style={{ cursor: 'pointer', background: 'none', border: 'none', textDecoration: 'underline', textAlign: 'left', padding: 0 }}
+                        title="Download attachment"
+                      >
+                        📎 {m.attachment_path.split('/').pop()}
+                      </button>
                     )}
                   </div>
                 </div>
@@ -440,7 +476,9 @@ export function TicketDetailPage() {
                     Internal note
                   </button>
                 )}
-                <span style={{ marginLeft: 'auto' }}>⌘↵ to send</span>
+                <span style={{ marginLeft: 'auto' }}>
+                  {/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘↵' : 'Ctrl+↵'} to send
+                </span>
               </div>
 
               <textarea
@@ -456,6 +494,12 @@ export function TicketDetailPage() {
                 }}
                 rows={4}
               />
+
+              {(replyM.isError || noteM.isError) && (
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--red)', padding: '4px 0' }}>
+                  {((replyM.error ?? noteM.error) as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to send — try again.'}
+                </div>
+              )}
 
               <div className="lg-composer__ctrls">
                 <div className="lg-composer__l">
@@ -508,11 +552,12 @@ export function TicketDetailPage() {
               can={can}
               transition={(k) => transitionM.mutate(k)}
               shareMagicLink={() => magicM.mutate()}
-              onDelete={() => {
-                if (confirm('Permanently delete this ticket and all its messages? This cannot be undone.')) {
-                  deleteM.mutate();
-                }
-              }}
+              onDelete={() =>
+                showConfirm(
+                  { title: 'Delete this ticket?', body: 'All messages and attachments will be permanently erased. This cannot be undone.', confirmLabel: 'Delete permanently', danger: true },
+                  () => { deleteM.mutate(); setConfirmOpts(null); }
+                )
+              }
               transitionPending={transitionM.isPending}
               magicPending={magicM.isPending}
               deletePending={deleteM.isPending}
@@ -541,6 +586,15 @@ export function TicketDetailPage() {
         />
       )}
 
+      {/* ── Custom confirm modal ────────────────────────────────────── */}
+      {confirmOpts && (
+        <ConfirmModal
+          {...confirmOpts}
+          onConfirm={confirmOpts.onConfirm}
+          onCancel={() => setConfirmOpts(null)}
+        />
+      )}
+
       {/* ── Mobile bottom sheet ─────────────────────────────────────── */}
       <div className={'lg-sheet' + (sheetOpen ? ' is-open' : '')}>
         <div className="lg-sheet__h">
@@ -556,9 +610,10 @@ export function TicketDetailPage() {
             shareMagicLink={() => magicM.mutate()}
             onDelete={() => {
               setSheetOpen(false);
-              if (confirm('Permanently delete this ticket and all its messages? This cannot be undone.')) {
-                deleteM.mutate();
-              }
+              showConfirm(
+                { title: 'Delete this ticket?', body: 'All messages and attachments will be permanently erased. This cannot be undone.', confirmLabel: 'Delete permanently', danger: true },
+                () => { deleteM.mutate(); setConfirmOpts(null); }
+              );
             }}
             transitionPending={transitionM.isPending}
             magicPending={magicM.isPending}
@@ -649,11 +704,7 @@ function PropsContent({
             type="button"
             className="lg-props__act is-danger"
             disabled={!can.close || transitionPending}
-            onClick={() => {
-              if (confirm('Close this ticket? Clients can still read but not reply.')) {
-                transition('close');
-              }
-            }}
+            onClick={() => transition('close')}
           >
             <span>Close ticket</span>
             <span className="arr">→ closed</span>

@@ -113,6 +113,15 @@ export interface MagicLinkResponse {
   url: string;
 }
 
+// ── Me (GET /auth/me) ────────────────────────────────────────────────────────
+export interface MeResponse {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  created_at: string;
+}
+
 // ── Error shape ─────────────────────────────────────────────────────────────
 export interface ApiError {
   error: string;

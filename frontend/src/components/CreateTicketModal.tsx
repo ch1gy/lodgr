@@ -333,10 +333,12 @@ export function CreateTicketModal({ onClose }: Props) {
             <button
               type="submit"
               form="create-ticket-form"
-              className="lg-bt lg-bt--solid"
+              className={`lg-bt lg-bt--solid${createM.isPending ? ' is-loading' : ''}`}
               disabled={createM.isPending || !title.trim() || !description.trim() || (isDesk && !selectedClient)}
             >
-              {createM.isPending ? 'Opening…' : 'Open ticket'} <span className="arr">↗</span>
+              <span className="lbl">Open ticket</span>
+              <span className="arr">↗</span>
+              <span className="spin" aria-hidden />
             </button>
           </div>
         </div>

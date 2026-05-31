@@ -1,0 +1,37 @@
+/* ── Segmented control ────────────────────────────────────────────────────── */
+.seg {
+  position: relative;
+  display: inline-flex;
+  border: 1px solid var(--rule);
+  width: fit-content;
+  overflow: hidden;
+}
+
+/* The single sliding highlight under the active option. */
+.seg__pip {
+  position: absolute; top: 0; bottom: 0; z-index: 0;
+  transition:
+    left       var(--dur-base) var(--ease-spring),
+    width      var(--dur-base) var(--ease-spring),
+    background var(--dur-base) var(--ease-out);
+}
+
+.seg__o {
+  position: relative; z-index: 1;
+  white-space: nowrap; padding: 10px 16px;
+  border: none; border-right: 1px solid var(--rule);
+  background: none;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--mid);
+  cursor: pointer;
+  transition: color var(--dur-base) var(--ease-out);
+}
+.seg__o:last-child { border-right: none; }
+.seg__o.on { color: var(--cream); }
+
+/* ── Tab variant — bottom indicator instead of filled pip ────────────────── */
+.seg--tabs .seg__pip {
+  top: auto; height: 1.5px;
+}
+.seg--tabs .seg__o { padding: 8px 16px; }
+.seg--tabs .seg__o.on { color: var(--ink); }

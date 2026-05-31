@@ -70,18 +70,27 @@
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+    animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
 }
 
-/* Theme-aware properties crossfade smoothly when no View Transition runs. */
-html, body {
+/* Theme-aware color cross-fade.
+ * When View Transitions fires it snapshots before/after so this is harmless;
+ * on the fallback path (Firefox, older Safari) it makes theme switches smooth.
+ * ONLY color-ish properties — a global `transition:all` would fight every
+ * other animation in the codebase. */
+body,
+.lg-mast, .lg-list__rows, .lg-row, .lg-status, .lg-bt, .lg-f, .lg-f__inp,
+input, textarea, button, a, h1, h2, h3, p, span, svg {
   transition:
-    background-color var(--dur-base) var(--ease-in-out),
-    color            var(--dur-base) var(--ease-in-out);
+    background-color var(--dur-slow) var(--ease-in-out),
+    color            var(--dur-slow) var(--ease-in-out),
+    border-color     var(--dur-slow) var(--ease-in-out),
+    fill             var(--dur-slow) var(--ease-in-out),
+    stroke           var(--dur-slow) var(--ease-in-out);
 }
 
 html, body, #root {
@@ -137,7 +146,13 @@ a { color: inherit; }
 }
 .lg-status .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .lg-status--open    { color: var(--red);   border: 1px solid var(--red); }
-.lg-status--open .dot { background: var(--red); animation: lg-blink 2s ease-in-out infinite; }
+.lg-status--open .dot { background: var(--red); position: relative; }
+/* Expanding ring — calmer than opacity blink, reads as "live". */
+.lg-status--open .dot::before {
+  content: ''; position: absolute; inset: -3px; border-radius: 50%;
+  border: 1.5px solid var(--red);
+  animation: lg-ping 1.8s var(--ease-out) infinite;
+}
 .lg-status--ack     { color: var(--amber); border: 1px solid color-mix(in oklab, var(--amber) 60%, transparent); }
 .lg-status--ack .dot { background: var(--amber); }
 .lg-status--pending { color: var(--slate); border: 1px solid color-mix(in oklab, var(--slate) 50%, transparent); }
@@ -145,7 +160,10 @@ a { color: inherit; }
 .lg-status--closed  { color: var(--mid);   border: 1px solid var(--rule); }
 .lg-status--closed .dot { background: var(--mid); }
 
-@keyframes lg-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+@keyframes lg-ping {
+  0%   { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
 
 /* Priority bars — 1..4 filled segments, color shifts with priority. */
 .lg-prio {

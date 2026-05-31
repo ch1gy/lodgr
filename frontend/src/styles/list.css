@@ -149,7 +149,7 @@
   align-items: center;
   position: relative;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background var(--dur-base) var(--ease-out);
   text-decoration: none;   /* used as <Link> */
   color: inherit;
 }
@@ -159,9 +159,9 @@
   left: 0; top: 0; bottom: 0;
   width: 0;
   background: var(--red);
-  transition: width 0.25s ease;
+  transition: width var(--dur-base) var(--ease-out);
 }
-.lg-row:hover { background: rgba(13, 13, 13, 0.025); }
+.lg-row:hover { background: color-mix(in oklab, var(--red) 4%, transparent); }
 .lg-row:hover::before { width: 3px; }
 .lg-row.is-hot { background: rgba(200, 50, 42, 0.04); }
 .lg-row.is-hot::before { width: 3px; background: var(--red); }
@@ -172,7 +172,9 @@
   font-size: 32px;
   color: var(--rule);
   line-height: 1;
+  transition: color var(--dur-base) var(--ease-out);
 }
+.lg-row:hover .lg-row__num { color: var(--red); }
 .lg-row.is-hot .lg-row__num { color: var(--red); }
 
 .lg-row__client { display: flex; align-items: center; gap: 10px; }
@@ -248,7 +250,9 @@
   font-size: 14px;
   color: var(--mid);
   text-align: right;
+  transition: transform var(--dur-base) var(--ease-out);
 }
+.lg-row:hover .lg-row__chevron { transform: translateX(4px); }
 
 /* ── Empty + loading + error states ──────────────────────────────────── */
 .lg-list__state {

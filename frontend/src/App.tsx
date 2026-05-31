@@ -18,8 +18,11 @@
 //   *                     — fallback redirect.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ToastProvider } from './components/Toast';
+import './styles/buttons.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './auth/AuthContext';
 import { ThemeProvider } from './theme/ThemeContext';
@@ -50,6 +53,27 @@ const queryClient = new QueryClient({
   },
 });
 
+// Page slide transition — wraps every routed page.
+// Slides right→left on forward nav, left→right on back.
+function PageTransition({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  const prevPath = useRef<string>(location.pathname);
+  const [cls, setCls] = useState('lg-page lg-page--entered');
+
+  useEffect(() => {
+    if (prevPath.current === location.pathname) return;
+    const entering = 'lg-page lg-page--entering';
+    setCls(entering);
+    const raf = requestAnimationFrame(() => {
+      setCls('lg-page lg-page--entered');
+    });
+    prevPath.current = location.pathname;
+    return () => cancelAnimationFrame(raf);
+  }, [location.pathname]);
+
+  return <div className={cls}>{children}</div>;
+}
+
 export function App() {
   return (
     <ErrorBoundary>
@@ -57,6 +81,7 @@ export function App() {
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <AuthProvider>
+            <ToastProvider>
             <Routes>
               {/* Public */}
               <Route path="/login" element={<LoginPage />} />
@@ -67,7 +92,7 @@ export function App() {
                 path="/tickets"
                 element={
                   <ProtectedRoute>
-                    <TicketListPage />
+                    <PageTransition><TicketListPage /></PageTransition>
                   </ProtectedRoute>
                 }
               />
@@ -75,7 +100,7 @@ export function App() {
                 path="/tickets/:id"
                 element={
                   <ProtectedRoute>
-                    <TicketDetailPage />
+                    <PageTransition><TicketDetailPage /></PageTransition>
                   </ProtectedRoute>
                 }
               />
@@ -84,7 +109,7 @@ export function App() {
                 path="/clients"
                 element={
                   <ProtectedRoute deskOnly>
-                    <ClientsPage />
+                    <PageTransition><ClientsPage /></PageTransition>
                   </ProtectedRoute>
                 }
               />
@@ -92,7 +117,7 @@ export function App() {
                 path="/reports"
                 element={
                   <ProtectedRoute deskOnly>
-                    <ReportsPage />
+                    <PageTransition><ReportsPage /></PageTransition>
                   </ProtectedRoute>
                 }
               />
@@ -100,7 +125,7 @@ export function App() {
                 path="/settings"
                 element={
                   <ProtectedRoute>
-                    <SettingsPage />
+                    <PageTransition><SettingsPage /></PageTransition>
                   </ProtectedRoute>
                 }
               />
@@ -110,6 +135,7 @@ export function App() {
               <Route path="/" element={<Navigate to="/tickets" replace />} />
               <Route path="*" element={<Navigate to="/tickets" replace />} />
             </Routes>
+            </ToastProvider>
           </AuthProvider>
         </ThemeProvider>
       </QueryClientProvider>

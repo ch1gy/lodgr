@@ -1,0 +1,127 @@
+/* ── Lodgr button system ──────────────────────────────────────────────────────
+ * All interactive buttons share the same transition set + press compression.
+ * Class names: .lg-bt (base), .lg-bt--solid, .lg-bt--text, .lg-bt--danger
+ * Loading state: add .is-loading + <span class="spin" aria-hidden /> inside.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+.lg-bt {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; cursor: pointer;
+  border: none; background: none; padding: 10px 20px;
+  transition:
+    transform        var(--dur-fast) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out),
+    color            var(--dur-base) var(--ease-out),
+    border-color     var(--dur-base) var(--ease-out),
+    box-shadow       var(--dur-base) var(--ease-out);
+}
+.lg-bt:active:not(:disabled) { transform: scale(0.97); }
+
+/* Arrow nudge on hover */
+.lg-bt .arr { transition: transform var(--dur-base) var(--ease-out); display: inline-block; }
+.lg-bt:hover .arr { transform: translateX(3px); }
+
+/* ── Solid variant ────────────────────────────────────────────────────────── */
+.lg-bt--solid {
+  background: var(--ink); color: var(--cream);
+}
+.lg-bt--solid:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--ink) 88%, transparent);
+  box-shadow: 0 4px 16px -8px color-mix(in oklab, var(--ink) 50%, transparent);
+}
+.lg-bt--solid:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Danger variant ───────────────────────────────────────────────────────── */
+.lg-bt--danger {
+  background: var(--red); color: var(--cream);
+}
+.lg-bt--danger:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--red) 88%, transparent);
+}
+
+/* ── Text / link variant — wiping underline ───────────────────────────────── */
+.lg-bt--text {
+  position: relative; padding: 0; color: var(--mid);
+}
+.lg-bt--text::after {
+  content: ''; position: absolute; left: 0; bottom: -2px;
+  height: 1px; width: 0; background: var(--ink);
+  transition: width var(--dur-base) var(--ease-out);
+}
+.lg-bt--text:hover { color: var(--ink); }
+.lg-bt--text:hover::after { width: 100%; }
+
+/* ── Loading state ────────────────────────────────────────────────────────── */
+.lg-bt.is-loading { pointer-events: none; }
+.lg-bt.is-loading .lbl,
+.lg-bt.is-loading .arr { opacity: 0.3; transition: opacity var(--dur-base); }
+
+.lg-bt .spin {
+  position: absolute; left: 50%; top: 50%;
+  width: 14px; height: 14px; margin: -7px 0 0 -7px;
+  border: 1.5px solid currentColor; border-top-color: transparent;
+  border-radius: 50%; opacity: 0;
+  animation: bt-spin 0.9s linear infinite;
+  transition: opacity var(--dur-base);
+}
+.lg-bt.is-loading .spin { opacity: 1; }
+
+@keyframes bt-spin { to { transform: rotate(360deg); } }
+
+/* ── Copy button success morph ────────────────────────────────────────────── */
+.copy-btn {
+  transition:
+    background var(--dur-base) var(--ease-out),
+    color      var(--dur-base) var(--ease-out),
+    transform  var(--dur-fast) var(--ease-out);
+}
+.copy-btn:active { transform: scale(0.97); }
+.copy-btn.is-copied { background: var(--green) !important; color: var(--cream) !important; }
+
+.copy-btn .check { width: 0; overflow: hidden; transition: width var(--dur-base) var(--ease-out); display: inline-flex; }
+.copy-btn.is-copied .check { width: 14px; }
+
+.copy-btn svg path {
+  stroke-dasharray: 28; stroke-dashoffset: 28;
+  transition: stroke-dashoffset 320ms var(--ease-out) 80ms;
+}
+.copy-btn.is-copied svg path { stroke-dashoffset: 0; }
+
+/* ── Skeleton shimmer ─────────────────────────────────────────────────────── */
+.skel {
+  background: linear-gradient(
+    90deg,
+    var(--rule) 0%,
+    color-mix(in oklab, var(--rule) 50%, var(--cream)) 50%,
+    var(--rule) 100%
+  );
+  background-size: 240% 100%;
+  animation: shimmer 1.6s linear infinite;
+  border-radius: 2px;
+}
+@keyframes shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* ── Reveal (scroll) ──────────────────────────────────────────────────────── */
+.reveal {
+  opacity: 0; transform: translateY(28px);
+  transition: opacity 720ms var(--ease-out), transform 720ms var(--ease-out);
+}
+.reveal.is-in { opacity: 1; transform: none; }
+.reveal.d2 { transition-delay: 80ms; }
+.reveal.d3 { transition-delay: 160ms; }
+.reveal.d4 { transition-delay: 240ms; }
+
+/* ── Accordion ────────────────────────────────────────────────────────────── */
+.acc__body {
+  display: grid; grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-base) var(--ease-out);
+}
+.acc.is-open .acc__body { grid-template-rows: 1fr; }
+.acc__inner { overflow: hidden; }
+.acc__icon  { transition: transform var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out); }
+.acc.is-open .acc__icon { transform: rotate(45deg); color: var(--red); }

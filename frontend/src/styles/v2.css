@@ -9,9 +9,14 @@
 .lg-ov {
   position: fixed; inset: 0; z-index: 200;
   background: rgba(13, 13, 13, 0.55);
+  backdrop-filter: blur(2px);
   display: grid; place-items: center;
   padding: 32px;
+  /* Entrance: fade in */
+  animation: ov-in var(--dur-base) var(--ease-out) both;
 }
+@keyframes ov-in { from { opacity: 0; } to { opacity: 1; } }
+
 .lg-mdl {
   background: var(--cream);
   border: 1px solid var(--ink);
@@ -20,6 +25,12 @@
   display: flex; flex-direction: column;
   overflow: hidden;
   width: clamp(320px, 90vw, 960px);
+  /* Entrance: rise + scale with spring */
+  animation: mdl-in var(--dur-base) var(--ease-spring) both;
+}
+@keyframes mdl-in {
+  from { transform: translateY(40px) scale(0.96); opacity: 0; }
+  to   { transform: none; opacity: 1; }
 }
 .lg-mdl::before {
   content: ''; position: absolute; left: 0; top: 0;
@@ -785,3 +796,54 @@
 }
 .lg-ed__save .save:disabled { opacity: 0.4; cursor: not-allowed; }
 .lg-ed__save .save .arr { color: var(--red); }
+
+/* ── Dropdown (client row action menus) ──────────────────────────────────── */
+.lg-dropdown {
+  position: absolute; top: calc(100% + 6px); left: 0;
+  transform-origin: top left;
+  background: var(--cream); border: 1px solid var(--ink);
+  z-index: 50; min-width: 160px;
+  opacity: 0; transform: translateY(-6px) scale(0.98); pointer-events: none;
+  transition:
+    opacity   var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+}
+.lg-dropdown.is-open { opacity: 1; transform: none; pointer-events: auto; }
+.lg-dropdown__item {
+  display: block; width: 100%; text-align: left; padding: 10px 14px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--ink); background: none; border: none;
+  cursor: pointer; transition: background var(--dur-fast) var(--ease-out);
+}
+.lg-dropdown__item:hover { background: rgba(13,13,13,0.06); }
+.lg-dropdown__item.danger { color: var(--red); }
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+.lg-toast-shelf {
+  position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+  z-index: 9999; display: flex; flex-direction: column; gap: 10px;
+  align-items: center; pointer-events: none;
+}
+.lg-toast {
+  background: var(--ink); color: var(--cream);
+  font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
+  text-transform: uppercase; padding: 12px 20px;
+  pointer-events: auto;
+  animation: toast-in var(--dur-base) var(--ease-spring) forwards;
+}
+.lg-toast.is-leaving {
+  animation: toast-out var(--dur-base) var(--ease-out) forwards;
+}
+@keyframes toast-in  { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes toast-out { to   { transform: translateY(40px); opacity: 0; } }
+
+/* ── Page transition wrapper ─────────────────────────────────────────────── */
+.lg-page {
+  transition:
+    transform var(--dur-base) var(--ease-out),
+    opacity   var(--dur-base) var(--ease-out);
+}
+.lg-page--entering { transform: translateX(40px);  opacity: 0; }
+.lg-page--back     { transform: translateX(-40px); opacity: 0; }
+.lg-page--entered  { transform: none; opacity: 1; }
+.lg-page--exiting  { transform: translateX(-40px); opacity: 0; }

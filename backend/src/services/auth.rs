@@ -397,8 +397,8 @@ pub async fn change_password(
     issue_tokens(pool, config, user_id, &user.role).await
 }
 
-pub async fn check_default_password_warning(pool: &SqlitePool) {
-    if let Ok(Some(user)) = db::users::find_by_email(pool, "desk@local").await {
+pub async fn check_default_password_warning(pool: &SqlitePool, desk_email: &str) {
+    if let Ok(Some(user)) = db::users::find_by_email(pool, desk_email).await {
         if verify_password("changeme", &user.password_hash).unwrap_or(false) {
             tracing::warn!(
                 "SECURITY WARNING: desk@local is still using the default password 'changeme'. \

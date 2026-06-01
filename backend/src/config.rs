@@ -27,6 +27,10 @@ pub struct Config {
     pub rate_limit_report_rps: f64,
     /// Burst capacity for the report rate limiter.
     pub rate_limit_report_burst: u32,
+    /// Email address for the built-in desk account.
+    /// Defaults to "desk@local". Change this so the address isn't predictable
+    /// from reading the open-source code — prevents targeted lockout attacks.
+    pub desk_email: String,
 }
 
 impl Config {
@@ -104,6 +108,8 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(3u32);
 
+        let desk_email = std::env::var("DESK_EMAIL").unwrap_or_else(|_| "desk@local".to_string());
+
         // Prevent magic links being generated over plain HTTP in production.
         if cookie_secure && base_url.starts_with("http://") {
             panic!(
@@ -133,6 +139,7 @@ impl Config {
             rate_limit_auth_burst,
             rate_limit_report_rps,
             rate_limit_report_burst,
+            desk_email,
         })
     }
 

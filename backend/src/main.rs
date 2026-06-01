@@ -154,10 +154,10 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    seed_desk_user(&pool).await?;
+    seed_desk_user(&pool, &config.desk_email).await?;
     services::auth::dummy_hash_warmup();
-    services::auth::check_default_password_warning(&pool).await;
-    check_desk_lockout(&pool).await;
+    services::auth::check_default_password_warning(&pool, &config.desk_email).await;
+    check_desk_lockout(&pool, &config.desk_email).await;
 
     // Background tasks — wrapped in a restart supervisor so panics are logged
     // and the task is relaunched after a 5-second cooldown.
@@ -397,39 +397,38 @@ where
     });
 }
 
-async fn check_desk_lockout(pool: &SqlitePool) {
-    if let Ok(Some(user)) = db::users::find_by_email(pool, "desk@local").await {
+async fn check_desk_lockout(pool: &SqlitePool, desk_email: &str) {
+    if let Ok(Some(user)) = db::users::find_by_email(pool, desk_email).await {
         if user.locked_until.is_some() {
             if user.failed_attempts >= services::auth::PERMANENT_LOCKOUT_THRESHOLD {
                 tracing::error!(
                     failed_attempts = user.failed_attempts,
-                    "SECURITY: desk@local is PERMANENTLY LOCKED. \
-                     Recovery: sqlite3 data/support.db \
-                     \"UPDATE users SET failed_attempts=0, locked_until=NULL \
-                     WHERE email='desk@local'\""
+                    email = %desk_email,
+                    "SECURITY: desk account is PERMANENTLY LOCKED. \
+                     Recovery: UPDATE users SET failed_attempts=0, locked_until=NULL \
+                     WHERE email='{desk_email}'"
                 );
                 eprintln!(
                     "\n╔══════════════════════════════════════════════════════════════╗\
-                     \n║  SECURITY: desk@local is PERMANENTLY LOCKED                  ║\
-                     \n║  Run this to recover:                                        ║\
-                     \n║    sqlite3 data/support.db                                   ║\
-                     \n║    \"UPDATE users SET failed_attempts=0, locked_until=NULL    ║\
-                     \n║     WHERE email='desk@local'\"                               ║\
+                     \n║  SECURITY: desk account is PERMANENTLY LOCKED                ║\
+                     \n║  Recovery: UPDATE users SET failed_attempts=0,               ║\
+                     \n║    locked_until=NULL WHERE email='{desk_email}'              ║\
                      \n╚══════════════════════════════════════════════════════════════╝\n"
                 );
             } else {
                 tracing::warn!(
                     failed_attempts = user.failed_attempts,
                     locked_until = ?user.locked_until,
-                    "desk@local is temporarily locked"
+                    email = %desk_email,
+                    "desk account is temporarily locked"
                 );
             }
         }
     }
 }
 
-async fn seed_desk_user(pool: &SqlitePool) -> anyhow::Result<()> {
-    if db::users::find_by_email(pool, "desk@local")
+async fn seed_desk_user(pool: &SqlitePool, desk_email: &str) -> anyhow::Result<()> {
+    if db::users::find_by_email(pool, desk_email)
         .await?
         .is_none()
     {
@@ -438,14 +437,15 @@ async fn seed_desk_user(pool: &SqlitePool) -> anyhow::Result<()> {
         let id = uuid::Uuid::new_v4().to_string();
         let hash = services::auth::hash_password(&initial_password)
             .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-        db::users::create(pool, &id, "Desk Agent", "desk@local", &hash, "desk").await?;
+        db::users::create(pool, &id, "Desk Agent", desk_email, &hash, "desk").await?;
         if initial_password == "changeme" {
             tracing::warn!(
-                "Seeded desk@local with the default password 'changeme'. \
+                email = %desk_email,
+                "Seeded desk account with the default password 'changeme'. \
                  Set DESK_INITIAL_PASSWORD in your environment to use a stronger one."
             );
         } else {
-            tracing::info!("Seeded desk@local with password from DESK_INITIAL_PASSWORD.");
+            tracing::info!(email = %desk_email, "Seeded desk account from DESK_INITIAL_PASSWORD.");
         }
     }
     Ok(())

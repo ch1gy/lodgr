@@ -2,6 +2,56 @@
 
 ---
 
+## Tauri desktop wrapper (v1.x)
+
+Wrap Lodgr as a native desktop app so the desk agent can launch it with a
+single click instead of running two terminal commands.
+
+### Why
+
+Running `cargo run` in one terminal and `npm run dev` in another is fine for
+development but awkward for daily use as a working tool. A Tauri app bundles
+the Rust backend + React frontend into a single executable that opens a native
+window and manages its own lifecycle.
+
+### Planned approach — sidecar
+
+Tauri's **sidecar** feature bundles an external binary alongside the app and
+spawns it as a child process on launch. For Lodgr this means:
+
+1. Build the Axum backend as a standalone binary (already done).
+2. Register it as a Tauri sidecar — Tauri spawns it on startup and kills it on
+   close.
+3. The webview points at `http://localhost:3000` (same as production).
+4. No changes to the backend code at all — it stays a plain HTTP server.
+
+### What needs to happen
+
+- Add a `tauri/` directory at the repo root with a minimal Tauri v2 project.
+- Configure `tauri.conf.json`: sidecar path, window title/size, `devUrl` for
+  dev and `frontendDist` for production.
+- Build script: `npm run build` (frontend) → `cargo build --release` (backend)
+  → `cargo tauri build` (bundles both into a platform installer).
+- Handle the `.env` / secrets: on first launch show a setup screen that writes
+  the config to `$APPDATA/lodgr/config.env` (Windows) or
+  `~/.config/lodgr/config.env` (Linux/Mac). Subsequent launches read from
+  there.
+- SQLite path should default to `$APPDATA/lodgr/support.db` so data survives
+  app reinstalls.
+
+### What it does NOT change
+
+- The server-side deployment story — the Axum binary stays deployable on its
+  own (Hetzner, DO, etc.) with no Tauri dependency.
+- The existing dev workflow — `cargo run` + `npm run dev` still works.
+
+### Effort estimate
+
+Medium. Tauri v2 + Rust sidecar is well-documented. The main complexity is the
+first-launch setup screen and making the config path platform-aware.
+
+---
+
 ## ~~Client password self-service~~ ✅ Done
 
 Shipped in commit `38c3311`. Clients can now change their own password via

@@ -428,10 +428,7 @@ async fn check_desk_lockout(pool: &SqlitePool, desk_email: &str) {
 }
 
 async fn seed_desk_user(pool: &SqlitePool, desk_email: &str) -> anyhow::Result<()> {
-    if db::users::find_by_email(pool, desk_email)
-        .await?
-        .is_none()
-    {
+    if db::users::find_by_email(pool, desk_email).await?.is_none() {
         let initial_password =
             std::env::var("DESK_INITIAL_PASSWORD").unwrap_or_else(|_| "changeme".to_string());
         let id = uuid::Uuid::new_v4().to_string();

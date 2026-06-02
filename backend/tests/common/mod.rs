@@ -46,6 +46,7 @@ pub fn test_config() -> Config {
         rate_limit_auth_burst: 10,
         rate_limit_report_rps: 0.2,
         rate_limit_report_burst: 3,
+        desk_email: "desk@local".into(),
     }
 }
 

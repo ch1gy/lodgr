@@ -8,7 +8,10 @@
 
 mod common;
 
-use backend::{db, services::{auth, magic}};
+use backend::{
+    db,
+    services::{auth, magic},
+};
 use std::net::IpAddr;
 
 fn peer_ip() -> IpAddr {
@@ -42,7 +45,10 @@ async fn permanent_lockout_auto_creates_urgent_security_log_ticket() {
     .await
     .unwrap();
 
-    assert_eq!(count, 1, "one security_log ticket must be auto-created on permanent lockout");
+    assert_eq!(
+        count, 1,
+        "one security_log ticket must be auto-created on permanent lockout"
+    );
 
     let (priority,): (String,) = sqlx::query_as(
         "SELECT priority FROM tickets WHERE client_id = ? AND ticket_type = 'security_log'",
@@ -52,7 +58,10 @@ async fn permanent_lockout_auto_creates_urgent_security_log_ticket() {
     .await
     .unwrap();
 
-    assert_eq!(priority, "urgent", "auto-created lockout ticket must have urgent priority");
+    assert_eq!(
+        priority, "urgent",
+        "auto-created lockout ticket must have urgent priority"
+    );
 }
 
 // ── 2. Deduplication — no second ticket within 24 h ──────────────────────────

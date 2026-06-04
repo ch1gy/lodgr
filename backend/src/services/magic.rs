@@ -240,8 +240,7 @@ pub async fn send_desk_recovery_link(
     let expires_at =
         (Utc::now() + chrono::Duration::seconds(config.magic_link_ttl_secs)).to_rfc3339();
 
-    if let Err(e) =
-        db::magic_links::delete_unused_for_user_scope(pool, user_id, "full", None).await
+    if let Err(e) = db::magic_links::delete_unused_for_user_scope(pool, user_id, "full", None).await
     {
         tracing::warn!(user_id = %user_id, %e, "failed to clear old desk recovery links");
     }

@@ -22,7 +22,7 @@ async fn login_succeeds_with_correct_credentials() {
     let config = common::test_config();
     let (_, email, password) = common::create_test_client(&pool).await;
 
-    let result = auth::login(&pool, &config, None,&email, &password, peer_ip()).await;
+    let result = auth::login(&pool, &config, None, &email, &password, peer_ip()).await;
 
     let output = result.expect("login should succeed with correct credentials");
     assert!(
@@ -41,7 +41,7 @@ async fn login_fails_with_wrong_password() {
     let config = common::test_config();
     let (_, email, _) = common::create_test_client(&pool).await;
 
-    let result = auth::login(&pool, &config, None,&email, "WrongPassword999!", peer_ip()).await;
+    let result = auth::login(&pool, &config, None, &email, "WrongPassword999!", peer_ip()).await;
 
     assert!(
         matches!(result, Err(AppError::Unauthorized)),
@@ -86,7 +86,7 @@ async fn login_fails_when_account_is_soft_deleted() {
         .await
         .unwrap();
 
-    let result = auth::login(&pool, &config, None,&email, &password, peer_ip()).await;
+    let result = auth::login(&pool, &config, None, &email, &password, peer_ip()).await;
 
     assert!(
         matches!(result, Err(AppError::Unauthorized)),
@@ -114,10 +114,10 @@ async fn login_fails_when_account_is_permanently_locked() {
         .unwrap();
 
     // 9th bad attempt — sets permanent lock, returns Unauthorized.
-    let _ = auth::login(&pool, &config, None,&email, "BadPass1234!", peer_ip()).await;
+    let _ = auth::login(&pool, &config, None, &email, "BadPass1234!", peer_ip()).await;
 
     // 10th attempt (correct password) — account is now permanently locked.
-    let result = auth::login(&pool, &config, None,&email, &password, peer_ip()).await;
+    let result = auth::login(&pool, &config, None, &email, &password, peer_ip()).await;
 
     assert!(
         matches!(
@@ -139,7 +139,7 @@ async fn lockout_escalates_after_five_failures() {
 
     // Attempts 1-4: Unauthorized (no lockout yet).
     for _ in 0..4 {
-        let r = auth::login(&pool, &config, None,&email, "BadPass1234!", peer_ip()).await;
+        let r = auth::login(&pool, &config, None, &email, "BadPass1234!", peer_ip()).await;
         assert!(
             matches!(r, Err(AppError::Unauthorized)),
             "expected Unauthorized before lockout threshold, got: {:?}",
@@ -149,7 +149,7 @@ async fn lockout_escalates_after_five_failures() {
 
     // 5th failure: increments counter to 5 and writes locked_until, but
     // login() still returns Unauthorized for the attempt that triggered the lock.
-    let fifth = auth::login(&pool, &config, None,&email, "BadPass1234!", peer_ip()).await;
+    let fifth = auth::login(&pool, &config, None, &email, "BadPass1234!", peer_ip()).await;
     assert!(
         matches!(fifth, Err(AppError::Unauthorized)),
         "expected Unauthorized on the 5th attempt (sets lock), got: {:?}",
@@ -157,7 +157,7 @@ async fn lockout_escalates_after_five_failures() {
     );
 
     // 6th attempt: the account is now locked — must return Locked.
-    let result = auth::login(&pool, &config, None,&email, "BadPass1234!", peer_ip()).await;
+    let result = auth::login(&pool, &config, None, &email, "BadPass1234!", peer_ip()).await;
 
     assert!(
         matches!(
@@ -179,11 +179,11 @@ async fn successful_login_resets_lockout_counter() {
 
     // 4 wrong-password attempts — no lockout yet.
     for _ in 0..4 {
-        let _ = auth::login(&pool, &config, None,&email, "BadPass1234!", peer_ip()).await;
+        let _ = auth::login(&pool, &config, None, &email, "BadPass1234!", peer_ip()).await;
     }
 
     // Successful login should reset the counter.
-    let result = auth::login(&pool, &config, None,&email, &password, peer_ip()).await;
+    let result = auth::login(&pool, &config, None, &email, &password, peer_ip()).await;
     assert!(
         result.is_ok(),
         "expected successful login, got: {:?}",
@@ -210,7 +210,7 @@ async fn refresh_token_rotation_works() {
     let config = common::test_config();
     let (_, email, password) = common::create_test_client(&pool).await;
 
-    let first = auth::login(&pool, &config, None,&email, &password, peer_ip())
+    let first = auth::login(&pool, &config, None, &email, &password, peer_ip())
         .await
         .expect("login should succeed");
 
@@ -241,7 +241,7 @@ async fn refresh_token_replay_detected() {
     let config = common::test_config();
     let (_, email, password) = common::create_test_client(&pool).await;
 
-    let first = auth::login(&pool, &config, None,&email, &password, peer_ip())
+    let first = auth::login(&pool, &config, None, &email, &password, peer_ip())
         .await
         .expect("login should succeed");
 
@@ -296,7 +296,7 @@ async fn refresh_fails_with_revoked_token() {
     let config = common::test_config();
     let (id, email, password) = common::create_test_client(&pool).await;
 
-    let output = auth::login(&pool, &config, None,&email, &password, peer_ip())
+    let output = auth::login(&pool, &config, None, &email, &password, peer_ip())
         .await
         .expect("login should succeed");
 
@@ -331,7 +331,7 @@ async fn change_password_succeeds() {
     );
 
     // Old password must now be rejected.
-    let old_attempt = auth::login(&pool, &config, None,&email, &old_password, peer_ip()).await;
+    let old_attempt = auth::login(&pool, &config, None, &email, &old_password, peer_ip()).await;
     assert!(
         matches!(old_attempt, Err(AppError::Unauthorized)),
         "old password should be rejected after change, got: {:?}",
@@ -339,7 +339,7 @@ async fn change_password_succeeds() {
     );
 
     // New password must be accepted.
-    let new_attempt = auth::login(&pool, &config, None,&email, new_password, peer_ip()).await;
+    let new_attempt = auth::login(&pool, &config, None, &email, new_password, peer_ip()).await;
     assert!(
         new_attempt.is_ok(),
         "new password should be accepted after change, got: {:?}",
@@ -397,7 +397,7 @@ async fn client_can_change_their_own_password() {
     );
 
     // Old password must now be rejected.
-    let old_attempt = auth::login(&pool, &config, None,&email, &old_password, peer_ip()).await;
+    let old_attempt = auth::login(&pool, &config, None, &email, &old_password, peer_ip()).await;
     assert!(
         matches!(old_attempt, Err(AppError::Unauthorized)),
         "old password must be rejected after client changes it"
@@ -405,7 +405,7 @@ async fn client_can_change_their_own_password() {
 
     // New password must be accepted.
     assert!(
-        auth::login(&pool, &config, None,&email, new_password, peer_ip())
+        auth::login(&pool, &config, None, &email, new_password, peer_ip())
             .await
             .is_ok(),
         "new password must work after client changes it"
@@ -472,7 +472,7 @@ async fn successful_login_writes_login_ok_event() {
     let config = common::test_config();
     let (id, email, password) = common::create_test_client(&pool).await;
 
-    auth::login(&pool, &config, None,&email, &password, peer_ip())
+    auth::login(&pool, &config, None, &email, &password, peer_ip())
         .await
         .unwrap();
 
@@ -489,7 +489,7 @@ async fn logout_writes_logout_event() {
     let config = common::test_config();
     let (id, email, password) = common::create_test_client(&pool).await;
 
-    let output = auth::login(&pool, &config, None,&email, &password, peer_ip())
+    let output = auth::login(&pool, &config, None, &email, &password, peer_ip())
         .await
         .unwrap();
     auth::logout(&pool, &output.refresh_token).await.unwrap();
@@ -516,7 +516,7 @@ async fn auth_event_failure_does_not_block_login() {
         .await
         .unwrap();
 
-    let result = auth::login(&pool, &config, None,&email, &password, peer_ip()).await;
+    let result = auth::login(&pool, &config, None, &email, &password, peer_ip()).await;
     assert!(
         result.is_ok(),
         "login must succeed even when auth_events write fails, got: {:?}",

@@ -69,6 +69,22 @@ pub async fn delete_unused_for_user_scope(
     Ok(())
 }
 
+/// Returns true if an active (unused, unexpired) magic link was created for this
+/// user within the last 5 minutes. Used to rate-limit desk recovery emails.
+pub async fn has_recent_active_for_user(pool: &SqlitePool, user_id: &str) -> AppResult<bool> {
+    let row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM magic_links
+         WHERE user_id = ?
+           AND used_at IS NULL
+           AND expires_at > datetime('now')
+           AND created_at >= datetime('now', '-5 minutes')",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.0 > 0)
+}
+
 pub async fn mark_used(pool: &SqlitePool, id: &str) -> AppResult<()> {
     let used_at = Utc::now().to_rfc3339();
     sqlx::query("UPDATE magic_links SET used_at = ? WHERE id = ?")

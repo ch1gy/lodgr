@@ -135,6 +135,11 @@ pub async fn exchange_magic_link(
     }
 
     db::magic_links::mark_used(pool, &link.id).await?;
+    // Reset any lockout on the account — exchanging a valid link is a successful
+    // authentication regardless of prior failed password attempts.
+    if let Err(e) = db::users::reset_lockout(pool, &link.user_id).await {
+        tracing::warn!(user_id = %link.user_id, %e, "failed to reset lockout on magic link exchange");
+    }
 
     let user = db::users::find_by_id(pool, &link.user_id)
         .await?
@@ -197,4 +202,75 @@ pub async fn exchange_magic_link(
     );
 
     Ok(jwt)
+}
+
+/// Auto-send a recovery magic link when the desk account is permanently locked.
+/// Non-fatal — all errors are logged. Rate-limited to one email per 5 minutes.
+/// Only fires if SMTP is configured; otherwise the caller logs a manual-recovery
+/// instruction for the operator.
+pub async fn send_desk_recovery_link(
+    pool: &SqlitePool,
+    config: &Config,
+    mailer: &SmtpMailer,
+    user_id: &str,
+    user_email: &str,
+    user_name: &str,
+) {
+    // Rate-limit: skip if an active link was already sent in the last 5 minutes.
+    match db::magic_links::has_recent_active_for_user(pool, user_id).await {
+        Ok(true) => {
+            tracing::info!(user_id = %user_id, "desk recovery link already sent recently, skipping");
+            return;
+        }
+        Err(e) => {
+            tracing::warn!(user_id = %user_id, %e, "failed to check recent desk recovery links");
+            return;
+        }
+        Ok(false) => {}
+    }
+
+    let mut bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut bytes);
+    let raw_token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    let token_hash: String = Sha256::digest(raw_token.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+
+    let expires_at =
+        (Utc::now() + chrono::Duration::seconds(config.magic_link_ttl_secs)).to_rfc3339();
+
+    if let Err(e) =
+        db::magic_links::delete_unused_for_user_scope(pool, user_id, "full", None).await
+    {
+        tracing::warn!(user_id = %user_id, %e, "failed to clear old desk recovery links");
+    }
+
+    let id = Uuid::new_v4().to_string();
+    if let Err(e) = db::magic_links::create(
+        pool,
+        db::magic_links::NewMagicLink {
+            id: &id,
+            token_hash: &token_hash,
+            user_id,
+            scope: "full",
+            ticket_id: None,
+            expires_at: &expires_at,
+        },
+    )
+    .await
+    {
+        tracing::warn!(user_id = %user_id, %e, "failed to create desk recovery magic link");
+        return;
+    }
+
+    let url = format!("{}/auth/magic?token={}", config.base_url, raw_token);
+    tracing::warn!(user_id = %user_id, "desk account permanently locked — recovery link sent");
+
+    let m = mailer.clone();
+    let email = user_email.to_owned();
+    let name = user_name.to_owned();
+    tokio::spawn(async move {
+        m.send_magic_link(&email, &name, &url).await;
+    });
 }

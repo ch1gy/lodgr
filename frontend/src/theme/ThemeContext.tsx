@@ -30,15 +30,13 @@ interface ThemeState {
 
 const ThemeContext = createContext<ThemeState | null>(null);
 
-// Read the persisted/system theme synchronously so we apply it before paint.
+// Read the persisted theme synchronously so we apply it before paint.
+// Default is always light — only a saved user preference overrides this.
 function readInitialTheme(): Theme {
   try {
     const saved = localStorage.getItem(LS_KEY);
     if (saved === 'light' || saved === 'dark') return saved;
   } catch { /* no-op */ }
-  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
-    return 'dark';
-  }
   return 'light';
 }
 
@@ -65,19 +63,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     try { localStorage.setItem(LS_KEY, theme); } catch { /* no-op */ }
   }, [theme]);
 
-  // React to system theme changes ONLY when the user hasn't picked manually.
-  useEffect(() => {
-    const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
-    if (!mq) return;
-    const onChange = (e: MediaQueryListEvent) => {
-      try {
-        if (localStorage.getItem(LS_KEY)) return; // user has chosen
-      } catch { /* private mode — fall through */ }
-      setThemeState(e.matches ? 'dark' : 'light');
-    };
-    mq.addEventListener?.('change', onChange);
-    return () => mq.removeEventListener?.('change', onChange);
-  }, []);
 
   const setTheme = useCallback((t: Theme) => setThemeState(t), []);
 

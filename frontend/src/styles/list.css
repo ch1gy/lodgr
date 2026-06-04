@@ -354,14 +354,15 @@
 .lg-row         { animation: lg-enter-fade var(--dur-slow) var(--ease-out) both;
                   animation-delay: calc(var(--i, 0) * 40ms + 120ms); }
 
-/* Hover treatment — a faint background and a 2px nudge right + chevron shift. */
+/* Hover treatment — a faint background and a 2px nudge right + chevron shift.
+ * color-mix uses var(--ink) so it's theme-aware: dark ink on cream in light mode,
+ * light ink on near-black in dark mode. No separate [data-theme="dark"] override. */
 .lg-row { transition: background-color var(--dur-fast) var(--ease-out),
                        transform        var(--dur-base) var(--ease-spring); }
 .lg-row:hover {
-  background: rgba(13, 13, 13, 0.04);
+  background: color-mix(in oklab, var(--ink) 4%, transparent);
   transform: translateX(2px);
 }
-[data-theme="dark"] .lg-row:hover { background: rgba(255, 255, 255, 0.025); }
 .lg-row__chevron { transition: transform var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 .lg-row:hover .lg-row__chevron { transform: translateX(4px); color: var(--ink); }
 

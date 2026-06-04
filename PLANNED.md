@@ -96,78 +96,27 @@ Scoped magic-link sessions must NOT be able to change a password — too limited
 
 ---
 
-## Auto-ticket on client lockout + login event tracking (v1.x)
+## ~~Auto-ticket on client lockout~~ ✅ Done + ~~login event tracking~~ ✅ Done
 
-### The flow
+On permanent lockout (9th consecutive wrong password) the server auto-opens an
+`urgent` `security_log` ticket so the desk sees it without checking the admin panel.
+Guarded by a 24-hour deduplication check (`db::tickets::has_recent_security_lockout_ticket`)
+to prevent queue flooding. Implemented in `services/auth.rs`. 4 tests in `tests/lockout.rs`.
 
-When a client hits permanent lockout (≥5 failed attempts reaching the permanent
-tier), the backend should automatically open a `security_log` ticket so the desk
-sees it in their queue without needing to check the admin panel.
+Magic link exchange now also resets `failed_attempts` and `locked_until` so the
+client's lockout is cleared when they authenticate via the link.
 
-```
-client fails 5× login
-  → account permanently locked
-  → backend auto-creates security_log ticket (priority: urgent)
-  → desk sees it in queue
-  → desk opens ticket → generates magic link → QR code modal
-  → client scans → authenticated + lockout counter reset
-```
-
-The ticket becomes the communication record for the event. The desk can add
-internal notes (e.g. "confirmed client identity, issued new link"), and the
-thread is the full audit trail.
-
-### What's needed (backend)
-
-**1. Auto-create a ticket on permanent lockout** (medium)
-
-In `services/auth.rs`, where `compute_locked_until` returns the permanent sentinel
-(`"9999-01-01T00:00:00+00:00"`), after writing the lockout to the DB, call
-`db::tickets::create(...)` with:
-- `title`: `"Account locked — repeated failed login attempts"`
-- `description`: `"Client account {client_id} was permanently locked after {n} consecutive failed login attempts. Generate a magic link to restore access."`
-- `ticket_type`: `security_log`
-- `priority`: `urgent`
-- `created_by`: the client's own ID (acceptable — lock was triggered by their account)
-
-Only create the auto-ticket on the **first** permanent lockout — check if a recent
-`security_log` ticket already exists for this client before creating, to prevent a
-brute-force attacker flooding the queue.
-
-**2. ~~Login event audit table~~ ✅ Done** (`013_auth_events.sql`, commit `feat: auth_events`)
-
-`auth_events(id, user_id, event_type, created_at)` — no IP address column (IP
-monitoring is handled by 30-day rotating log files). Events written: `login_ok`,
-`magic_ok`, `logout`. Route: `GET /admin/clients/:id/auth-events` — desk only.
-
-### What's needed (frontend)
-
-- `ClientsPage` — the 🔒 badge and conditional "Unlock" prominence already work
-  because `locked_until` is now in `ClientResponse` (already shipped in the DTO).
-- The QR magic link modal is the recovery action — generate a magic link, show the
-  QR, client scans, done. Already built.
-
-### Security notes
-
-- Auto-ticket creation is server-side only — no client-triggered endpoint.
-- Sensitive detail (IP addresses, attempt counts) goes in an internal note, not the
-  visible thread.
-- Rate: only create the ticket on the first permanent lockout per client.
+`auth_events(id, user_id, event_type, created_at)` — events: `login_ok`, `magic_ok`,
+`logout`. Route: `GET /admin/clients/:id/auth-events` — desk only.
 
 ---
 
-## Account lockout recovery via magic link — desk (v1.x)
+## ~~Account lockout recovery via magic link — desk~~ ✅ Done
 
-When the desk account hits permanent lockout, the server should auto-send a magic
-link to the desk's registered email. Requires SMTP to be configured.
-
-### What's needed
-
-- Logic in `exchange_magic_link` to clear `failed_attempts` and `locked_until` when
-  the token is exchanged (already safe — token is single-use).
-- Auto-send the magic link email when permanent lockout is reached for `desk@local`.
-- Rate-limit magic link sends per account to prevent email-spam vectors.
-- DB recovery remains the break-glass option if SMTP is not configured.
+When the desk account hits permanent lockout the server auto-generates a recovery
+magic link and emails it to the desk address (requires SMTP). Rate-limited to one
+email per 5 minutes. If SMTP is not configured, the manual SQL recovery command is
+printed to `tracing::error!`. DB recovery remains the break-glass option.
 
 ---
 

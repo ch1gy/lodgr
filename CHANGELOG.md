@@ -4,6 +4,72 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — lockout hardening, theme toggle, test suite fixes
+
+### Backend — lockout auto-actions
+
+#### Auto-ticket on client permanent lockout (`services/auth.rs`, `db/tickets.rs`)
+When a client account hits the permanent lockout tier (9 consecutive wrong
+passwords), the server auto-opens an `urgent` `security_log` ticket so the desk
+sees it in the queue without checking the admin panel. The ticket is created in
+the `(Some(u), false)` arm of `login`, after `increment_failed_attempts` writes
+the permanent sentinel. Guard: `db::tickets::has_recent_security_lockout_ticket`
+checks for an existing `security_log` ticket created within the last 24 hours —
+a brute-force attacker hammering a locked account cannot flood the queue.
+
+#### Desk lockout recovery via magic link (`services/magic.rs`, `services/auth.rs`)
+When the desk account hits permanent lockout, the server auto-generates a recovery
+magic link and sends it to the desk's registered email (requires SMTP configured).
+Rate-limited to one email per 5 minutes via `db::magic_links::has_recent_active_for_user`.
+If SMTP is not configured, a `tracing::error!` prints the manual SQL recovery
+command to the log. New function: `services::magic::send_desk_recovery_link`.
+
+#### Magic link exchange resets lockout (`services/magic.rs::exchange_magic_link`)
+Exchanging a valid magic link now calls `db::users::reset_lockout` after marking
+the link as used. A client (or desk) whose account was locked can authenticate
+via magic link and have their `failed_attempts` and `locked_until` cleared in the
+same operation. Previously, lockout state persisted even after a successful
+magic link exchange.
+
+#### `services::auth::login` signature change
+Added `mailer: Option<&SmtpMailer>` as the third parameter to support the desk
+recovery flow. Updated the single call site in `src/auth.rs` to extract
+`State(mailer): State<Option<Arc<SmtpMailer>>>` and pass `mailer.as_deref()`.
+
+### Frontend — login page theme toggle + token cleanup
+
+#### Theme toggle on login page (`pages/LoginPage.tsx`, `theme/ThemeContext.tsx`)
+The `LGT / DRK` toggle (already present on every authenticated page) is now also
+shown in the login page's status band. Default theme changed to **light**
+regardless of OS preference — only an explicit saved choice overrides this.
+Removed the `matchMedia('prefers-color-scheme: dark')` listener from
+`ThemeContext` since default light makes system-following unnecessary.
+
+#### Token-based row hover in `list.css`
+`.lg-row:hover` background changed from raw `rgba(13, 13, 13, 0.04)` to
+`color-mix(in oklab, var(--ink) 4%, transparent)`. In dark mode `--ink` is the
+light cream color, so the hover tint is automatically correct in both themes
+without a separate `[data-theme="dark"]` override (which is now removed).
+
+### Tests — 4 new + 24 call-site fixes
+
+**`tests/lockout.rs`** (new file — 4 tests)
+- `permanent_lockout_auto_creates_urgent_security_log_ticket` — verifies the
+  auto-ticket is created with `urgent` priority on the 9th bad attempt
+- `lockout_ticket_not_duplicated_within_24h` — after a manual unlock and a second
+  lockout within 24 h, only one ticket exists (deduplication guard works)
+- `magic_link_exchange_resets_lockout` — verifies `failed_attempts = 0` and
+  `locked_until = NULL` after a magic link is exchanged on a locked account
+- `desk_permanent_lockout_does_not_create_ticket` — desk lockout must not create
+  a `security_log` ticket (client-only behaviour)
+
+**`tests/auth.rs`** — 24 call sites updated to pass `None` as the new `mailer`
+parameter; all 22 existing auth tests continue to pass.
+
+Total: **110 tests, all passing.**
+
+---
+
 ## [Unreleased] — auth_events: per-client login activity
 
 ### Backend — `GET /admin/clients/:id/auth-events` (desk only)

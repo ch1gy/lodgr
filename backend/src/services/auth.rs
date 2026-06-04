@@ -13,8 +13,10 @@ use uuid::Uuid;
 use crate::{
     config::Config,
     db,
+    email::SmtpMailer,
     error::{AppError, AppResult},
     models::Claims,
+    services::magic,
 };
 
 /// Failed-attempt count at which an account is permanently locked.
@@ -177,6 +179,7 @@ fn dummy_hash() -> Option<&'static str> {
 pub async fn login(
     pool: &SqlitePool,
     config: &Config,
+    mailer: Option<&SmtpMailer>,
     email: &str,
     password: &str,
     peer_ip: IpAddr,
@@ -257,6 +260,76 @@ pub async fn login(
                 locked = locked_until.is_some(),
                 "failed login attempt"
             );
+
+            // On first permanent lockout, take automated action.
+            if new_attempts >= PERMANENT_LOCKOUT_THRESHOLD {
+                if u.role == "client" {
+                    // Auto-open a security_log ticket so the desk sees it without
+                    // having to check the admin panel. Guard against duplicates.
+                    match db::tickets::has_recent_security_lockout_ticket(pool, &u.id).await {
+                        Ok(false) => {
+                            let ticket_id = Uuid::new_v4().to_string();
+                            let desc = format!(
+                                "Client account {} was permanently locked after {} consecutive \
+                                 failed login attempts. Generate a magic link to restore access.",
+                                u.id, new_attempts
+                            );
+                            if let Err(e) = db::tickets::create(
+                                pool,
+                                db::tickets::NewTicket {
+                                    id: &ticket_id,
+                                    title: "Account locked — repeated failed login attempts",
+                                    description: &desc,
+                                    created_by: &u.id,
+                                    client_id: &u.id,
+                                    priority: "urgent",
+                                    category: None,
+                                    due_date: None,
+                                    estimated_completion: None,
+                                    ticket_type: "security_log",
+                                    recurring: false,
+                                    recurring_interval_days: None,
+                                },
+                            )
+                            .await
+                            {
+                                tracing::warn!(user_id = %u.id, %e, "failed to auto-create lockout ticket");
+                            } else {
+                                tracing::warn!(user_id = %u.id, ticket_id = %ticket_id, "auto-created security_log ticket on permanent lockout");
+                            }
+                        }
+                        Ok(true) => {}
+                        Err(e) => {
+                            tracing::warn!(user_id = %u.id, %e, "failed to check for existing lockout ticket");
+                        }
+                    }
+                } else if u.role == "desk" {
+                    // Send a recovery magic link to the desk's email if SMTP is configured.
+                    if let Some(m) = mailer {
+                        let pool2 = pool.clone();
+                        let config2 = config.clone();
+                        let m2 = m.clone();
+                        let uid = u.id.clone();
+                        let uemail = u.email.clone();
+                        let uname = u.name.clone();
+                        tokio::spawn(async move {
+                            magic::send_desk_recovery_link(
+                                &pool2, &config2, &m2, &uid, &uemail, &uname,
+                            )
+                            .await;
+                        });
+                    } else {
+                        tracing::error!(
+                            user_id = %u.id,
+                            "SECURITY: desk account permanently locked and no SMTP configured — \
+                             manual DB recovery required: \
+                             UPDATE users SET failed_attempts=0, locked_until=NULL WHERE id='{}'",
+                            u.id
+                        );
+                    }
+                }
+            }
+
             Err(AppError::Unauthorized)
         }
         (None, _) => {

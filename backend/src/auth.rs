@@ -8,10 +8,13 @@ use serde::Deserialize;
 use sqlx::SqlitePool;
 use std::{net::SocketAddr, str::FromStr};
 
+use std::sync::Arc;
+
 use crate::{
     config::Config,
     db,
     dto::{AccessTokenResponse, MeResponse},
+    email::SmtpMailer,
     error::{AppError, AppResult},
     middleware::{
         clear_refresh_cookie, set_refresh_cookie, AuthUser, FullSessionUser, RefreshTokenCookie,
@@ -28,11 +31,19 @@ pub struct LoginRequest {
 pub async fn login(
     State(pool): State<SqlitePool>,
     State(config): State<Config>,
+    State(mailer): State<Option<Arc<SmtpMailer>>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Json(body): Json<LoginRequest>,
 ) -> AppResult<Response> {
-    let output =
-        services::auth::login(&pool, &config, &body.email, &body.password, peer.ip()).await?;
+    let output = services::auth::login(
+        &pool,
+        &config,
+        mailer.as_deref(),
+        &body.email,
+        &body.password,
+        peer.ip(),
+    )
+    .await?;
     build_token_response(
         output.access_token,
         &output.refresh_token,

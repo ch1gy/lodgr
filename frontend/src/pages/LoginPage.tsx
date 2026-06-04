@@ -22,6 +22,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
 import type { ApiError } from '../api/types';
 import '../styles/login.css';
 
@@ -36,6 +37,7 @@ function fmtCountdown(sec: number): string {
 
 export function LoginPage() {
   const { token, login } = useAuth();
+  const { theme, toggle } = useTheme();
   const nav = useNavigate();
   const loc = useLocation();
 
@@ -136,8 +138,17 @@ export function LoginPage() {
           <span className="dot" />
           lodgr · v0.1.0
         </span>
-        <span>
-          {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+        <span style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <span>{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+          <button
+            className="lg-theme-switch"
+            onClick={(e) => toggle({ x: e.clientX, y: e.clientY })}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            <span className="seg light">LGT</span>
+            <span className="slash">/</span>
+            <span className="seg dark">DRK</span>
+          </button>
         </span>
       </div>
 

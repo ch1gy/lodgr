@@ -233,6 +233,26 @@ pub async fn list_due_for_recurrence(pool: &SqlitePool) -> AppResult<Vec<Ticket>
     .await?)
 }
 
+/// Returns true if a non-deleted `security_log` ticket already exists for this
+/// client created within the last 24 hours. Prevents duplicate auto-tickets when
+/// a brute-force attacker keeps hammering a permanently-locked account.
+pub async fn has_recent_security_lockout_ticket(
+    pool: &SqlitePool,
+    client_id: &str,
+) -> AppResult<bool> {
+    let row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM tickets
+         WHERE client_id = ?
+           AND ticket_type = 'security_log'
+           AND deleted_at IS NULL
+           AND created_at >= datetime('now', '-24 hours')",
+    )
+    .bind(client_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.0 > 0)
+}
+
 /// Fetch all tickets for a client, including deleted — used for export.
 pub async fn list_all_for_client(pool: &SqlitePool, client_id: &str) -> AppResult<Vec<Ticket>> {
     Ok(sqlx::query_as::<_, Ticket>(&format!(

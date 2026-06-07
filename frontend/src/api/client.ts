@@ -83,7 +83,8 @@ api.interceptors.response.use(
         (original.headers as Record<string, string>)['Authorization'] = `Bearer ${newToken}`;
         return api(original);
       }
-      // Refresh failed — surface 401 so the caller can route to /login.
+      // Refresh failed — session is dead, send the user to login.
+      window.location.href = '/login';
     }
 
     return Promise.reject(error);

@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{Months, NaiveDate, Utc};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -29,6 +29,7 @@ pub async fn recurring_tickets(pool: SqlitePool) {
                             ticket_type: &t.ticket_type,
                             recurring: false, // instances are not themselves recurring
                             recurring_interval_days: None,
+                            sub_client_id: t.sub_client_id.as_deref(),
                         },
                     )
                     .await;
@@ -56,6 +57,110 @@ pub async fn recurring_tickets(pool: SqlitePool) {
                 }
             }
             Err(e) => tracing::warn!("recurring tickets query failed: {e}"),
+        }
+    }
+}
+
+fn advance_recur_date(date_str: &str, interval: &str) -> Option<String> {
+    let d = NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()?;
+    let months = match interval {
+        "quarterly" => 3,
+        "yearly"    => 12,
+        _           => 1, // monthly is the default
+    };
+    let next = d.checked_add_months(Months::new(months))?;
+    Some(next.format("%Y-%m-%d").to_string())
+}
+
+/// Runs every hour. Creates draft invoices from recurring templates whose
+/// next_recur_date has arrived. Desk must review and confirm before sending.
+pub async fn recurring_invoices(pool: SqlitePool) {
+    let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
+    loop {
+        interval.tick().await;
+        match db::invoices::list_due_for_recurrence(&pool).await {
+            Ok(templates) => {
+                for t in templates {
+                    // Guard: skip templates missing recur_interval — would loop forever otherwise.
+                    let Some(ref iv) = t.recur_interval else {
+                        tracing::warn!(
+                            "recurring invoice: template {} has no recur_interval — skipping",
+                            t.id
+                        );
+                        continue;
+                    };
+                    let Some(ref cur_date) = t.next_recur_date else {
+                        tracing::warn!(
+                            "recurring invoice: template {} has no next_recur_date — skipping",
+                            t.id
+                        );
+                        continue;
+                    };
+                    let Some(next_date) = advance_recur_date(cur_date, iv) else {
+                        tracing::warn!(
+                            "recurring invoice: could not advance date for template {} — skipping",
+                            t.id
+                        );
+                        continue;
+                    };
+
+                    let new_id  = Uuid::new_v4().to_string();
+                    // Include a short UUID segment so the number is unique per auto-generation,
+                    // preventing UNIQUE constraint collisions on restart or template reuse.
+                    let suffix  = &new_id[..8];
+                    let number  = format!("{}-auto-{}", t.number, suffix);
+                    let today   = Utc::now().format("%Y-%m-%d").to_string();
+                    let items_json = t.items.clone();
+                    let notes_json = t.notes.clone();
+
+                    // Run create + date advance in a single transaction so a mid-flight
+                    // crash does not leave the template stuck at the old date.
+                    let tx_result: crate::error::AppResult<()> = async {
+                        db::invoices::create(
+                            &pool,
+                            db::invoices::NewInvoice {
+                                id: &new_id,
+                                client_id: &t.client_id,
+                                number: &number,
+                                currency: &t.currency,
+                                terms: &t.terms,
+                                issued_date: &today,
+                                due_date: &t.due_date,
+                                project_type: &t.project_type,
+                                project_location: &t.project_location,
+                                billed_to_name: &t.billed_to_name,
+                                billed_to_role: &t.billed_to_role,
+                                billed_to_addr1: &t.billed_to_addr1,
+                                billed_to_addr2: &t.billed_to_addr2,
+                                billed_to_pin: &t.billed_to_pin,
+                                items_json: &items_json,
+                                notes_json: &notes_json,
+                                editor_note: &t.editor_note,
+                                kra_number: None,  // must be filled before sending
+                                recurring: false,  // instances are not themselves recurring
+                                recur_interval: None,
+                                next_recur_date: None,
+                            },
+                        )
+                        .await?;
+                        db::invoices::update_next_recur_date(&pool, &t.id, &next_date).await?;
+                        Ok(())
+                    }
+                    .await;
+
+                    match tx_result {
+                        Ok(()) => tracing::info!(
+                            "recurring invoice: created draft {new_id} from template {}, next={next_date}",
+                            t.id
+                        ),
+                        Err(e) => tracing::warn!(
+                            "recurring invoice: failed for template {}: {e}",
+                            t.id
+                        ),
+                    }
+                }
+            }
+            Err(e) => tracing::warn!("recurring invoices query failed: {e}"),
         }
     }
 }

@@ -39,7 +39,7 @@ export const tickets = {
   },
 
   // ── Messages ────────────────────────────────────────────────────────────
-  /** Post a message. `file` optional, multipart (max 10 MiB enforced server-side). */
+  /** Post a message. `file` optional, multipart (max 100 MiB enforced server-side). */
   postMessage(id: string, body: string, file?: File): Promise<{ id: string }> {
     const fd = new FormData();
     fd.append('body', body);

@@ -3,8 +3,8 @@ use sqlx::SqlitePool;
 
 use crate::{error::AppResult, models::User};
 
-const USER_COLS: &str = "id, name, email, password_hash, role, created_at, deleted_at,
-     failed_attempts, locked_until";
+const USER_COLS: &str = "id, name, email, password_hash, role, created_at, deleted_at, \
+    failed_attempts, locked_until, address_line1, address_line2, pin_number, contact_person";
 
 pub async fn find_by_email(pool: &SqlitePool, email: &str) -> AppResult<Option<User>> {
     Ok(
@@ -107,13 +107,24 @@ pub async fn update_profile(
     user_id: &str,
     name: &str,
     email: &str,
+    address_line1: Option<&str>,
+    address_line2: Option<&str>,
+    pin_number: Option<&str>,
+    contact_person: Option<&str>,
 ) -> AppResult<()> {
-    sqlx::query("UPDATE users SET name = ?, email = ? WHERE id = ?")
-        .bind(name)
-        .bind(email)
-        .bind(user_id)
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        "UPDATE users SET name = ?, email = ?, address_line1 = ?, address_line2 = ?, \
+         pin_number = ?, contact_person = ? WHERE id = ?",
+    )
+    .bind(name)
+    .bind(email)
+    .bind(address_line1)
+    .bind(address_line2)
+    .bind(pin_number)
+    .bind(contact_person)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

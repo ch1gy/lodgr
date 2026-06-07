@@ -289,6 +289,7 @@ pub async fn login(
                                     ticket_type: "security_log",
                                     recurring: false,
                                     recurring_interval_days: None,
+                                    sub_client_id: None,
                                 },
                             )
                             .await

@@ -22,9 +22,9 @@ use crate::{
 /// Per-file size limit for attachment uploads.
 /// Keep in sync with `DefaultBodyLimit` in main.rs — the global limit must be
 /// at least this large or multipart parsing will reject the request first.
-const MAX_FILE_BYTES: usize = 10 * 1024 * 1024;
+const MAX_FILE_BYTES: usize = 100 * 1024 * 1024;
 
-const ALLOWED_EXT: &[&str] = &["pdf", "png", "jpg", "jpeg", "gif", "txt", "docx", "zip"];
+const ALLOWED_EXT: &[&str] = &["pdf", "png", "jpg", "jpeg", "gif", "txt", "md"];
 
 pub async fn post_message(
     State(pool): State<SqlitePool>,
@@ -136,12 +136,6 @@ pub async fn post_message(
         }
     }
 
-    if body.is_empty() {
-        return Err(AppError::UnprocessableEntity(
-            "body field is required".into(),
-        ));
-    }
-
     let entry = services::messages::post_message(
         &pool,
         &enc_key,
@@ -207,7 +201,7 @@ pub async fn get_attachment(
         [
             (
                 header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{safe_file}\""),
+                format!("attachment; filename=\"{}\"", safe_file.replace('"', "")),
             ),
             (header::CONTENT_TYPE, "application/octet-stream".to_owned()),
         ],

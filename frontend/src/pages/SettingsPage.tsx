@@ -9,18 +9,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Masthead } from '../components/Masthead';
 import { BottomTabBar } from '../components/BottomTabBar';
 import { PasswordGenerator } from '../components/PasswordGenerator';
 import { useAuth } from '../auth/AuthContext';
 import { auth as authApi } from '../api/auth';
+import { admin } from '../api/admin';
 import '../styles/v2.css';
 
-type NavItem = 'password' | 'profile' | 'sessions' | 'notifications' | 'danger';
+type NavItem = 'password' | 'desk-profile' | 'profile' | 'sessions' | 'notifications' | 'danger';
 
 const NAV_ITEMS: Array<{ key: NavItem; label: string; sub: string }> = [
   { key: 'password',      label: '— Password',       sub: 'Change your passphrase' },
+  { key: 'desk-profile',  label: '— Desk profile',   sub: 'Invoice "From" info' },
   { key: 'profile',       label: '— Profile',        sub: 'Name and contact email' },
   { key: 'sessions',      label: '— Sessions',       sub: 'Active device list' },
   { key: 'notifications', label: '— Notifications',  sub: 'Email and in-app alerts' },
@@ -60,6 +62,7 @@ export function SettingsPage() {
           {section === 'password' && (
             <PasswordSection userEmail={profile?.email ?? user?.email} />
           )}
+          {section === 'desk-profile' && <DeskProfileSection />}
           {section === 'profile' && (
             <PlaceholderSection title="Profile" note="Profile editing is coming soon. Contact the desk to update your name or email." />
           )}
@@ -251,6 +254,97 @@ function DangerSection() {
           Sign out ✕
         </button>
       )}
+    </>
+  );
+}
+
+// ── Desk profile section ─────────────────────────────────────────────────────
+function DeskProfileSection() {
+  const qc = useQueryClient();
+  const profileQ = useQuery({
+    queryKey: ['desk-profile'],
+    queryFn: () => admin.getDeskProfile(),
+  });
+
+  const [name, setName]           = useState('');
+  const [tagline, setTagline]     = useState('');
+  const [email, setEmail]         = useState('');
+  const [website, setWebsite]     = useState('');
+  const [city, setCity]           = useState('');
+  const [phone, setPhone]         = useState('');
+  const [vatNumber, setVatNumber] = useState('');
+  const [seeded, setSeeded]       = useState(false);
+  const [saved, setSaved]         = useState(false);
+
+  // Seed form once data loads.
+  if (profileQ.data && !seeded) {
+    const p = profileQ.data;
+    setName(p.name); setTagline(p.tagline); setEmail(p.email);
+    setWebsite(p.website); setCity(p.city); setPhone(p.phone); setVatNumber(p.vat_number);
+    setSeeded(true);
+  }
+
+  const updateM = useMutation({
+    mutationFn: () => admin.updateDeskProfile({ name, tagline, email, website, city, phone, vat_number: vatNumber }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['desk-profile'] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    },
+  });
+
+  const err = updateM.error
+    ? ((updateM.error as { response?: { data?: { error?: string } } }).response?.data?.error ?? 'Save failed.')
+    : null;
+
+  return (
+    <>
+      <div className="lg-set__sec-eye">— Section 02 · Desk profile</div>
+      <h2 className="lg-set__h2">Invoice <em>"From"</em> info.</h2>
+      <div className="lg-set__dek">
+        This information appears in the "From" section of every printed invoice.
+        It is never shown to clients inside the app.
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '22px 32px', maxWidth: 640, marginTop: 8 }}>
+        <div className="lg-f" style={{ gridColumn: '1 / -1' }}>
+          <div className="lg-f__lbl"><span>Display name</span></div>
+          <input className="lg-f__inp" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Acme Studio" />
+        </div>
+        <div className="lg-f" style={{ gridColumn: '1 / -1' }}>
+          <div className="lg-f__lbl"><span>Tagline / role</span></div>
+          <input className="lg-f__inp" value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="e.g. Independent · Software & Web" />
+        </div>
+        <div className="lg-f">
+          <div className="lg-f__lbl"><span>Email</span></div>
+          <input className="lg-f__inp" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="hello@yourdomain.com" />
+        </div>
+        <div className="lg-f">
+          <div className="lg-f__lbl"><span>Website</span></div>
+          <input className="lg-f__inp" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="yourdomain.com" />
+        </div>
+        <div className="lg-f">
+          <div className="lg-f__lbl"><span>City</span></div>
+          <input className="lg-f__inp" value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Nairobi" />
+        </div>
+        <div className="lg-f">
+          <div className="lg-f__lbl"><span>Phone</span></div>
+          <input className="lg-f__inp" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+254 700 000 000" />
+        </div>
+        <div className="lg-f">
+          <div className="lg-f__lbl"><span>VAT / KRA PIN</span></div>
+          <input className="lg-f__inp mono" value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} placeholder="e.g. P051234567X" />
+        </div>
+      </div>
+
+      {err && <div className="lg-f__err" style={{ marginTop: 12 }}>{err}</div>}
+      {saved && <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--green, #4f6f4a)', marginTop: 12 }}>✓ Saved</div>}
+
+      <div style={{ marginTop: 24 }}>
+        <button type="button" className="lg-bt lg-bt--solid" onClick={() => updateM.mutate()} disabled={updateM.isPending}>
+          {updateM.isPending ? 'Saving…' : 'Save profile'} <span className="arr">↗</span>
+        </button>
+      </div>
     </>
   );
 }

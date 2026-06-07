@@ -16,11 +16,19 @@ use crate::{
     },
 };
 
+pub struct NewClientProfile {
+    pub address_line1:  Option<String>,
+    pub address_line2:  Option<String>,
+    pub pin_number:     Option<String>,
+    pub contact_person: Option<String>,
+}
+
 pub async fn create_client(
     pool: &SqlitePool,
     name: String,
     email: String,
     password: String,
+    profile: Option<NewClientProfile>,
 ) -> AppResult<User> {
     if name.is_empty() || name.len() > 100 {
         return Err(AppError::BadRequest("name must be 1–100 characters".into()));
@@ -39,6 +47,21 @@ pub async fn create_client(
             }
             other => other,
         })?;
+
+    if let Some(p) = profile {
+        let has_any = p.address_line1.is_some() || p.address_line2.is_some()
+            || p.pin_number.is_some() || p.contact_person.is_some();
+        if has_any {
+            db::users::update_profile(
+                pool, &id, &name, &email,
+                p.address_line1.as_deref(),
+                p.address_line2.as_deref(),
+                p.pin_number.as_deref(),
+                p.contact_person.as_deref(),
+            )
+            .await?;
+        }
+    }
 
     db::users::find_by_id(pool, &id)
         .await?
@@ -207,11 +230,19 @@ pub async fn do_export(
     export_client(pool, enc_key, client_id).await
 }
 
+pub struct UpdateClientProfileInput {
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub address_line1: Option<String>,
+    pub address_line2: Option<String>,
+    pub pin_number: Option<String>,
+    pub contact_person: Option<String>,
+}
+
 pub async fn update_client_profile(
     pool: &SqlitePool,
     client_id: &str,
-    new_name: Option<String>,
-    new_email: Option<String>,
+    input: UpdateClientProfileInput,
 ) -> AppResult<User> {
     let user = db::users::find_by_id(pool, client_id)
         .await?
@@ -220,12 +251,7 @@ pub async fn update_client_profile(
         return Err(AppError::BadRequest("target user is not a client".into()));
     }
 
-    // Nothing to update — return current state without a DB round-trip.
-    if new_name.is_none() && new_email.is_none() {
-        return Ok(user);
-    }
-
-    let name = match new_name {
+    let name = match input.name {
         Some(ref n) => {
             if n.is_empty() || n.len() > 100 {
                 return Err(AppError::BadRequest("name must be 1–100 characters".into()));
@@ -235,7 +261,7 @@ pub async fn update_client_profile(
         None => user.name.clone(),
     };
 
-    let email = match new_email {
+    let email = match input.email {
         Some(ref e) => {
             validate_email(e)?;
             e.clone()
@@ -243,7 +269,12 @@ pub async fn update_client_profile(
         None => user.email.clone(),
     };
 
-    db::users::update_profile(pool, client_id, &name, &email)
+    let addr1 = input.address_line1.as_deref().or(user.address_line1.as_deref());
+    let addr2 = input.address_line2.as_deref().or(user.address_line2.as_deref());
+    let pin   = input.pin_number.as_deref().or(user.pin_number.as_deref());
+    let cp    = input.contact_person.as_deref().or(user.contact_person.as_deref());
+
+    db::users::update_profile(pool, client_id, &name, &email, addr1, addr2, pin, cp)
         .await
         .map_err(|e| match e {
             AppError::Internal(ref msg) if msg.contains("UNIQUE") => {

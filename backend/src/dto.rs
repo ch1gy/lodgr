@@ -1,7 +1,7 @@
 /// All API-facing response types. DB models must NEVER derive Serialize.
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use crate::models::{AuthEvent, ClientExport, InternalNote, ThreadEntry, Ticket, User};
+use crate::models::{AuthEvent, ClientExport, DeskProfile, InternalNote, Invoice, SubClient, ThreadEntry, Ticket, User};
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -61,6 +61,27 @@ impl From<User> for MeResponse {
     }
 }
 
+// ── Sub-clients ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct SubClientResponse {
+    pub id: String,
+    pub client_id: String,
+    pub name: String,
+    pub created_at: String,
+}
+
+impl From<SubClient> for SubClientResponse {
+    fn from(s: SubClient) -> Self {
+        SubClientResponse {
+            id: s.id,
+            client_id: s.client_id,
+            name: s.name,
+            created_at: s.created_at,
+        }
+    }
+}
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
@@ -69,12 +90,12 @@ pub struct ClientResponse {
     pub name: String,
     pub email: String,
     pub deleted_at: Option<String>,
-    /// Consecutive failed login attempts. Reset to 0 on successful login or
-    /// magic link exchange.
     pub failed_attempts: i64,
-    /// RFC-3339 timestamp the account is locked until. `None` = not locked.
-    /// `"9999-01-01T00:00:00+00:00"` = permanent lockout.
     pub locked_until: Option<String>,
+    pub address_line1: Option<String>,
+    pub address_line2: Option<String>,
+    pub pin_number: Option<String>,
+    pub contact_person: Option<String>,
 }
 
 impl From<User> for ClientResponse {
@@ -86,6 +107,10 @@ impl From<User> for ClientResponse {
             deleted_at: u.deleted_at,
             failed_attempts: u.failed_attempts,
             locked_until: u.locked_until,
+            address_line1: u.address_line1,
+            address_line2: u.address_line2,
+            pin_number: u.pin_number,
+            contact_person: u.contact_person,
         }
     }
 }
@@ -145,6 +170,8 @@ pub struct TicketResponse {
     pub ticket_type: String,
     pub recurring: bool,
     pub recurring_interval_days: Option<i64>,
+    pub sub_client_id: Option<String>,
+    pub sub_client_name: Option<String>,
 }
 
 impl From<Ticket> for TicketResponse {
@@ -164,6 +191,8 @@ impl From<Ticket> for TicketResponse {
             ticket_type: t.ticket_type,
             recurring: t.recurring != 0,
             recurring_interval_days: t.recurring_interval_days,
+            sub_client_id: t.sub_client_id,
+            sub_client_name: t.sub_client_name,
         }
     }
 }
@@ -226,4 +255,107 @@ impl From<InternalNote> for InternalNoteResponse {
 #[derive(Debug, Serialize)]
 pub struct MessageResponse {
     pub id: String,
+}
+
+// ── Invoices ──────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvoiceItem {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub: Option<String>,
+    pub qty: u32,
+    pub rate: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvoiceNote {
+    pub k: String,
+    pub v: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InvoiceResponse {
+    pub id: String,
+    pub client_id: String,
+    pub number: String,
+    pub status: String,
+    pub currency: String,
+    pub terms: String,
+    pub issued_date: String,
+    pub due_date: String,
+    pub project_type: String,
+    pub project_location: String,
+    pub billed_to_name: String,
+    pub billed_to_role: String,
+    pub billed_to_addr1: String,
+    pub billed_to_addr2: String,
+    pub billed_to_pin: String,
+    pub items: Vec<InvoiceItem>,
+    pub notes: Vec<InvoiceNote>,
+    pub editor_note: String,
+    pub kra_number: Option<String>,
+    pub recurring: bool,
+    pub recur_interval: Option<String>,
+    pub next_recur_date: Option<String>,
+    pub created_at: String,
+}
+
+impl From<Invoice> for InvoiceResponse {
+    fn from(inv: Invoice) -> Self {
+        let items: Vec<InvoiceItem> = serde_json::from_str(&inv.items).unwrap_or_default();
+        let notes: Vec<InvoiceNote> = serde_json::from_str(&inv.notes).unwrap_or_default();
+        InvoiceResponse {
+            id: inv.id,
+            client_id: inv.client_id,
+            number: inv.number,
+            status: inv.status,
+            currency: inv.currency,
+            terms: inv.terms,
+            issued_date: inv.issued_date,
+            due_date: inv.due_date,
+            project_type: inv.project_type,
+            project_location: inv.project_location,
+            billed_to_name: inv.billed_to_name,
+            billed_to_role: inv.billed_to_role,
+            billed_to_addr1: inv.billed_to_addr1,
+            billed_to_addr2: inv.billed_to_addr2,
+            billed_to_pin: inv.billed_to_pin,
+            items,
+            notes,
+            editor_note: inv.editor_note,
+            kra_number: inv.kra_number,
+            recurring: inv.recurring != 0,
+            recur_interval: inv.recur_interval,
+            next_recur_date: inv.next_recur_date,
+            created_at: inv.created_at,
+        }
+    }
+}
+
+// ── Desk profile ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct DeskProfileResponse {
+    pub name: String,
+    pub tagline: String,
+    pub email: String,
+    pub website: String,
+    pub city: String,
+    pub phone: String,
+    pub vat_number: String,
+}
+
+impl From<DeskProfile> for DeskProfileResponse {
+    fn from(p: DeskProfile) -> Self {
+        DeskProfileResponse {
+            name: p.name,
+            tagline: p.tagline,
+            email: p.email,
+            website: p.website,
+            city: p.city,
+            phone: p.phone,
+            vat_number: p.vat_number,
+        }
+    }
 }

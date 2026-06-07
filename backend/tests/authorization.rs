@@ -68,6 +68,8 @@ async fn make_ticket(
             recurring: false,
             recurring_interval_days: None,
             client_id: Some(client_id),
+            initial_status: None,
+            sub_client_id: None,
         },
     )
     .await
@@ -165,6 +167,8 @@ async fn client_filing_ticket_with_another_clients_id_is_filed_as_self() {
             recurring: false,
             recurring_interval_days: None,
             client_id: Some(&client_b), // attempted override
+            sub_client_id: None,
+            initial_status: None,
         },
     )
     .await

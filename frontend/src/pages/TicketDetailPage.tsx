@@ -23,6 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tickets as ticketsApi } from '../api/tickets';
@@ -370,6 +371,11 @@ export function TicketDetailPage() {
           <div className="lg-article__above">
             <div className="lg-article__above-l">
               {ticket.category ?? TICKET_TYPE_LABEL[ticket.ticket_type]}
+              {ticket.sub_client_name && (
+                <span style={{ marginLeft: 10, color: 'var(--red)' }}>
+                  › {ticket.sub_client_name}
+                </span>
+              )}
             </div>
             <div className="lg-article__above-r">
               <b>{ticket.id}</b>
@@ -380,7 +386,9 @@ export function TicketDetailPage() {
 
           <h1 className="lg-article__h1">{ticket.title}</h1>
           {ticket.description && (
-            <p className="lg-article__dek">{ticket.description}</p>
+            <div className="lg-article__md">
+              <ReactMarkdown>{ticket.description}</ReactMarkdown>
+            </div>
           )}
 
           <div className="lg-article__byline">
@@ -510,6 +518,7 @@ export function TicketDetailPage() {
                         ref={fileRef}
                         type="file"
                         hidden
+                        accept=".pdf,.png,.jpg,.jpeg,.gif,.txt,.md"
                         onChange={(e) => setPendingFile(e.target.files?.[0] ?? null)}
                       />
                     </label>

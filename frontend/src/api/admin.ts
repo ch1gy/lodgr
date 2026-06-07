@@ -3,8 +3,13 @@ import { api } from './client';
 import type {
   Client,
   CreateClientPayload,
+  CreateInvoicePayload,
+  DeskProfile,
   ExportResponse,
+  InvoiceResponse,
   MagicLinkResponse,
+  SubClient,
+  UpdateInvoicePayload,
 } from './types';
 
 export interface DeleteSessionsResponse {
@@ -41,6 +46,10 @@ export const admin = {
       .then(() => undefined);
   },
 
+  updateClient(id: string, payload: Partial<{ name: string; email: string; address_line1: string; address_line2: string; pin_number: string; contact_person: string }>): Promise<import('./types').Client> {
+    return api.patch<import('./types').Client>(`/admin/clients/${id}`, payload).then((r) => r.data);
+  },
+
   unlockClient(id: string): Promise<void> {
     return api.post(`/admin/clients/${id}/unlock`).then(() => undefined);
   },
@@ -63,5 +72,56 @@ export const admin = {
     return api
       .post<MagicLinkResponse>(`/admin/clients/${id}/magic-link`)
       .then((r) => r.data);
+  },
+
+  listSubClients(clientId: string): Promise<SubClient[]> {
+    return api.get<SubClient[]>(`/admin/clients/${clientId}/sub-clients`).then((r) => r.data);
+  },
+
+  createSubClient(clientId: string, name: string): Promise<SubClient> {
+    return api
+      .post<SubClient>(`/admin/clients/${clientId}/sub-clients`, { name })
+      .then((r) => r.data);
+  },
+
+  deleteSubClient(subClientId: string): Promise<void> {
+    return api.delete(`/admin/sub-clients/${subClientId}`).then(() => undefined);
+  },
+
+  // ── Invoices ───────────────────────────────────────────────────────────────
+
+  listInvoices(clientId?: string): Promise<InvoiceResponse[]> {
+    return api
+      .get<InvoiceResponse[]>('/admin/invoices', { params: clientId ? { client_id: clientId } : undefined })
+      .then((r) => r.data);
+  },
+
+  getInvoice(id: string): Promise<InvoiceResponse> {
+    return api.get<InvoiceResponse>(`/admin/invoices/${id}`).then((r) => r.data);
+  },
+
+  createInvoice(payload: CreateInvoicePayload): Promise<InvoiceResponse> {
+    return api.post<InvoiceResponse>('/admin/invoices', payload).then((r) => r.data);
+  },
+
+  updateInvoice(id: string, payload: UpdateInvoicePayload): Promise<InvoiceResponse> {
+    return api.patch<InvoiceResponse>(`/admin/invoices/${id}`, payload).then((r) => r.data);
+  },
+
+  deleteInvoice(id: string): Promise<void> {
+    return api.delete(`/admin/invoices/${id}`).then(() => undefined);
+  },
+
+  /** Returns the URL to open in a new tab for print/PDF. */
+  invoicePrintUrl(id: string): string {
+    return `/admin/invoices/${id}/print`;
+  },
+
+  getDeskProfile(): Promise<DeskProfile> {
+    return api.get<DeskProfile>('/admin/desk-profile').then((r) => r.data);
+  },
+
+  updateDeskProfile(payload: Partial<DeskProfile>): Promise<DeskProfile> {
+    return api.put<DeskProfile>('/admin/desk-profile', payload).then((r) => r.data);
   },
 };

@@ -68,7 +68,9 @@ pub async fn export_client(
         let mut thread = Vec::with_capacity(raw_entries.len());
 
         for entry in raw_entries {
-            let body = if let Some(nonce) = &entry.body_nonce {
+            let body = if entry.body.is_empty() {
+                String::new()
+            } else if let Some(nonce) = &entry.body_nonce {
                 crypto::decrypt(enc_key, nonce, &entry.body).unwrap_or_else(|_| {
                     tracing::warn!(
                         entry_id = %entry.id,

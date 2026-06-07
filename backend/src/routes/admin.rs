@@ -23,8 +23,8 @@ use crate::{
     crypto::EncryptionKey,
     db,
     dto::{
-        AuthEventResponse, ClientResponse, DeleteSessionsResponse, ExportResponse,
-        MagicLinkResponse,
+        AuthEventResponse, ClientResponse, DeleteSessionsResponse, DeskProfileResponse,
+        ExportResponse, MagicLinkResponse, SubClientResponse,
     },
     email::SmtpMailer,
     error::{AppError, AppResult},
@@ -37,6 +37,10 @@ pub struct CreateClientRequest {
     pub name: String,
     pub email: String,
     pub password: String,
+    pub address_line1:  Option<String>,
+    pub address_line2:  Option<String>,
+    pub pin_number:     Option<String>,
+    pub contact_person: Option<String>,
 }
 
 pub async fn create_client(
@@ -44,7 +48,16 @@ pub async fn create_client(
     _: DeskUser,
     Json(body): Json<CreateClientRequest>,
 ) -> AppResult<impl IntoResponse> {
-    let user = services::admin::create_client(&pool, body.name, body.email, body.password).await?;
+    let profile = services::admin::NewClientProfile {
+        address_line1:  body.address_line1,
+        address_line2:  body.address_line2,
+        pin_number:     body.pin_number,
+        contact_person: body.contact_person,
+    };
+    let user = services::admin::create_client(
+        &pool, body.name, body.email, body.password, Some(profile),
+    )
+    .await?;
     Ok((StatusCode::CREATED, Json(ClientResponse::from(user))))
 }
 
@@ -84,6 +97,10 @@ pub async fn soft_delete_client(
 pub struct UpdateClientRequest {
     pub name: Option<String>,
     pub email: Option<String>,
+    pub address_line1: Option<String>,
+    pub address_line2: Option<String>,
+    pub pin_number: Option<String>,
+    pub contact_person: Option<String>,
 }
 
 pub async fn update_client(
@@ -92,8 +109,19 @@ pub async fn update_client(
     Path(client_id): Path<String>,
     Json(body): Json<UpdateClientRequest>,
 ) -> AppResult<impl IntoResponse> {
-    let user =
-        services::admin::update_client_profile(&pool, &client_id, body.name, body.email).await?;
+    let user = services::admin::update_client_profile(
+        &pool,
+        &client_id,
+        services::admin::UpdateClientProfileInput {
+            name: body.name,
+            email: body.email,
+            address_line1: body.address_line1,
+            address_line2: body.address_line2,
+            pin_number: body.pin_number,
+            contact_person: body.contact_person,
+        },
+    )
+    .await?;
     tracing::info!(
         desk_user_id = %claims.sub,
         client_id = %client_id,
@@ -263,4 +291,99 @@ pub async fn get_auth_events(
     let events = db::auth_events::list_recent_for_user(&pool, &client_id, 50).await?;
     let dtos: Vec<AuthEventResponse> = events.into_iter().map(AuthEventResponse::from).collect();
     Ok(Json(dtos))
+}
+
+// ── Sub-clients ────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct CreateSubClientRequest {
+    pub name: String,
+}
+
+pub async fn list_sub_clients(
+    State(pool): State<SqlitePool>,
+    _: DeskUser,
+    Path(client_id): Path<String>,
+) -> AppResult<impl IntoResponse> {
+    db::users::find_by_id(&pool, &client_id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let scs = db::sub_clients::list_for_client(&pool, &client_id).await?;
+    let dtos: Vec<SubClientResponse> = scs.into_iter().map(SubClientResponse::from).collect();
+    Ok(Json(dtos))
+}
+
+pub async fn create_sub_client(
+    State(pool): State<SqlitePool>,
+    _: DeskUser,
+    Path(client_id): Path<String>,
+    Json(body): Json<CreateSubClientRequest>,
+) -> AppResult<impl IntoResponse> {
+    let name = body.name.trim().to_owned();
+    if name.is_empty() || name.len() > 120 {
+        return Err(AppError::BadRequest(
+            "sub-client name must be 1–120 characters".into(),
+        ));
+    }
+    db::users::find_by_id(&pool, &client_id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let sc = db::sub_clients::create(&pool, &id, &client_id, &name).await?;
+    Ok((StatusCode::CREATED, Json(SubClientResponse::from(sc))))
+}
+
+pub async fn delete_sub_client(
+    State(pool): State<SqlitePool>,
+    _: DeskUser,
+    Path(sub_client_id): Path<String>,
+) -> AppResult<impl IntoResponse> {
+    db::sub_clients::find_by_id(&pool, &sub_client_id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    db::sub_clients::delete(&pool, &sub_client_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ── Desk profile ──────────────────────────────────────────────────────────────
+
+pub async fn get_desk_profile(
+    State(pool): State<SqlitePool>,
+    _: DeskUser,
+) -> AppResult<impl IntoResponse> {
+    let profile = db::desk_profile::get(&pool).await?;
+    Ok(Json(DeskProfileResponse::from(profile)))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateDeskProfileRequest {
+    pub name: Option<String>,
+    pub tagline: Option<String>,
+    pub email: Option<String>,
+    pub website: Option<String>,
+    pub city: Option<String>,
+    pub phone: Option<String>,
+    pub vat_number: Option<String>,
+}
+
+pub async fn update_desk_profile(
+    State(pool): State<SqlitePool>,
+    _: DeskUser,
+    Json(body): Json<UpdateDeskProfileRequest>,
+) -> AppResult<impl IntoResponse> {
+    let current = db::desk_profile::get(&pool).await?;
+    let updated = db::desk_profile::upsert(
+        &pool,
+        &db::desk_profile::UpdateDeskProfile {
+            name: body.name.as_deref().unwrap_or(&current.name),
+            tagline: body.tagline.as_deref().unwrap_or(&current.tagline),
+            email: body.email.as_deref().unwrap_or(&current.email),
+            website: body.website.as_deref().unwrap_or(&current.website),
+            city: body.city.as_deref().unwrap_or(&current.city),
+            phone: body.phone.as_deref().unwrap_or(&current.phone),
+            vat_number: body.vat_number.as_deref().unwrap_or(&current.vat_number),
+        },
+    )
+    .await?;
+    Ok(Json(DeskProfileResponse::from(updated)))
 }

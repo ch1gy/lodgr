@@ -13,6 +13,14 @@ pub struct User {
     pub deleted_at: Option<String>,
     pub failed_attempts: i64,
     pub locked_until: Option<String>,
+    #[sqlx(default)]
+    pub address_line1: Option<String>,
+    #[sqlx(default)]
+    pub address_line2: Option<String>,
+    #[sqlx(default)]
+    pub pin_number: Option<String>,
+    #[sqlx(default)]
+    pub contact_person: Option<String>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -34,6 +42,18 @@ pub struct Ticket {
     pub recurring_interval_days: Option<i64>,
     pub last_recurred_at: Option<String>,
     pub deleted_at: Option<String>,
+    pub sub_client_id: Option<String>,
+    /// Populated only when the query does a LEFT JOIN on sub_clients.
+    #[sqlx(default)]
+    pub sub_client_name: Option<String>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct SubClient {
+    pub id: String,
+    pub client_id: String,
+    pub name: String,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -142,10 +162,51 @@ impl Claims {
     }
 }
 
+/// Raw invoice row from the DB. Items and notes are stored as JSON TEXT.
+#[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
+pub struct Invoice {
+    pub id: String,
+    pub client_id: String,
+    pub number: String,
+    pub status: String,
+    pub currency: String,
+    pub terms: String,
+    pub issued_date: String,
+    pub due_date: String,
+    pub project_type: String,
+    pub project_location: String,
+    pub billed_to_name: String,
+    pub billed_to_role: String,
+    pub billed_to_addr1: String,
+    pub billed_to_addr2: String,
+    pub billed_to_pin: String,
+    pub items: String,
+    pub notes: String,
+    pub editor_note: String,
+    pub kra_number: Option<String>,
+    pub recurring: i64,
+    pub recur_interval: Option<String>,
+    pub next_recur_date: Option<String>,
+    pub created_at: String,
+}
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct AuthEvent {
     pub id: String,
     pub user_id: String,
     pub event_type: String,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct DeskProfile {
+    pub id: String,
+    pub name: String,
+    pub tagline: String,
+    pub email: String,
+    pub website: String,
+    pub city: String,
+    pub phone: String,
+    pub vat_number: String,
 }

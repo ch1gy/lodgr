@@ -156,6 +156,20 @@ enabling multi-desk in production:
 
 ---
 
+## ~~Invoices~~ ✅ Done
+
+Full invoice management shipped:
+
+- **Create / edit / delete / status** (`draft → sent → paid`) via the Invoices page
+- **Print to PDF** — server-rendered HTML (A4, print CSS) at `GET /admin/invoices/:id/print`
+- **Recurring invoices** — monthly / quarterly / yearly templates; background task auto-creates drafts and advances `next_recur_date`
+- **Auto-incrementing numbers** — backend assigns `INV-0001`, `INV-0002`, … automatically; no manual entry needed
+- **Desk profile** (`GET/PUT /admin/desk-profile`) — the "From" section on every invoice (name, tagline, email, website, city, phone, VAT) is stored in the database and editable under Settings → Desk profile. Zero personal info hard-coded in the source.
+- **Invoice edit modal** — all fields editable post-creation, including line items and recurring settings
+- **Sub-client tag on tickets** — tickets can be tagged to an end client (sub-client) when creating; selector shows custom dropdown with "add from Clients page" hint when none exist
+
+---
+
 ## Smaller backend items
 
 | Item | Why | Effort | Status |

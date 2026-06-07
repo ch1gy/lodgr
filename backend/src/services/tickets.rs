@@ -31,6 +31,10 @@ pub struct CreateTicketInput<'a> {
     /// Desk only: file on behalf of a specific client UUID.
     /// None → use the caller's own ID (clients always use self).
     pub client_id: Option<&'a str>,
+    /// Desk only: override the initial status (defaults to 'open').
+    pub initial_status: Option<&'a str>,
+    /// Optional sub-client label (must belong to the ticket's client).
+    pub sub_client_id: Option<&'a str>,
 }
 
 /// Returns (page of tickets, total count). page is 1-indexed; limit capped at 100.
@@ -82,9 +86,9 @@ pub async fn create(
             "title must be 1–200 characters".into(),
         ));
     }
-    if input.description.is_empty() || input.description.len() > 10_000 {
+    if input.description.is_empty() || input.description.len() > 50_000 {
         return Err(AppError::BadRequest(
-            "description must be 1–10,000 characters".into(),
+            "description must be 1–50,000 characters".into(),
         ));
     }
     if let Some(d) = input.due_date {
@@ -134,6 +138,19 @@ pub async fn create(
         (claims.sub.clone(), None)
     };
 
+    // Validate sub_client_id belongs to the resolved client (desk only).
+    if let Some(sc_id) = input.sub_client_id {
+        match db::sub_clients::find_by_id(pool, sc_id).await? {
+            Some(sc) if sc.client_id == resolved_client_id => {}
+            Some(_) => {
+                return Err(AppError::BadRequest(
+                    "sub_client does not belong to this client".into(),
+                ))
+            }
+            None => return Err(AppError::BadRequest("sub_client not found".into())),
+        }
+    }
+
     let id = Uuid::new_v4().to_string();
     let ticket = db::tickets::create(
         pool,
@@ -150,9 +167,23 @@ pub async fn create(
             ticket_type: input.ticket_type,
             recurring: input.recurring,
             recurring_interval_days: input.recurring_interval_days,
+            sub_client_id: input.sub_client_id,
         },
     )
     .await?;
+
+    // Desk may request a non-open initial status (e.g. 'closed' for logging
+    // already-resolved work). Apply it immediately after creation.
+    if claims.role == "desk" {
+        if let Some(status) = input.initial_status {
+            if status != "open" {
+                if !["acknowledged", "pending", "closed"].contains(&status) {
+                    return Err(AppError::BadRequest("invalid initial_status".into()));
+                }
+                db::tickets::update_status(pool, &ticket.id, status).await?;
+            }
+        }
+    }
 
     notify::notify(
         &resolved_client_id,
@@ -230,13 +261,17 @@ pub async fn get_with_thread(
     let thread = encrypted_thread
         .into_iter()
         .map(|mut entry| {
-            let nonce = entry.body_nonce.as_deref().ok_or_else(|| {
-                AppError::Internal(format!(
-                    "thread entry {} missing nonce — pre-migration data",
-                    entry.id
-                ))
-            })?;
-            entry.body = crypto::decrypt(enc_key, nonce, &entry.body)?;
+            if entry.body.is_empty() {
+                // Attachment-only message — no body to decrypt.
+            } else {
+                let nonce = entry.body_nonce.as_deref().ok_or_else(|| {
+                    AppError::Internal(format!(
+                        "thread entry {} missing nonce — pre-migration data",
+                        entry.id
+                    ))
+                })?;
+                entry.body = crypto::decrypt(enc_key, nonce, &entry.body)?;
+            }
             Ok(entry)
         })
         .collect::<AppResult<Vec<ThreadEntry>>>()?;
@@ -420,6 +455,8 @@ mod tests {
             } else {
                 None
             },
+            sub_client_id: None,
+            sub_client_name: None,
         }
     }
 

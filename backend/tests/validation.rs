@@ -49,6 +49,7 @@ async fn email_missing_at_rejected() {
         "Test".into(),
         "notanemail".into(),
         "ValidPass123!".into(),
+        None,
     )
     .await;
     assert!(r.is_err());
@@ -62,6 +63,7 @@ async fn email_missing_domain_rejected() {
         "Test".into(),
         "user@".into(),
         "ValidPass123!".into(),
+        None,
     )
     .await;
     assert!(r.is_err());
@@ -75,6 +77,7 @@ async fn email_leading_dot_in_domain_rejected() {
         "Test".into(),
         "user@.example.com".into(),
         "ValidPass123!".into(),
+        None,
     )
     .await;
     assert!(r.is_err());
@@ -113,6 +116,8 @@ async fn ticket_date_format_yyyy_mm_dd_accepted() {
             recurring: false,
             recurring_interval_days: None,
             client_id: Some(&client_id),
+            initial_status: None,
+            sub_client_id: None,
         },
     )
     .await;
@@ -139,6 +144,8 @@ async fn ticket_date_format_dd_mm_yyyy_rejected() {
             recurring: false,
             recurring_interval_days: None,
             client_id: Some(&client_id),
+            initial_status: None,
+            sub_client_id: None,
         },
     )
     .await;
@@ -165,6 +172,8 @@ async fn recurring_interval_days_zero_rejected() {
             recurring: true,
             recurring_interval_days: Some(0),
             client_id: Some(&client_id),
+            initial_status: None,
+            sub_client_id: None,
         },
     )
     .await;
@@ -191,6 +200,8 @@ async fn recurring_interval_days_366_rejected() {
             recurring: true,
             recurring_interval_days: Some(366),
             client_id: Some(&client_id),
+            initial_status: None,
+            sub_client_id: None,
         },
     )
     .await;
@@ -217,6 +228,8 @@ async fn recurring_interval_days_1_accepted() {
             recurring: true,
             recurring_interval_days: Some(1),
             client_id: Some(&client_id),
+            initial_status: None,
+            sub_client_id: None,
         },
     )
     .await;
@@ -243,6 +256,8 @@ async fn recurring_interval_days_365_accepted() {
             recurring: true,
             recurring_interval_days: Some(365),
             client_id: Some(&client_id),
+            initial_status: None,
+            sub_client_id: None,
         },
     )
     .await;
@@ -270,6 +285,8 @@ async fn category_over_100_chars_rejected() {
             recurring: false,
             recurring_interval_days: None,
             client_id: Some(&client_id),
+            initial_status: None,
+            sub_client_id: None,
         },
     )
     .await;

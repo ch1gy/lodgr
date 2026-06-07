@@ -12,7 +12,7 @@
 //   Archived         — Restore, Export + download, Hard delete
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Masthead } from '../components/Masthead';
 import { BottomTabBar } from '../components/BottomTabBar';
@@ -22,7 +22,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import type { ConfirmOptions } from '../components/ConfirmModal';
 import { admin } from '../api/admin';
 import { downloadBlob } from '../utils/format';
-import type { Client } from '../api/types';
+import type { Client, SubClient } from '../api/types';
 import '../styles/v2.css';
 
 type ClientStatus = 'active' | 'locked' | 'archived';
@@ -40,18 +40,114 @@ function clientInitials(name: string): string {
 }
 
 
+
+// ── Sub-clients panel ─────────────────────────────────────────────────────────
+function SubClientsPanel({ clientId, enabled }: { clientId: string; enabled: boolean }) {
+  const qc = useQueryClient();
+  const [newName, setNewName] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const scQ = useQuery({
+    queryKey: ['sub-clients', clientId],
+    queryFn: () => admin.listSubClients(clientId),
+    enabled,
+  });
+  const subClients: SubClient[] = scQ.data ?? [];
+
+  const createM = useMutation({
+    mutationFn: (name: string) => admin.createSubClient(clientId, name),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sub-clients', clientId] });
+      setNewName('');
+    },
+  });
+
+  const deleteM = useMutation({
+    mutationFn: (id: string) => admin.deleteSubClient(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['sub-clients', clientId] }),
+  });
+
+  function handleAdd() {
+    const n = newName.trim();
+    if (!n) return;
+    createM.mutate(n);
+  }
+
+  return (
+    <div style={{ fontFamily: 'var(--mono)', fontSize: 10 }}>
+      <div className="lg-cl-expand__section-label">End clients</div>
+      {scQ.isLoading && (
+        <div style={{ color: 'var(--mid)', fontStyle: 'italic', marginBottom: 8 }}>Loading…</div>
+      )}
+      {!scQ.isLoading && subClients.length === 0 && (
+        <div style={{ color: 'var(--mid)', fontStyle: 'italic', marginBottom: 8 }}>None yet</div>
+      )}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+        {subClients.map((sc) => (
+          <span key={sc.id} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            border: '1px solid var(--rule)', padding: '2px 8px', color: 'var(--ink)',
+          }}>
+            {sc.name}
+            <button
+              type="button"
+              onClick={() => deleteM.mutate(sc.id)}
+              disabled={deleteM.isPending}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mid)', fontSize: 10, padding: 0, lineHeight: 1 }}
+              aria-label={`Remove ${sc.name}`}
+            >✕</button>
+          </span>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          ref={inputRef}
+          className="lg-cl-expand__inp"
+          style={{ width: 160 }}
+          placeholder="Add end client…"
+          value={newName}
+          maxLength={120}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+        />
+        <button
+          type="button"
+          onClick={handleAdd}
+          disabled={!newName.trim() || createM.isPending}
+          style={{
+            fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em',
+            textTransform: 'uppercase', background: 'none',
+            border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer',
+            color: 'var(--ink)',
+          }}
+        >+ Add</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Per-row ───────────────────────────────────────────────────────────────────
 interface RowProps {
   client: Client;
   onAction: (action: string, id: string) => void;
-  /** Disable all action buttons while a mutation is in flight. */
   disabled?: boolean;
 }
 
 function ClientRow({ client, onAction, disabled = false }: RowProps) {
+  const qc         = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
+  const [profile, setProfile]   = useState({
+    contact_person: client.contact_person ?? '',
+    pin_number:     client.pin_number     ?? '',
+    address_line1:  client.address_line1  ?? '',
+    address_line2:  client.address_line2  ?? '',
+  });
+  const [saving, setSaving] = useState(false);
+
   const status     = clientStatus(client);
   const isArchived = status === 'archived';
   const isLocked   = status === 'locked';
+  const canExpand  = !isArchived;
 
   const metaLine = isLocked
     ? `Locked · ${client.failed_attempts} failed attempt${client.failed_attempts !== 1 ? 's' : ''}`
@@ -61,65 +157,119 @@ function ClientRow({ client, onAction, disabled = false }: RowProps) {
     ? `${client.failed_attempts} failed attempt${client.failed_attempts !== 1 ? 's' : ''}`
     : `id · ${client.id.slice(0, 8)}`;
 
+  async function saveProfile() {
+    setSaving(true);
+    try {
+      await admin.updateClient(client.id, {
+        contact_person: profile.contact_person || undefined,
+        pin_number:     profile.pin_number     || undefined,
+        address_line1:  profile.address_line1  || undefined,
+        address_line2:  profile.address_line2  || undefined,
+      });
+      void qc.invalidateQueries({ queryKey: ['clients'] });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <div className={`lg-cl-row${isArchived ? ' deleted' : isLocked ? ' locked' : ''}`}>
-      <div className="av">{clientInitials(client.name)}</div>
+    <div>
+      <div
+        className={[
+          'lg-cl-row',
+          isArchived ? 'deleted' : isLocked ? 'locked' : '',
+          canExpand ? 'expandable' : '',
+          expanded ? 'expanded' : '',
+        ].filter(Boolean).join(' ')}
+        onClick={() => canExpand && setExpanded((v) => !v)}
+      >
+        <div className="av">{clientInitials(client.name)}</div>
 
-      <div className="name-blk">
-        <div className="nm">{client.name}</div>
-        <div className="em">{client.email}</div>
+        <div className="name-blk">
+          <div className="nm">
+            {client.name}
+            {canExpand && <span className="expand-arrow">▶</span>}
+          </div>
+          <div className="em">{client.email}</div>
+        </div>
+
+        <div className="meta-blk">
+          <b>{client.id.slice(0, 8)}</b><br />
+          {metaLine}
+        </div>
+
+        <div className="stat-blk">
+          <div className="v">—</div>
+          <div className="lbl">tickets</div>
+        </div>
+
+        <div className={`status-blk ${status}`}>
+          <span className="dot" />{status}
+        </div>
+
+        <div className="acts" onClick={(e) => e.stopPropagation()}>
+          {isArchived ? (
+            <>
+              <button type="button" className="a" disabled={disabled} onClick={() => onAction('restore', client.id)}>Restore ⟲</button>
+              <button type="button" className="a" disabled={disabled} onClick={() => onAction('export', client.id)}>Export ↓</button>
+              <button type="button" className="a danger" disabled={disabled} onClick={() => onAction('hard-delete', client.id)}>Hard delete ✕</button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="a primary" disabled={disabled} onClick={() => onAction('magic-link', client.id)}>Magic link ↗</button>
+              {isLocked && (
+                <button type="button" className="a" disabled={disabled} onClick={() => onAction('unlock', client.id)}>Unlock ⊙</button>
+              )}
+              <button type="button" className="a" disabled={disabled} onClick={() => onAction('revoke', client.id)}>Revoke sessions</button>
+              <button type="button" className="a" disabled={disabled} onClick={() => onAction('export', client.id)}>Export ↓</button>
+              <button type="button" className="a danger" disabled={disabled} onClick={() => onAction('archive', client.id)}>Archive ⌫</button>
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="meta-blk">
-        <b>{client.id.slice(0, 8)}</b><br />
-        {metaLine}
-      </div>
+      {canExpand && (
+        <div className={`lg-cl-expand-wrap${expanded ? ' open' : ''}`}>
+          <div>
+            <div className="lg-cl-expand">
+              {/* Billing profile */}
+              <div>
+                <div className="lg-cl-expand__section-label">Billing profile</div>
+                <div className="lg-cl-expand__profile-grid">
+                  <div>
+                    <div className="lg-cl-expand__field-label">Contact person</div>
+                    <input className="lg-cl-expand__inp" value={profile.contact_person} placeholder="e.g. Jane Doe"
+                      onChange={(e) => setProfile((p) => ({ ...p, contact_person: e.target.value }))} />
+                  </div>
+                  <div>
+                    <div className="lg-cl-expand__field-label">PIN / KRA No.</div>
+                    <input className="lg-cl-expand__inp" value={profile.pin_number} placeholder="e.g. P051234567X"
+                      onChange={(e) => setProfile((p) => ({ ...p, pin_number: e.target.value }))} />
+                  </div>
+                  <div>
+                    <div className="lg-cl-expand__field-label">Address line 1</div>
+                    <input className="lg-cl-expand__inp" value={profile.address_line1} placeholder="Street address"
+                      onChange={(e) => setProfile((p) => ({ ...p, address_line1: e.target.value }))} />
+                  </div>
+                  <div>
+                    <div className="lg-cl-expand__field-label">Address line 2</div>
+                    <input className="lg-cl-expand__inp" value={profile.address_line2} placeholder="City, Country"
+                      onChange={(e) => setProfile((p) => ({ ...p, address_line2: e.target.value }))} />
+                  </div>
+                  <div className="lg-cl-expand__save">
+                    <button type="button" onClick={saveProfile} disabled={saving}>
+                      {saving ? 'Saving…' : 'Save profile'}
+                    </button>
+                  </div>
+                </div>
+              </div>
 
-      {/* Ticket count not exposed by /admin/clients yet — placeholder */}
-      <div className="stat-blk">
-        <div className="v">—</div>
-        <div className="lbl">tickets</div>
-      </div>
-
-      <div className={`status-blk ${status}`}>
-        <span className="dot" />{status}
-      </div>
-
-      <div className="acts">
-        {isArchived ? (
-          <>
-            <button type="button" className="a" disabled={disabled} onClick={() => onAction('restore', client.id)}>
-              Restore ⟲
-            </button>
-            <button type="button" className="a" disabled={disabled} onClick={() => onAction('export', client.id)}>
-              Export ↓
-            </button>
-            <button type="button" className="a danger" disabled={disabled} onClick={() => onAction('hard-delete', client.id)}>
-              Hard delete ✕
-            </button>
-          </>
-        ) : (
-          <>
-            <button type="button" className="a primary" disabled={disabled} onClick={() => onAction('magic-link', client.id)}>
-              Magic link ↗
-            </button>
-            {isLocked && (
-              <button type="button" className="a" disabled={disabled} onClick={() => onAction('unlock', client.id)}>
-                Unlock ⊙
-              </button>
-            )}
-            <button type="button" className="a" disabled={disabled} onClick={() => onAction('revoke', client.id)}>
-              Revoke sessions
-            </button>
-            <button type="button" className="a" disabled={disabled} onClick={() => onAction('export', client.id)}>
-              Export ↓
-            </button>
-            <button type="button" className="a danger" disabled={disabled} onClick={() => onAction('archive', client.id)}>
-              Archive ⌫
-            </button>
-          </>
-        )}
-      </div>
+              {/* Sub-clients */}
+              <SubClientsPanel clientId={client.id} enabled={expanded} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -134,9 +284,24 @@ function NewClientModal({ onClose, onCreated }: NewClientModalProps) {
   const [name, setName]         = useState('');
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profile, setProfile] = useState({
+    contact_person: '',
+    pin_number:     '',
+    address_line1:  '',
+    address_line2:  '',
+  });
 
   const createM = useMutation({
-    mutationFn: () => admin.createClient({ name: name.trim(), email: email.trim(), password }),
+    mutationFn: () => admin.createClient({
+      name: name.trim(),
+      email: email.trim(),
+      password,
+      contact_person: profile.contact_person.trim() || undefined,
+      pin_number:     profile.pin_number.trim()     || undefined,
+      address_line1:  profile.address_line1.trim()  || undefined,
+      address_line2:  profile.address_line2.trim()  || undefined,
+    }),
     onSuccess: () => {
       onCreated();
       onClose();
@@ -153,6 +318,12 @@ function NewClientModal({ onClose, onCreated }: NewClientModalProps) {
     email.trim().includes('@') &&
     password.length >= 8 &&
     !createM.isPending;
+
+  const monoInput: React.CSSProperties = {
+    fontFamily: 'var(--mono)', fontSize: 10, background: 'none',
+    border: 'none', borderBottom: '1px solid var(--rule)', outline: 'none',
+    padding: '3px 0', color: 'var(--ink)', width: '100%',
+  };
 
   return (
     <div className="lg-ov" role="dialog" aria-modal aria-label="Admit a new client">
@@ -215,6 +386,45 @@ function NewClientModal({ onClose, onCreated }: NewClientModalProps) {
                   autoComplete="new-password"
                 />
                 <span className="lg-f__hint">Plain text — never logged, hashed argon2id server-side</span>
+              </div>
+
+              {/* ── Optional billing profile ─────────────────────── */}
+              <div className="lg-f full" style={{ marginTop: 4 }}>
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen((v) => !v)}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 10,
+                    letterSpacing: '.14em', textTransform: 'uppercase', padding: 0,
+                  }}
+                >
+                  {profileOpen ? '▾' : '▸'} Billing profile <span style={{ color: 'var(--mid)', fontStyle: 'italic', textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+                </button>
+                {profileOpen && (
+                  <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 20px' }}>
+                    <div>
+                      <div style={{ color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 4 }}>Contact person</div>
+                      <input style={monoInput} value={profile.contact_person} placeholder="e.g. Jane Doe"
+                        onChange={(e) => setProfile((p) => ({ ...p, contact_person: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div style={{ color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 4 }}>PIN / KRA No.</div>
+                      <input style={monoInput} value={profile.pin_number} placeholder="e.g. P051234567X"
+                        onChange={(e) => setProfile((p) => ({ ...p, pin_number: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div style={{ color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 4 }}>Address line 1</div>
+                      <input style={monoInput} value={profile.address_line1} placeholder="Street address"
+                        onChange={(e) => setProfile((p) => ({ ...p, address_line1: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div style={{ color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 4 }}>Address line 2</div>
+                      <input style={monoInput} value={profile.address_line2} placeholder="City, Country"
+                        onChange={(e) => setProfile((p) => ({ ...p, address_line2: e.target.value }))} />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {err && <div className="lg-f__err">{err}</div>}

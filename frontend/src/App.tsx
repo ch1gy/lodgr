@@ -32,6 +32,7 @@ import { MagicLandingPage } from './pages/MagicLandingPage';
 import { TicketListPage } from './pages/TicketListPage';
 import { TicketDetailPage } from './pages/TicketDetailPage';
 import { ClientsPage } from './pages/ClientsPage';
+import { InvoicesPage } from './pages/InvoicesPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 
@@ -110,6 +111,14 @@ export function App() {
                 element={
                   <ProtectedRoute deskOnly>
                     <PageTransition><ClientsPage /></PageTransition>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/invoices"
+                element={
+                  <ProtectedRoute deskOnly>
+                    <PageTransition><InvoicesPage /></PageTransition>
                   </ProtectedRoute>
                 }
               />

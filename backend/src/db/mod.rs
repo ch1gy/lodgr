@@ -1,4 +1,7 @@
 pub mod auth_events;
+pub mod desk_profile;
+pub mod invoices;
+pub mod sub_clients;
 pub mod exports;
 pub mod internal_notes;
 pub mod jwt_revocations;

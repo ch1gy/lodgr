@@ -1,7 +1,7 @@
 /* ────────────────────────────────────────────────────────────────────────────
  * tokens.css — Lodgr design tokens + base atoms
  *
- * Editorial magazine direction lifted from chigy.dev portfolio:
+ * Editorial magazine design direction:
  *   • Cream/ink/red palette (light theme is the default)
  *   • DM Serif Display italic for editorial headlines and the "Lodgr." wordmark
  *   • Bebas Neue is intentionally absent — too loud for a working tool
@@ -326,7 +326,7 @@ a { color: inherit; }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
- * Theme switch — "LGT / DRK" toggle borrowed from the chigy.dev portfolio.
+ * Theme switch — "LGT / DRK" toggle.
  * The active segment underlines + colors in; inactive is muted. No icons,
  * no animations on the toggle itself — the page-wide reveal is the show.
  * ───────────────────────────────────────────────────────────────────────── */

@@ -9,12 +9,12 @@
 // validates the target is an active client-role user.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useId } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tickets as ticketsApi } from '../api/tickets';
 import { admin } from '../api/admin';
-import type { Client, TicketPriority, TicketType } from '../api/types';
+import type { Client, SubClient, TicketPriority, TicketType, TicketStatus } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 
 import '../styles/v2.css';
@@ -52,12 +52,21 @@ export function CreateTicketModal({ onClose }: Props) {
   const [dueDate, setDueDate]         = useState('');
   const [recurring, setRecurring]     = useState(false);
   const [interval, setInterval]       = useState('30');
+  const [closeNow, setCloseNow]         = useState(false);
+  const [attachment, setAttachment]     = useState<File | null>(null);
+  const [subClientId, setSubClientId]   = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputId  = useId();
 
   // Desk-only: client selector
   const [clientSearch, setClientSearch]       = useState('');
   const [selectedClient, setSelectedClient]   = useState<Client | null>(null);
   const [clientDropOpen, setClientDropOpen]   = useState(false);
   const clientDropRef = useRef<HTMLDivElement>(null);
+
+  // Sub-client custom dropdown
+  const [subClientDropOpen, setSubClientDropOpen] = useState(false);
+  const subClientDropRef = useRef<HTMLDivElement>(null);
 
   // Close the dropdown when the user clicks outside the entire client field.
   useEffect(() => {
@@ -71,11 +80,29 @@ export function CreateTicketModal({ onClose }: Props) {
     return () => document.removeEventListener('mousedown', handleOutside);
   }, [clientDropOpen]);
 
+  useEffect(() => {
+    if (!subClientDropOpen) return;
+    function handleOutside(e: MouseEvent) {
+      if (subClientDropRef.current && !subClientDropRef.current.contains(e.target as Node)) {
+        setSubClientDropOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [subClientDropOpen]);
+
   const clientsQ = useQuery({
     queryKey: ['clients'],
     queryFn: () => admin.listClients(),
     enabled: isDesk,
   });
+
+  const subClientsQ = useQuery({
+    queryKey: ['sub-clients', selectedClient?.id],
+    queryFn: () => admin.listSubClients(selectedClient!.id),
+    enabled: !!selectedClient,
+  });
+  const subClients: SubClient[] = subClientsQ.data ?? [];
 
   const filteredClients = useMemo(() => {
     const q = clientSearch.toLowerCase();
@@ -96,8 +123,17 @@ export function CreateTicketModal({ onClose }: Props) {
         recurring,
         recurring_interval_days: recurring ? Number(interval) : undefined,
         client_id: selectedClient?.id,
+        initial_status: isDesk && closeNow ? 'closed' : undefined,
+        sub_client_id: subClientId || undefined,
       }),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      if (attachment) {
+        try {
+          await ticketsApi.postMessage(data.id, '', attachment);
+        } catch {
+          // non-fatal — ticket was created, attachment failed
+        }
+      }
       void qc.invalidateQueries({ queryKey: ['tickets'] });
       onClose();
       nav(`/tickets/${data.id}`);
@@ -162,9 +198,38 @@ export function CreateTicketModal({ onClose }: Props) {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={4}
+                  maxLength={50000}
                   required
                 />
-                <span className="lg-f__hint">Max 10,000 characters</span>
+                <span className={`lg-f__char-count${description.length > 45000 ? ' warn' : ''}${description.length >= 50000 ? ' over' : ''}`}>
+                  {description.length.toLocaleString()} / 50,000
+                </span>
+              </div>
+
+              <div className="lg-f full">
+                <div className="lg-f__lbl"><span>Attachment</span><span className="opt">Optional</span></div>
+                <label htmlFor={fileInputId} className="lg-f__file-drop" data-active={!!attachment}>
+                  <input
+                    id={fileInputId}
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.gif,.txt,.md"
+                    style={{ display: 'none' }}
+                    onChange={(e) => setAttachment(e.target.files?.[0] ?? null)}
+                  />
+                  {attachment ? (
+                    <span className="lg-f__file-name">
+                      📎 {attachment.name}
+                      <button
+                        type="button"
+                        className="lg-f__file-clear"
+                        onClick={(e) => { e.preventDefault(); setAttachment(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                      >✕</button>
+                    </span>
+                  ) : (
+                    <span className="lg-f__file-prompt">Click to attach a file — PDF, PNG, JPG, GIF, TXT, MD (max 100 MB)</span>
+                  )}
+                </label>
               </div>
 
               {isDesk && (
@@ -208,6 +273,7 @@ export function CreateTicketModal({ onClose }: Props) {
                               setSelectedClient(c);
                               setClientSearch(c.name);
                               setClientDropOpen(false);
+                              setSubClientId('');
                             }}
                           >
                             <span style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 16 }}>
@@ -228,12 +294,110 @@ export function CreateTicketModal({ onClose }: Props) {
                   )}
                 </div>
               )}
+
+              {/* Sub-client selector — shown whenever a client is selected */}
+              {isDesk && selectedClient && (
+                <div className="lg-f full" style={{ opacity: subClientsQ.isLoading ? 0.5 : 1 }}>
+                  <div className="lg-f__lbl">
+                    <span>End client</span>
+                    <span className="opt">Optional</span>
+                  </div>
+                  {subClients.length > 0 ? (
+                    <>
+                      <div ref={subClientDropRef} style={{ position: 'relative' }}>
+                        <button
+                          type="button"
+                          className="lg-f__inp"
+                          style={{
+                            width: '100%', textAlign: 'left', cursor: 'pointer',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            background: 'var(--cream)',
+                          }}
+                          onClick={() => setSubClientDropOpen((v) => !v)}
+                        >
+                          <span style={{ color: subClientId ? 'var(--ink)' : 'var(--mid)' }}>
+                            {subClientId
+                              ? subClients.find(s => s.id === subClientId)?.name
+                              : '— None —'}
+                          </span>
+                          <span style={{ fontSize: 10, color: 'var(--mid)', marginLeft: 8 }}>
+                            {subClientDropOpen ? '▴' : '▾'}
+                          </span>
+                        </button>
+                        {subClientDropOpen && (
+                          <div style={{
+                            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                            border: '1px solid var(--ink)', borderTop: 'none',
+                            background: 'var(--cream)', maxHeight: 160, overflowY: 'auto',
+                          }}>
+                            <button
+                              type="button"
+                              style={{
+                                display: 'block', width: '100%', padding: '10px 14px',
+                                background: 'none', border: 'none', borderBottom: '1px solid var(--rule)',
+                                textAlign: 'left', cursor: 'pointer',
+                                fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--mid)',
+                              }}
+                              onClick={() => { setSubClientId(''); setSubClientDropOpen(false); }}
+                            >
+                              — None —
+                            </button>
+                            {subClients.map((sc) => (
+                              <button
+                                key={sc.id}
+                                type="button"
+                                style={{
+                                  display: 'block', width: '100%', padding: '10px 14px',
+                                  background: sc.id === subClientId ? 'var(--rule)' : 'none',
+                                  border: 'none', borderBottom: '1px solid var(--rule)',
+                                  textAlign: 'left', cursor: 'pointer',
+                                  fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 16,
+                                  color: 'var(--ink)',
+                                }}
+                                onClick={() => { setSubClientId(sc.id); setSubClientDropOpen(false); }}
+                              >
+                                {sc.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {subClientId && (
+                        <span className="lg-f__hint">
+                          Tagging under {selectedClient.name} › {subClients.find(s => s.id === subClientId)?.name}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div
+                        className="lg-f__inp"
+                        style={{
+                          opacity: 0.45, cursor: 'not-allowed',
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          color: 'var(--mid)',
+                        }}
+                      >
+                        <span>No end clients on this account</span>
+                        <span style={{ fontSize: 10 }}>▾</span>
+                      </div>
+                      <span className="lg-f__hint">
+                        Add end clients from the{' '}
+                        <a href="/clients" style={{ color: 'var(--ink)', textDecoration: 'underline' }}>
+                          Clients page
+                        </a>{' '}
+                        to tag tickets this way.
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             <div style={{ height: 24 }} />
 
             <div className="grid-priority">
-              <div className="lg-f">
+              <div className="lg-f" style={{ opacity: closeNow ? 0.35 : 1, pointerEvents: closeNow ? 'none' : undefined }}>
                 <div className="lg-f__lbl"><span>Priority</span></div>
                 <div className="lg-seg">
                   {PRIORITIES.map((p) => (
@@ -242,6 +406,7 @@ export function CreateTicketModal({ onClose }: Props) {
                       type="button"
                       className={`lg-seg__o${priority === p ? (p === 'urgent' ? ' on red' : ' on') : ''}`}
                       onClick={() => setPriority(p)}
+                      disabled={closeNow}
                     >
                       {p[0].toUpperCase() + p.slice(1)}
                     </button>
@@ -325,9 +490,21 @@ export function CreateTicketModal({ onClose }: Props) {
 
         {/* ── Footer ──────────────────────────────────────────────── */}
         <div className="lg-mdl__foot">
-          <span className="meta">
-            Filing as <b style={{ color: 'var(--ink)' }}>{filedAs}</b> · {filedDate}
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span className="meta">
+              Filing as <b style={{ color: 'var(--ink)' }}>{filedAs}</b> · {filedDate}
+            </span>
+            {isDesk && (
+              <button
+                type="button"
+                className={`lg-ck${closeNow ? ' on' : ''}`}
+                onClick={() => setCloseNow((v) => !v)}
+              >
+                <span className="lg-ck__b">{closeNow ? '✓' : ''}</span>
+                <span className="lg-ck__l">Close immediately</span>
+              </button>
+            )}
+          </div>
           <div className="lg-mdl__btns">
             <button type="button" className="lg-bt lg-bt--text" onClick={onClose}>Cancel</button>
             <button

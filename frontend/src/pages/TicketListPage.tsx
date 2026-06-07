@@ -95,7 +95,8 @@ export function TicketListPage() {
       list = list.filter((t) =>
         t.title.toLowerCase().includes(q) ||
         t.id.toLowerCase().includes(q) ||
-        (t.category ?? '').toLowerCase().includes(q)
+        (t.category ?? '').toLowerCase().includes(q) ||
+        (t.sub_client_name ?? '').toLowerCase().includes(q)
       );
     }
     return list;
@@ -235,6 +236,11 @@ export function TicketListPage() {
                 <div className="lg-row__title-blk">
                   <div className="lg-row__cat">
                     {t.category ?? TICKET_TYPE_LABEL[t.ticket_type]} · {t.id.slice(0, 8)}
+                    {t.sub_client_name && (
+                      <span style={{ marginLeft: 8, color: 'var(--red)', fontFamily: 'var(--mono)', fontSize: 9 }}>
+                        › {t.sub_client_name}
+                      </span>
+                    )}
                   </div>
                   <div className="lg-row__title">{t.title}</div>
                   <div className="lg-row__meta">

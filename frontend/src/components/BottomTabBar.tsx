@@ -10,7 +10,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 
 interface Props {
-  active: 'tickets' | 'clients' | 'reports' | 'settings';
+  active: 'tickets' | 'clients' | 'invoices' | 'reports' | 'settings';
 }
 
 export function BottomTabBar({ active }: Props) {
@@ -26,6 +26,12 @@ export function BottomTabBar({ active }: Props) {
         <Link to="/clients" className={`lg-tabbar__t${active === 'clients' ? ' active' : ''}`}>
           <span className="lg-tabbar__ic">C</span>
           <span>Clients</span>
+        </Link>
+      )}
+      {isDesk && (
+        <Link to="/invoices" className={`lg-tabbar__t${active === 'invoices' ? ' active' : ''}`}>
+          <span className="lg-tabbar__ic">£</span>
+          <span>Invoices</span>
         </Link>
       )}
       {isDesk && (

@@ -54,6 +54,8 @@ async fn create_ticket_for_client(
             recurring: false,
             recurring_interval_days: None,
             client_id: Some(client_id),
+            initial_status: None,
+            sub_client_id: None,
         },
     )
     .await
@@ -95,6 +97,8 @@ async fn create_ticket_fails_with_empty_title() {
             recurring: false,
             recurring_interval_days: None,
             client_id: Some(&client_id),
+            sub_client_id: None,
+            initial_status: None,
         },
     )
     .await;
@@ -123,6 +127,8 @@ async fn create_ticket_fails_with_title_over_200_chars() {
             recurring: false,
             recurring_interval_days: None,
             client_id: Some(&client_id),
+            sub_client_id: None,
+            initial_status: None,
         },
     )
     .await;
@@ -150,6 +156,8 @@ async fn create_ticket_fails_with_invalid_priority() {
             recurring: false,
             recurring_interval_days: None,
             client_id: Some(&client_id),
+            sub_client_id: None,
+            initial_status: None,
         },
     )
     .await;
@@ -177,6 +185,8 @@ async fn create_ticket_fails_with_invalid_ticket_type() {
             recurring: false,
             recurring_interval_days: None,
             client_id: Some(&client_id),
+            sub_client_id: None,
+            initial_status: None,
         },
     )
     .await;
@@ -204,6 +214,8 @@ async fn create_ticket_fails_with_invalid_date_format() {
             recurring: false,
             recurring_interval_days: None,
             client_id: Some(&client_id),
+            sub_client_id: None,
+            initial_status: None,
         },
     )
     .await;

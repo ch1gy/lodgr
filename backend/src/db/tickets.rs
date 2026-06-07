@@ -3,9 +3,21 @@ use sqlx::SqlitePool;
 
 use crate::{error::AppResult, models::Ticket};
 
+/// Columns for plain FROM tickets queries (no join — sub_client_name defaults to None).
 const TICKET_COLS: &str = "id, title, description, status, created_by, client_id, created_at,
      priority, category, due_date, estimated_completion,
-     ticket_type, recurring, recurring_interval_days, last_recurred_at, deleted_at";
+     ticket_type, recurring, recurring_interval_days, last_recurred_at, deleted_at,
+     sub_client_id";
+
+/// Columns + sub_client_name for JOIN queries.
+const TICKET_COLS_J: &str =
+    "t.id, t.title, t.description, t.status, t.created_by, t.client_id, t.created_at,
+     t.priority, t.category, t.due_date, t.estimated_completion,
+     t.ticket_type, t.recurring, t.recurring_interval_days, t.last_recurred_at, t.deleted_at,
+     t.sub_client_id, sc.name AS sub_client_name";
+
+const TICKET_JOIN: &str =
+    "FROM tickets t LEFT JOIN sub_clients sc ON sc.id = t.sub_client_id";
 
 pub struct NewTicket<'a> {
     pub id: &'a str,
@@ -20,6 +32,7 @@ pub struct NewTicket<'a> {
     pub ticket_type: &'a str,
     pub recurring: bool,
     pub recurring_interval_days: Option<i64>,
+    pub sub_client_id: Option<&'a str>,
 }
 
 pub struct UpdateFields<'a> {
@@ -44,8 +57,9 @@ pub async fn list_all_paginated(
         .await?;
 
     let tickets = sqlx::query_as::<_, Ticket>(&format!(
-        "SELECT {TICKET_COLS} FROM tickets WHERE deleted_at IS NULL
-         ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        "SELECT {TICKET_COLS_J} {TICKET_JOIN}
+         WHERE t.deleted_at IS NULL
+         ORDER BY t.created_at DESC LIMIT ? OFFSET ?"
     ))
     .bind(limit)
     .bind(offset)
@@ -69,9 +83,9 @@ pub async fn list_for_client_paginated(
             .await?;
 
     let tickets = sqlx::query_as::<_, Ticket>(&format!(
-        "SELECT {TICKET_COLS} FROM tickets
-         WHERE client_id = ? AND deleted_at IS NULL
-         ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        "SELECT {TICKET_COLS_J} {TICKET_JOIN}
+         WHERE t.client_id = ? AND t.deleted_at IS NULL
+         ORDER BY t.created_at DESC LIMIT ? OFFSET ?"
     ))
     .bind(client_id)
     .bind(limit)
@@ -84,10 +98,12 @@ pub async fn list_for_client_paginated(
 
 pub async fn find_by_id(pool: &SqlitePool, id: &str) -> AppResult<Option<Ticket>> {
     Ok(
-        sqlx::query_as::<_, Ticket>(&format!("SELECT {TICKET_COLS} FROM tickets WHERE id = ?"))
-            .bind(id)
-            .fetch_optional(pool)
-            .await?,
+        sqlx::query_as::<_, Ticket>(&format!(
+            "SELECT {TICKET_COLS_J} {TICKET_JOIN} WHERE t.id = ?"
+        ))
+        .bind(id)
+        .fetch_optional(pool)
+        .await?,
     )
 }
 
@@ -97,8 +113,8 @@ pub async fn create(pool: &SqlitePool, t: NewTicket<'_>) -> AppResult<Ticket> {
         "INSERT INTO tickets
          (id, title, description, status, created_by, client_id, created_at,
           priority, category, due_date, estimated_completion,
-          ticket_type, recurring, recurring_interval_days)
-         VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          ticket_type, recurring, recurring_interval_days, sub_client_id)
+         VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(t.id)
     .bind(t.title)
@@ -113,6 +129,7 @@ pub async fn create(pool: &SqlitePool, t: NewTicket<'_>) -> AppResult<Ticket> {
     .bind(t.ticket_type)
     .bind(t.recurring as i64)
     .bind(t.recurring_interval_days)
+    .bind(t.sub_client_id)
     .execute(pool)
     .await?;
 
@@ -133,6 +150,8 @@ pub async fn create(pool: &SqlitePool, t: NewTicket<'_>) -> AppResult<Ticket> {
         recurring_interval_days: t.recurring_interval_days,
         last_recurred_at: None,
         deleted_at: None,
+        sub_client_id: t.sub_client_id.map(str::to_owned),
+        sub_client_name: None,
     })
 }
 

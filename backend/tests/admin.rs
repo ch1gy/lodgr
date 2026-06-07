@@ -4,7 +4,7 @@ use backend::{
     db,
     error::AppError,
     services::{
-        admin,
+        admin::{self, UpdateClientProfileInput},
         messages::{post_message, PostMessageInput},
         notes,
     },
@@ -21,6 +21,7 @@ async fn create_client_succeeds() {
         "Alice Test".into(),
         "alice@example.com".into(),
         "SecurePass123!".into(),
+        None,
     )
     .await
     .unwrap();
@@ -39,6 +40,7 @@ async fn create_client_fails_with_duplicate_email() {
         "First".into(),
         "dup@example.com".into(),
         "Pass111111!".into(),
+        None,
     )
     .await
     .unwrap();
@@ -48,6 +50,7 @@ async fn create_client_fails_with_duplicate_email() {
         "Second".into(),
         "dup@example.com".into(),
         "Pass222222!".into(),
+        None,
     )
     .await;
     assert!(
@@ -66,6 +69,7 @@ async fn create_client_fails_with_invalid_email() {
         "Test".into(),
         "notanemail".into(),
         "ValidPass123!".into(),
+        None,
     )
     .await;
     assert!(
@@ -161,9 +165,20 @@ async fn update_client_profile_name_change_succeeds() {
     let (pool, _dir) = common::setup_test_db().await;
     let (client_id, _, _) = common::create_test_client(&pool).await;
 
-    let updated = admin::update_client_profile(&pool, &client_id, Some("New Name".into()), None)
-        .await
-        .unwrap();
+    let updated = admin::update_client_profile(
+        &pool,
+        &client_id,
+        UpdateClientProfileInput {
+            name: Some("New Name".into()),
+            email: None,
+            address_line1: None,
+            address_line2: None,
+            pin_number: None,
+            contact_person: None,
+        },
+    )
+    .await
+    .unwrap();
 
     assert_eq!(updated.name, "New Name");
 }
@@ -174,7 +189,19 @@ async fn update_client_profile_email_to_duplicate_fails() {
     let (client_a, _, _) = common::create_test_client(&pool).await;
     let (client_b, email_b, _) = common::create_test_client(&pool).await;
 
-    let r = admin::update_client_profile(&pool, &client_a, None, Some(email_b)).await;
+    let r = admin::update_client_profile(
+        &pool,
+        &client_a,
+        UpdateClientProfileInput {
+            name: None,
+            email: Some(email_b),
+            address_line1: None,
+            address_line2: None,
+            pin_number: None,
+            contact_person: None,
+        },
+    )
+    .await;
     assert!(
         matches!(r, Err(AppError::Conflict(_))),
         "expected Conflict when updating to an email already in use, got: {:?}",

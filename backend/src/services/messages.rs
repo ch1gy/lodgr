@@ -26,9 +26,14 @@ pub async fn post_message(
     mailer: Option<&SmtpMailer>,
     input: PostMessageInput,
 ) -> AppResult<ThreadEntry> {
-    if input.body.is_empty() || input.body.chars().count() > 10_000 {
+    if input.body.chars().count() > 10_000 {
         return Err(AppError::BadRequest(
-            "message body must be 1–10,000 characters".into(),
+            "message body must be at most 10,000 characters".into(),
+        ));
+    }
+    if input.body.is_empty() && input.attachment_path.is_none() {
+        return Err(AppError::BadRequest(
+            "message must have a body or an attachment".into(),
         ));
     }
 
@@ -52,7 +57,11 @@ pub async fn post_message(
         return Err(AppError::Forbidden);
     }
 
-    let (nonce_hex, ciphertext_hex) = crypto::encrypt(enc_key, &input.body)?;
+    let (nonce_hex, ciphertext_hex) = if input.body.is_empty() {
+        (String::new(), String::new())
+    } else {
+        crypto::encrypt(enc_key, &input.body)?
+    };
 
     let entry_id = Uuid::new_v4().to_string();
     let mut entry = db::thread::insert(

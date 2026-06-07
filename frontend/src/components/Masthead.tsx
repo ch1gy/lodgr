@@ -16,9 +16,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 
 interface Props {
-  /** Which link should render as active. Use this everywhere a desk page
-   *  mounts the masthead so the nav reflects the route. */
-  active?: 'tickets' | 'clients' | 'reports' | 'settings';
+  active?: 'tickets' | 'clients' | 'invoices' | 'reports' | 'settings';
 }
 
 /** Format the masthead's issue label deterministically.
@@ -68,6 +66,9 @@ export function Masthead({ active = 'tickets' }: Props) {
           <>
             <Link to="/clients" className={'lg-mast-link' + (active === 'clients' ? ' active' : '')}>
               Clients
+            </Link>
+            <Link to="/invoices" className={'lg-mast-link' + (active === 'invoices' ? ' active' : '')}>
+              Invoices
             </Link>
             <Link to="/reports" className={'lg-mast-link' + (active === 'reports' ? ' active' : '')}>
               Reports

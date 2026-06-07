@@ -65,6 +65,10 @@ pub struct CreateTicketRequest {
     /// Desk only: file this ticket on behalf of a specific client.
     /// Ignored for client-role callers (always files as self).
     pub client_id: Option<String>,
+    /// Desk only: set the initial status at creation time. Defaults to 'open'.
+    pub initial_status: Option<String>,
+    /// Optional sub-client tag (desk only; must belong to the ticket's client).
+    pub sub_client_id: Option<String>,
 }
 
 fn default_priority() -> String {
@@ -95,6 +99,8 @@ pub async fn create(
             recurring: body.recurring,
             recurring_interval_days: body.recurring_interval_days,
             client_id: body.client_id.as_deref(),
+            initial_status: body.initial_status.as_deref(),
+            sub_client_id: body.sub_client_id.as_deref(),
         },
     )
     .await?;

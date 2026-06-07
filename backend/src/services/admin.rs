@@ -57,12 +57,14 @@ pub async fn create_client(
             db::users::update_profile(
                 pool,
                 &id,
-                &name,
-                &email,
-                p.address_line1.as_deref(),
-                p.address_line2.as_deref(),
-                p.pin_number.as_deref(),
-                p.contact_person.as_deref(),
+                db::users::UpdateProfile {
+                    name: &name,
+                    email: &email,
+                    address_line1: p.address_line1.as_deref(),
+                    address_line2: p.address_line2.as_deref(),
+                    pin_number: p.pin_number.as_deref(),
+                    contact_person: p.contact_person.as_deref(),
+                },
             )
             .await?;
         }
@@ -288,9 +290,20 @@ pub async fn update_client_profile(
         .as_deref()
         .or(user.contact_person.as_deref());
 
-    db::users::update_profile(pool, client_id, &name, &email, addr1, addr2, pin, cp)
-        .await
-        .map_err(|e| match e {
+    db::users::update_profile(
+        pool,
+        client_id,
+        db::users::UpdateProfile {
+            name: &name,
+            email: &email,
+            address_line1: addr1,
+            address_line2: addr2,
+            pin_number: pin,
+            contact_person: cp,
+        },
+    )
+    .await
+    .map_err(|e| match e {
             AppError::Internal(ref msg) if msg.contains("UNIQUE") => {
                 AppError::Conflict(format!("email '{email}' is already registered"))
             }

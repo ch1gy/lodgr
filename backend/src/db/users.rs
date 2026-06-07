@@ -102,27 +102,30 @@ pub async fn find_desk_user(pool: &SqlitePool) -> AppResult<Option<User>> {
     .await?)
 }
 
-#[allow(clippy::too_many_arguments)]
+pub struct UpdateProfile<'a> {
+    pub name: &'a str,
+    pub email: &'a str,
+    pub address_line1: Option<&'a str>,
+    pub address_line2: Option<&'a str>,
+    pub pin_number: Option<&'a str>,
+    pub contact_person: Option<&'a str>,
+}
+
 pub async fn update_profile(
     pool: &SqlitePool,
     user_id: &str,
-    name: &str,
-    email: &str,
-    address_line1: Option<&str>,
-    address_line2: Option<&str>,
-    pin_number: Option<&str>,
-    contact_person: Option<&str>,
+    p: UpdateProfile<'_>,
 ) -> AppResult<()> {
     sqlx::query(
         "UPDATE users SET name = ?, email = ?, address_line1 = ?, address_line2 = ?, \
          pin_number = ?, contact_person = ? WHERE id = ?",
     )
-    .bind(name)
-    .bind(email)
-    .bind(address_line1)
-    .bind(address_line2)
-    .bind(pin_number)
-    .bind(contact_person)
+    .bind(p.name)
+    .bind(p.email)
+    .bind(p.address_line1)
+    .bind(p.address_line2)
+    .bind(p.pin_number)
+    .bind(p.contact_person)
     .bind(user_id)
     .execute(pool)
     .await?;

@@ -102,6 +102,7 @@ pub async fn find_desk_user(pool: &SqlitePool) -> AppResult<Option<User>> {
     .await?)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn update_profile(
     pool: &SqlitePool,
     user_id: &str,

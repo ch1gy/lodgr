@@ -304,11 +304,11 @@ pub async fn update_client_profile(
     )
     .await
     .map_err(|e| match e {
-            AppError::Internal(ref msg) if msg.contains("UNIQUE") => {
-                AppError::Conflict(format!("email '{email}' is already registered"))
-            }
-            other => other,
-        })?;
+        AppError::Internal(ref msg) if msg.contains("UNIQUE") => {
+            AppError::Conflict(format!("email '{email}' is already registered"))
+        }
+        other => other,
+    })?;
 
     db::users::find_by_id(pool, client_id)
         .await?

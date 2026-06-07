@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::sync::Arc;
 
 use backend::{config::Config, crypto::EncryptionKey, db, services::auth::hash_password};

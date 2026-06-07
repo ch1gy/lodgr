@@ -3,8 +3,7 @@ use sqlx::SqlitePool;
 
 use crate::{error::AppResult, models::Invoice};
 
-const COLS: &str =
-    "id, client_id, number, status, currency, terms, issued_date, due_date, \
+const COLS: &str = "id, client_id, number, status, currency, terms, issued_date, due_date, \
      project_type, project_location, billed_to_name, billed_to_role, \
      billed_to_addr1, billed_to_addr2, billed_to_pin, items, notes, editor_note, \
      kra_number, recurring, recur_interval, next_recur_date, created_at";
@@ -51,12 +50,12 @@ pub async fn list_for_client(pool: &SqlitePool, client_id: &str) -> AppResult<Ve
 }
 
 pub async fn find_by_id(pool: &SqlitePool, id: &str) -> AppResult<Option<Invoice>> {
-    Ok(sqlx::query_as(&format!(
-        "SELECT {COLS} FROM invoices WHERE id = ?"
-    ))
-    .bind(id)
-    .fetch_optional(pool)
-    .await?)
+    Ok(
+        sqlx::query_as(&format!("SELECT {COLS} FROM invoices WHERE id = ?"))
+            .bind(id)
+            .fetch_optional(pool)
+            .await?,
+    )
 }
 
 pub async fn create(pool: &SqlitePool, n: NewInvoice<'_>) -> AppResult<Invoice> {
@@ -206,11 +205,7 @@ pub async fn list_due_for_recurrence(pool: &SqlitePool) -> AppResult<Vec<Invoice
     .await?)
 }
 
-pub async fn update_next_recur_date(
-    pool: &SqlitePool,
-    id: &str,
-    next_date: &str,
-) -> AppResult<()> {
+pub async fn update_next_recur_date(pool: &SqlitePool, id: &str, next_date: &str) -> AppResult<()> {
     sqlx::query("UPDATE invoices SET next_recur_date = ? WHERE id = ?")
         .bind(next_date)
         .bind(id)

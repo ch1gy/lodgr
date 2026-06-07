@@ -1,7 +1,10 @@
 /// All API-facing response types. DB models must NEVER derive Serialize.
 use serde::{Deserialize, Serialize};
 
-use crate::models::{AuthEvent, ClientExport, DeskProfile, InternalNote, Invoice, SubClient, ThreadEntry, Ticket, User};
+use crate::models::{
+    AuthEvent, ClientExport, DeskProfile, InternalNote, Invoice, SubClient, ThreadEntry, Ticket,
+    User,
+};
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 

@@ -41,11 +41,7 @@ fn fmt_num(n: u64) -> String {
 // ── HTML renderer ─────────────────────────────────────────────────────────────
 
 fn render_invoice_html(inv: &InvoiceResponse, desk: &DeskProfile) -> String {
-    let total: u64 = inv
-        .items
-        .iter()
-        .map(|it| it.qty as u64 * it.rate)
-        .sum();
+    let total: u64 = inv.items.iter().map(|it| it.qty as u64 * it.rate).sum();
 
     let item_rows: String = inv
         .items
@@ -69,12 +65,12 @@ fn render_invoice_html(inv: &InvoiceResponse, desk: &DeskProfile) -> String {
                     <div class=\"rate\"><span class=\"pre\">@</span>{rate}</div>\
                     <div class=\"amt\">{amt}</div>\
                 </div>",
-                num  = i + 1,
+                num = i + 1,
                 name = html_esc(&it.name),
-                sub  = sub_html,
-                qty  = it.qty,
+                sub = sub_html,
+                qty = it.qty,
                 rate = fmt_num(it.rate),
-                amt  = fmt_num(it.qty as u64 * it.rate),
+                amt = fmt_num(it.qty as u64 * it.rate),
             )
         })
         .collect();
@@ -301,27 +297,27 @@ html,body{{background:#ece5d3;padding:0;margin:0;height:100%}}
 <button class="inv__print-btn" onclick="window.print()">Print / Save PDF ↓</button>
 </body>
 </html>"#,
-        me_name      = html_esc(&desk.name),
-        me_role      = html_esc(&desk.tagline),
-        me_email     = html_esc(&desk.email),
-        me_site      = html_esc(&desk.website),
-        me_city      = html_esc(&desk.city),
-        number       = html_esc(&inv.number),
-        issued_date  = html_esc(&inv.issued_date),
-        due_date     = html_esc(&inv.due_date),
-        terms        = html_esc(&inv.terms),
-        terms_lower  = html_esc(&inv.terms.to_lowercase()),
-        currency     = html_esc(&inv.currency),
-        proj_type    = html_esc(&inv.project_type),
-        proj_loc     = html_esc(&inv.project_location),
-        proj_month   = html_esc(&proj_month),
-        billed_name  = html_esc(&inv.billed_to_name),
-        addr_html    = addr_html,
-        kra_line     = kra_line,
-        item_rows    = item_rows,
-        editor_note  = html_esc(&inv.editor_note),
-        total        = fmt_num(total),
-        vol_num      = html_esc(vol_num),
+        me_name = html_esc(&desk.name),
+        me_role = html_esc(&desk.tagline),
+        me_email = html_esc(&desk.email),
+        me_site = html_esc(&desk.website),
+        me_city = html_esc(&desk.city),
+        number = html_esc(&inv.number),
+        issued_date = html_esc(&inv.issued_date),
+        due_date = html_esc(&inv.due_date),
+        terms = html_esc(&inv.terms),
+        terms_lower = html_esc(&inv.terms.to_lowercase()),
+        currency = html_esc(&inv.currency),
+        proj_type = html_esc(&inv.project_type),
+        proj_loc = html_esc(&inv.project_location),
+        proj_month = html_esc(&proj_month),
+        billed_name = html_esc(&inv.billed_to_name),
+        addr_html = addr_html,
+        kra_line = kra_line,
+        item_rows = item_rows,
+        editor_note = html_esc(&inv.editor_note),
+        total = fmt_num(total),
+        vol_num = html_esc(vol_num),
         notes_section = if note_rows.is_empty() {
             String::new()
         } else {
@@ -407,12 +403,19 @@ pub async fn create(
     Json(body): Json<CreateInvoiceRequest>,
 ) -> AppResult<impl IntoResponse> {
     if body.items.is_empty() {
-        return Err(AppError::BadRequest("at least one line item is required".into()));
+        return Err(AppError::BadRequest(
+            "at least one line item is required".into(),
+        ));
     }
 
     // Auto-generate number if not provided.
     let auto_number;
-    let number = match body.number.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    let number = match body
+        .number
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         Some(n) => n,
         None => {
             let seq = db::invoices::next_seq(&pool).await?;
@@ -501,26 +504,47 @@ pub async fn update(
         &pool,
         &id,
         db::invoices::UpdateInvoice {
-            number:           body.number.as_deref().unwrap_or(&inv.number),
-            status:           body.status.as_deref().unwrap_or(&inv.status),
-            currency:         body.currency.as_deref().unwrap_or(&inv.currency),
-            terms:            body.terms.as_deref().unwrap_or(&inv.terms),
-            issued_date:      body.issued_date.as_deref().unwrap_or(&inv.issued_date),
-            due_date:         body.due_date.as_deref().unwrap_or(&inv.due_date),
-            project_type:     body.project_type.as_deref().unwrap_or(&inv.project_type),
-            project_location: body.project_location.as_deref().unwrap_or(&inv.project_location),
-            billed_to_name:   body.billed_to_name.as_deref().unwrap_or(&inv.billed_to_name),
-            billed_to_role:   body.billed_to_role.as_deref().unwrap_or(&inv.billed_to_role),
-            billed_to_addr1:  body.billed_to_addr1.as_deref().unwrap_or(&inv.billed_to_addr1),
-            billed_to_addr2:  body.billed_to_addr2.as_deref().unwrap_or(&inv.billed_to_addr2),
-            billed_to_pin:    body.billed_to_pin.as_deref().unwrap_or(&inv.billed_to_pin),
-            items_json:       &items_json,
-            notes_json:       &notes_json,
-            editor_note:      body.editor_note.as_deref().unwrap_or(&inv.editor_note),
-            kra_number:       kra,
-            recurring:        body.recurring.unwrap_or(inv.recurring != 0),
-            recur_interval:   body.recur_interval.as_deref().or(inv.recur_interval.as_deref()),
-            next_recur_date:  body.next_recur_date.as_deref().or(inv.next_recur_date.as_deref()),
+            number: body.number.as_deref().unwrap_or(&inv.number),
+            status: body.status.as_deref().unwrap_or(&inv.status),
+            currency: body.currency.as_deref().unwrap_or(&inv.currency),
+            terms: body.terms.as_deref().unwrap_or(&inv.terms),
+            issued_date: body.issued_date.as_deref().unwrap_or(&inv.issued_date),
+            due_date: body.due_date.as_deref().unwrap_or(&inv.due_date),
+            project_type: body.project_type.as_deref().unwrap_or(&inv.project_type),
+            project_location: body
+                .project_location
+                .as_deref()
+                .unwrap_or(&inv.project_location),
+            billed_to_name: body
+                .billed_to_name
+                .as_deref()
+                .unwrap_or(&inv.billed_to_name),
+            billed_to_role: body
+                .billed_to_role
+                .as_deref()
+                .unwrap_or(&inv.billed_to_role),
+            billed_to_addr1: body
+                .billed_to_addr1
+                .as_deref()
+                .unwrap_or(&inv.billed_to_addr1),
+            billed_to_addr2: body
+                .billed_to_addr2
+                .as_deref()
+                .unwrap_or(&inv.billed_to_addr2),
+            billed_to_pin: body.billed_to_pin.as_deref().unwrap_or(&inv.billed_to_pin),
+            items_json: &items_json,
+            notes_json: &notes_json,
+            editor_note: body.editor_note.as_deref().unwrap_or(&inv.editor_note),
+            kra_number: kra,
+            recurring: body.recurring.unwrap_or(inv.recurring != 0),
+            recur_interval: body
+                .recur_interval
+                .as_deref()
+                .or(inv.recur_interval.as_deref()),
+            next_recur_date: body
+                .next_recur_date
+                .as_deref()
+                .or(inv.next_recur_date.as_deref()),
         },
     )
     .await?;

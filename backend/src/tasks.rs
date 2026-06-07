@@ -65,8 +65,8 @@ fn advance_recur_date(date_str: &str, interval: &str) -> Option<String> {
     let d = NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()?;
     let months = match interval {
         "quarterly" => 3,
-        "yearly"    => 12,
-        _           => 1, // monthly is the default
+        "yearly" => 12,
+        _ => 1, // monthly is the default
     };
     let next = d.checked_add_months(Months::new(months))?;
     Some(next.format("%Y-%m-%d").to_string())
@@ -104,12 +104,12 @@ pub async fn recurring_invoices(pool: SqlitePool) {
                         continue;
                     };
 
-                    let new_id  = Uuid::new_v4().to_string();
+                    let new_id = Uuid::new_v4().to_string();
                     // Include a short UUID segment so the number is unique per auto-generation,
                     // preventing UNIQUE constraint collisions on restart or template reuse.
-                    let suffix  = &new_id[..8];
-                    let number  = format!("{}-auto-{}", t.number, suffix);
-                    let today   = Utc::now().format("%Y-%m-%d").to_string();
+                    let suffix = &new_id[..8];
+                    let number = format!("{}-auto-{}", t.number, suffix);
+                    let today = Utc::now().format("%Y-%m-%d").to_string();
                     let items_json = t.items.clone();
                     let notes_json = t.notes.clone();
 
@@ -136,8 +136,8 @@ pub async fn recurring_invoices(pool: SqlitePool) {
                                 items_json: &items_json,
                                 notes_json: &notes_json,
                                 editor_note: &t.editor_note,
-                                kra_number: None,  // must be filled before sending
-                                recurring: false,  // instances are not themselves recurring
+                                kra_number: None, // must be filled before sending
+                                recurring: false, // instances are not themselves recurring
                                 recur_interval: None,
                                 next_recur_date: None,
                             },

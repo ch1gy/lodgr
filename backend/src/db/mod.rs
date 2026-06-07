@@ -1,12 +1,12 @@
 pub mod auth_events;
 pub mod desk_profile;
-pub mod invoices;
-pub mod sub_clients;
 pub mod exports;
 pub mod internal_notes;
+pub mod invoices;
 pub mod jwt_revocations;
 pub mod magic_links;
 pub mod sessions;
+pub mod sub_clients;
 pub mod thread;
 pub mod tickets;
 pub mod users;

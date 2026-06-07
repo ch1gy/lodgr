@@ -17,9 +17,9 @@ use crate::{
 };
 
 pub struct NewClientProfile {
-    pub address_line1:  Option<String>,
-    pub address_line2:  Option<String>,
-    pub pin_number:     Option<String>,
+    pub address_line1: Option<String>,
+    pub address_line2: Option<String>,
+    pub pin_number: Option<String>,
     pub contact_person: Option<String>,
 }
 
@@ -49,11 +49,16 @@ pub async fn create_client(
         })?;
 
     if let Some(p) = profile {
-        let has_any = p.address_line1.is_some() || p.address_line2.is_some()
-            || p.pin_number.is_some() || p.contact_person.is_some();
+        let has_any = p.address_line1.is_some()
+            || p.address_line2.is_some()
+            || p.pin_number.is_some()
+            || p.contact_person.is_some();
         if has_any {
             db::users::update_profile(
-                pool, &id, &name, &email,
+                pool,
+                &id,
+                &name,
+                &email,
                 p.address_line1.as_deref(),
                 p.address_line2.as_deref(),
                 p.pin_number.as_deref(),
@@ -269,10 +274,19 @@ pub async fn update_client_profile(
         None => user.email.clone(),
     };
 
-    let addr1 = input.address_line1.as_deref().or(user.address_line1.as_deref());
-    let addr2 = input.address_line2.as_deref().or(user.address_line2.as_deref());
-    let pin   = input.pin_number.as_deref().or(user.pin_number.as_deref());
-    let cp    = input.contact_person.as_deref().or(user.contact_person.as_deref());
+    let addr1 = input
+        .address_line1
+        .as_deref()
+        .or(user.address_line1.as_deref());
+    let addr2 = input
+        .address_line2
+        .as_deref()
+        .or(user.address_line2.as_deref());
+    let pin = input.pin_number.as_deref().or(user.pin_number.as_deref());
+    let cp = input
+        .contact_person
+        .as_deref()
+        .or(user.contact_person.as_deref());
 
     db::users::update_profile(pool, client_id, &name, &email, addr1, addr2, pin, cp)
         .await

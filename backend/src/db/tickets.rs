@@ -16,8 +16,7 @@ const TICKET_COLS_J: &str =
      t.ticket_type, t.recurring, t.recurring_interval_days, t.last_recurred_at, t.deleted_at,
      t.sub_client_id, sc.name AS sub_client_name";
 
-const TICKET_JOIN: &str =
-    "FROM tickets t LEFT JOIN sub_clients sc ON sc.id = t.sub_client_id";
+const TICKET_JOIN: &str = "FROM tickets t LEFT JOIN sub_clients sc ON sc.id = t.sub_client_id";
 
 pub struct NewTicket<'a> {
     pub id: &'a str,
@@ -97,14 +96,12 @@ pub async fn list_for_client_paginated(
 }
 
 pub async fn find_by_id(pool: &SqlitePool, id: &str) -> AppResult<Option<Ticket>> {
-    Ok(
-        sqlx::query_as::<_, Ticket>(&format!(
-            "SELECT {TICKET_COLS_J} {TICKET_JOIN} WHERE t.id = ?"
-        ))
-        .bind(id)
-        .fetch_optional(pool)
-        .await?,
-    )
+    Ok(sqlx::query_as::<_, Ticket>(&format!(
+        "SELECT {TICKET_COLS_J} {TICKET_JOIN} WHERE t.id = ?"
+    ))
+    .bind(id)
+    .fetch_optional(pool)
+    .await?)
 }
 
 pub async fn create(pool: &SqlitePool, t: NewTicket<'_>) -> AppResult<Ticket> {

@@ -163,7 +163,11 @@ async fn main() -> anyhow::Result<()> {
     // and the task is relaunched after a 5-second cooldown.
     routes::health::init();
     spawn_with_restart("recurring_tickets", pool.clone(), tasks::recurring_tickets);
-    spawn_with_restart("recurring_invoices", pool.clone(), tasks::recurring_invoices);
+    spawn_with_restart(
+        "recurring_invoices",
+        pool.clone(),
+        tasks::recurring_invoices,
+    );
     {
         // Clone the key before it moves into AppState so the task can own a copy.
         let enc_key_for_task = Arc::clone(&enc_key);
@@ -304,7 +308,10 @@ async fn main() -> anyhow::Result<()> {
                 .patch(routes::invoices::update)
                 .delete(routes::invoices::delete),
         )
-        .route("/admin/invoices/:id/print", get(routes::invoices::print_html))
+        .route(
+            "/admin/invoices/:id/print",
+            get(routes::invoices::print_html),
+        )
         .route(
             "/admin/exports/:client_id/:filename",
             get(routes::admin::get_export_file),
@@ -323,8 +330,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/tickets/:id/ack", patch(routes::tickets::ack))
         .route("/tickets/:id/pend", patch(routes::tickets::pend))
         .route("/tickets/:id/close", patch(routes::tickets::close))
-        .route("/tickets/:id/message", post(routes::messages::post_message)
-            .layer(DefaultBodyLimit::max(100 * 1024 * 1024)))
+        .route(
+            "/tickets/:id/message",
+            post(routes::messages::post_message).layer(DefaultBodyLimit::max(100 * 1024 * 1024)),
+        )
         .route(
             "/tickets/:id/notes",
             get(routes::notes::list).post(routes::notes::create),

@@ -37,9 +37,9 @@ pub struct CreateClientRequest {
     pub name: String,
     pub email: String,
     pub password: String,
-    pub address_line1:  Option<String>,
-    pub address_line2:  Option<String>,
-    pub pin_number:     Option<String>,
+    pub address_line1: Option<String>,
+    pub address_line2: Option<String>,
+    pub pin_number: Option<String>,
     pub contact_person: Option<String>,
 }
 
@@ -49,15 +49,14 @@ pub async fn create_client(
     Json(body): Json<CreateClientRequest>,
 ) -> AppResult<impl IntoResponse> {
     let profile = services::admin::NewClientProfile {
-        address_line1:  body.address_line1,
-        address_line2:  body.address_line2,
-        pin_number:     body.pin_number,
+        address_line1: body.address_line1,
+        address_line2: body.address_line2,
+        pin_number: body.pin_number,
         contact_person: body.contact_person,
     };
-    let user = services::admin::create_client(
-        &pool, body.name, body.email, body.password, Some(profile),
-    )
-    .await?;
+    let user =
+        services::admin::create_client(&pool, body.name, body.email, body.password, Some(profile))
+            .await?;
     Ok((StatusCode::CREATED, Json(ClientResponse::from(user))))
 }
 

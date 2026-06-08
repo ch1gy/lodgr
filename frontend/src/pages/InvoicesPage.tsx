@@ -79,6 +79,8 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
   const [billedToAddr1, setBilledToAddr1] = useState('');
   const [billedToAddr2, setBilledToAddr2] = useState('');
   const [billedToPin, setBilledToPin] = useState('');
+  const [billedToEmail, setBilledToEmail] = useState('');
+  const [billedToPhone, setBilledToPhone] = useState('');
   const [editorNote, setEditorNote] = useState('');
   const [kraNumber, setKraNumber] = useState('');
   const [recurring, setRecurring] = useState(false);
@@ -114,6 +116,8 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
     setBilledToAddr1(c.address_line1 ?? '');
     setBilledToAddr2(c.address_line2 ?? '');
     setBilledToPin(c.pin_number ?? '');
+    setBilledToEmail(c.email ?? '');
+    setBilledToPhone('');
   }
 
   function addItem() { setItems((p) => [...p, { name: '', qty: 1, rate: 0 }]); }
@@ -147,6 +151,7 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
       billed_to_name: billedToName, billed_to_role: billedToRole || undefined,
       billed_to_addr1: billedToAddr1 || undefined, billed_to_addr2: billedToAddr2 || undefined,
       billed_to_pin: billedToPin || undefined,
+      billed_to_email: billedToEmail || undefined, billed_to_phone: billedToPhone || undefined,
       items, notes: notes.filter((n) => n.k.trim()),
       editor_note: editorNote || undefined, kra_number: kraNumber || undefined,
       recurring, recur_interval: recurring ? recurInterval : undefined,
@@ -244,6 +249,12 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
               <InvField label="PIN / KRA">
                 <input className="inv-inp" value={billedToPin} onChange={(e) => setBilledToPin(e.target.value)} placeholder="e.g. P051234567X" />
               </InvField>
+              <InvField label="Email">
+                <input className="inv-inp" type="email" value={billedToEmail} onChange={(e) => setBilledToEmail(e.target.value)} placeholder="client@example.com" />
+              </InvField>
+              <InvField label="Phone">
+                <input className="inv-inp" type="tel" value={billedToPhone} onChange={(e) => setBilledToPhone(e.target.value)} placeholder="+254 7XX XXX XXX" />
+              </InvField>
               <InvField label="Location (for strap)">
                 <input className="inv-inp" value={projectLocation} onChange={(e) => setProjectLocation(e.target.value)} placeholder="e.g. Nairobi" />
               </InvField>
@@ -251,14 +262,19 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
 
             {/* ── Line items ────────────────────────────────────────────── */}
             <div className="inv-sec">Line items</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 56px 96px 22px', gap: 6, marginBottom: 4 }}>
+              {(['Description', 'Qty', 'Rate'] as const).map((h) => (
+                <span key={h} style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--mid)', textAlign: h !== 'Description' ? 'right' : 'left' }}>{h}</span>
+              ))}
+            </div>
             {items.map((it, i) => (
               <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 56px 96px 22px', gap: 6, marginBottom: 6, alignItems: 'start' }}>
                 <div>
                   <input className="inv-inp" value={it.name} onChange={(e) => setItem(i, 'name', e.target.value)} placeholder="Item name" />
                   <input className="inv-inp" style={{ marginTop: 3, fontSize: 10, color: 'var(--mid)' }} value={it.sub ?? ''} onChange={(e) => setItem(i, 'sub', e.target.value)} placeholder="Description (optional)" />
                 </div>
-                <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="1" value={it.qty} onChange={(e) => setItem(i, 'qty', Number(e.target.value))} />
-                <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="0" value={it.rate} onChange={(e) => setItem(i, 'rate', Number(e.target.value))} placeholder="Rate" />
+                <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="1" value={it.qty} onChange={(e) => setItem(i, 'qty', Number(e.target.value))} placeholder="1" />
+                <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="0" value={it.rate} onChange={(e) => setItem(i, 'rate', Number(e.target.value))} placeholder="0" />
                 <button type="button" onClick={() => removeItem(i)} disabled={items.length === 1}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 12, padding: 0, alignSelf: 'center' }}>✕</button>
               </div>
@@ -364,6 +380,8 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
   const [billedToAddr1, setBilledToAddr1] = useState(invoice.billed_to_addr1);
   const [billedToAddr2, setBilledToAddr2] = useState(invoice.billed_to_addr2);
   const [billedToPin, setBilledToPin]     = useState(invoice.billed_to_pin);
+  const [billedToEmail, setBilledToEmail] = useState(invoice.billed_to_email);
+  const [billedToPhone, setBilledToPhone] = useState(invoice.billed_to_phone);
   const [editorNote, setEditorNote]       = useState(invoice.editor_note ?? '');
   const [kraNumber, setKraNumber]         = useState(invoice.kra_number ?? '');
   const [recurring, setRecurring]         = useState(invoice.recurring);
@@ -406,6 +424,7 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
       billed_to_name: billedToName, billed_to_role: billedToRole || undefined,
       billed_to_addr1: billedToAddr1 || undefined, billed_to_addr2: billedToAddr2 || undefined,
       billed_to_pin: billedToPin || undefined,
+      billed_to_email: billedToEmail || undefined, billed_to_phone: billedToPhone || undefined,
       items, notes: notes.filter((n) => n.k.trim()),
       editor_note: editorNote || undefined, kra_number: kraNumber || undefined,
       recurring, recur_interval: recurring ? recurInterval : undefined,
@@ -479,18 +498,29 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
               <InvField label="PIN / KRA">
                 <input className="inv-inp" value={billedToPin} onChange={(e) => setBilledToPin(e.target.value)} />
               </InvField>
+              <InvField label="Email">
+                <input className="inv-inp" type="email" value={billedToEmail} onChange={(e) => setBilledToEmail(e.target.value)} placeholder="client@example.com" />
+              </InvField>
+              <InvField label="Phone">
+                <input className="inv-inp" type="tel" value={billedToPhone} onChange={(e) => setBilledToPhone(e.target.value)} placeholder="+254 7XX XXX XXX" />
+              </InvField>
             </div>
 
             {/* ── Line items ────────────────────────────────────────────── */}
             <div className="inv-sec">Line items</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 56px 96px 22px', gap: 6, marginBottom: 4 }}>
+              {(['Description', 'Qty', 'Rate'] as const).map((h) => (
+                <span key={h} style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--mid)', textAlign: h !== 'Description' ? 'right' : 'left' }}>{h}</span>
+              ))}
+            </div>
             {items.map((it, i) => (
               <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 56px 96px 22px', gap: 6, marginBottom: 6, alignItems: 'start' }}>
                 <div>
                   <input className="inv-inp" value={it.name} onChange={(e) => setItem(i, 'name', e.target.value)} placeholder="Item name" />
                   <input className="inv-inp" style={{ marginTop: 3, fontSize: 10, color: 'var(--mid)' }} value={it.sub ?? ''} onChange={(e) => setItem(i, 'sub', e.target.value)} placeholder="Description (optional)" />
                 </div>
-                <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="1" value={it.qty} onChange={(e) => setItem(i, 'qty', Number(e.target.value))} />
-                <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="0" value={it.rate} onChange={(e) => setItem(i, 'rate', Number(e.target.value))} />
+                <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="1" value={it.qty} onChange={(e) => setItem(i, 'qty', Number(e.target.value))} placeholder="1" />
+                <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="0" value={it.rate} onChange={(e) => setItem(i, 'rate', Number(e.target.value))} placeholder="0" />
                 <button type="button" onClick={() => removeItem(i)} disabled={items.length === 1}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 12, padding: 0, alignSelf: 'center' }}>✕</button>
               </div>

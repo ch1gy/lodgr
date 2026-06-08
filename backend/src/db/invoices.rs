@@ -5,7 +5,8 @@ use crate::{error::AppResult, models::Invoice};
 
 const COLS: &str = "id, client_id, number, status, currency, terms, issued_date, due_date, \
      project_type, project_location, billed_to_name, billed_to_role, \
-     billed_to_addr1, billed_to_addr2, billed_to_pin, items, notes, editor_note, \
+     billed_to_addr1, billed_to_addr2, billed_to_pin, billed_to_email, billed_to_phone, \
+     items, notes, editor_note, \
      kra_number, recurring, recur_interval, next_recur_date, created_at";
 
 pub struct NewInvoice<'a> {
@@ -23,6 +24,8 @@ pub struct NewInvoice<'a> {
     pub billed_to_addr1: &'a str,
     pub billed_to_addr2: &'a str,
     pub billed_to_pin: &'a str,
+    pub billed_to_email: &'a str,
+    pub billed_to_phone: &'a str,
     pub items_json: &'a str,
     pub notes_json: &'a str,
     pub editor_note: &'a str,
@@ -63,9 +66,10 @@ pub async fn create(pool: &SqlitePool, n: NewInvoice<'_>) -> AppResult<Invoice> 
     sqlx::query(
         "INSERT INTO invoices (id, client_id, number, status, currency, terms, issued_date, \
          due_date, project_type, project_location, billed_to_name, billed_to_role, \
-         billed_to_addr1, billed_to_addr2, billed_to_pin, items, notes, editor_note, \
+         billed_to_addr1, billed_to_addr2, billed_to_pin, billed_to_email, billed_to_phone, \
+         items, notes, editor_note, \
          kra_number, recurring, recur_interval, next_recur_date, created_at) \
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     )
     .bind(n.id)
     .bind(n.client_id)
@@ -82,6 +86,8 @@ pub async fn create(pool: &SqlitePool, n: NewInvoice<'_>) -> AppResult<Invoice> 
     .bind(n.billed_to_addr1)
     .bind(n.billed_to_addr2)
     .bind(n.billed_to_pin)
+    .bind(n.billed_to_email)
+    .bind(n.billed_to_phone)
     .bind(n.items_json)
     .bind(n.notes_json)
     .bind(n.editor_note)
@@ -109,6 +115,8 @@ pub async fn create(pool: &SqlitePool, n: NewInvoice<'_>) -> AppResult<Invoice> 
         billed_to_addr1: n.billed_to_addr1.to_owned(),
         billed_to_addr2: n.billed_to_addr2.to_owned(),
         billed_to_pin: n.billed_to_pin.to_owned(),
+        billed_to_email: n.billed_to_email.to_owned(),
+        billed_to_phone: n.billed_to_phone.to_owned(),
         items: n.items_json.to_owned(),
         notes: n.notes_json.to_owned(),
         editor_note: n.editor_note.to_owned(),
@@ -134,6 +142,8 @@ pub struct UpdateInvoice<'a> {
     pub billed_to_addr1: &'a str,
     pub billed_to_addr2: &'a str,
     pub billed_to_pin: &'a str,
+    pub billed_to_email: &'a str,
+    pub billed_to_phone: &'a str,
     pub items_json: &'a str,
     pub notes_json: &'a str,
     pub editor_note: &'a str,
@@ -147,7 +157,8 @@ pub async fn update(pool: &SqlitePool, id: &str, u: UpdateInvoice<'_>) -> AppRes
     sqlx::query(
         "UPDATE invoices SET number=?, status=?, currency=?, terms=?, issued_date=?, due_date=?, \
          project_type=?, project_location=?, billed_to_name=?, billed_to_role=?, \
-         billed_to_addr1=?, billed_to_addr2=?, billed_to_pin=?, items=?, notes=?, \
+         billed_to_addr1=?, billed_to_addr2=?, billed_to_pin=?, billed_to_email=?, billed_to_phone=?, \
+         items=?, notes=?, \
          editor_note=?, kra_number=?, recurring=?, recur_interval=?, next_recur_date=? \
          WHERE id=?",
     )
@@ -164,6 +175,8 @@ pub async fn update(pool: &SqlitePool, id: &str, u: UpdateInvoice<'_>) -> AppRes
     .bind(u.billed_to_addr1)
     .bind(u.billed_to_addr2)
     .bind(u.billed_to_pin)
+    .bind(u.billed_to_email)
+    .bind(u.billed_to_phone)
     .bind(u.items_json)
     .bind(u.notes_json)
     .bind(u.editor_note)

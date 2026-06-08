@@ -146,6 +146,8 @@ export interface InvoiceResponse {
   billed_to_addr1: string;
   billed_to_addr2: string;
   billed_to_pin: string;
+  billed_to_email: string;
+  billed_to_phone: string;
   items: InvoiceItem[];
   notes: InvoiceNote[];
   editor_note: string;
@@ -170,6 +172,8 @@ export interface CreateInvoicePayload {
   billed_to_addr1?: string;
   billed_to_addr2?: string;
   billed_to_pin?: string;
+  billed_to_email?: string;
+  billed_to_phone?: string;
   items: InvoiceItem[];
   notes?: InvoiceNote[];
   editor_note?: string;

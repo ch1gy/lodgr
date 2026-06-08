@@ -181,6 +181,8 @@ pub struct Invoice {
     pub billed_to_addr1: String,
     pub billed_to_addr2: String,
     pub billed_to_pin: String,
+    pub billed_to_email: String,
+    pub billed_to_phone: String,
     pub items: String,
     pub notes: String,
     pub editor_note: String,

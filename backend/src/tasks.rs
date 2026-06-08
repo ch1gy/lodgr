@@ -133,6 +133,8 @@ pub async fn recurring_invoices(pool: SqlitePool) {
                                 billed_to_addr1: &t.billed_to_addr1,
                                 billed_to_addr2: &t.billed_to_addr2,
                                 billed_to_pin: &t.billed_to_pin,
+                                billed_to_email: &t.billed_to_email,
+                                billed_to_phone: &t.billed_to_phone,
                                 items_json: &items_json,
                                 notes_json: &notes_json,
                                 editor_note: &t.editor_note,

@@ -170,6 +170,8 @@ CREATE TABLE IF NOT EXISTS invoices (
     billed_to_addr1  TEXT NOT NULL DEFAULT '',
     billed_to_addr2  TEXT NOT NULL DEFAULT '',
     billed_to_pin    TEXT NOT NULL DEFAULT '',
+    billed_to_email  TEXT NOT NULL DEFAULT '',
+    billed_to_phone  TEXT NOT NULL DEFAULT '',
     items            TEXT NOT NULL DEFAULT '[]',
     notes            TEXT NOT NULL DEFAULT '[]',
     editor_note      TEXT NOT NULL DEFAULT '',

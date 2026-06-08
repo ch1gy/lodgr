@@ -103,6 +103,18 @@ fn render_invoice_html(inv: &InvoiceResponse, desk: &DeskProfile) -> String {
                 html_esc(&inv.billed_to_pin)
             ));
         }
+        if !inv.billed_to_email.is_empty() {
+            lines.push(format!(
+                "<div class=\"inv__metaMono\"><span class=\"k\">Email</span>{}</div>",
+                html_esc(&inv.billed_to_email)
+            ));
+        }
+        if !inv.billed_to_phone.is_empty() {
+            lines.push(format!(
+                "<div class=\"inv__metaMono\"><span class=\"k\">Tel</span>{}</div>",
+                html_esc(&inv.billed_to_phone)
+            ));
+        }
         lines.join("")
     };
 
@@ -349,6 +361,8 @@ pub struct CreateInvoiceRequest {
     pub billed_to_addr1: Option<String>,
     pub billed_to_addr2: Option<String>,
     pub billed_to_pin: Option<String>,
+    pub billed_to_email: Option<String>,
+    pub billed_to_phone: Option<String>,
     pub items: Vec<InvoiceItem>,
     pub notes: Option<Vec<InvoiceNote>>,
     pub editor_note: Option<String>,
@@ -374,6 +388,8 @@ pub struct UpdateInvoiceRequest {
     pub billed_to_addr1: Option<String>,
     pub billed_to_addr2: Option<String>,
     pub billed_to_pin: Option<String>,
+    pub billed_to_email: Option<String>,
+    pub billed_to_phone: Option<String>,
     pub items: Option<Vec<InvoiceItem>>,
     pub notes: Option<Vec<InvoiceNote>>,
     pub editor_note: Option<String>,
@@ -449,6 +465,8 @@ pub async fn create(
             billed_to_addr1: body.billed_to_addr1.as_deref().unwrap_or(""),
             billed_to_addr2: body.billed_to_addr2.as_deref().unwrap_or(""),
             billed_to_pin: body.billed_to_pin.as_deref().unwrap_or(""),
+            billed_to_email: body.billed_to_email.as_deref().unwrap_or(""),
+            billed_to_phone: body.billed_to_phone.as_deref().unwrap_or(""),
             items_json: &items_json,
             notes_json: &notes_json,
             editor_note: body.editor_note.as_deref().unwrap_or(""),
@@ -534,6 +552,8 @@ pub async fn update(
                 .as_deref()
                 .unwrap_or(&inv.billed_to_addr2),
             billed_to_pin: body.billed_to_pin.as_deref().unwrap_or(&inv.billed_to_pin),
+            billed_to_email: body.billed_to_email.as_deref().unwrap_or(&inv.billed_to_email),
+            billed_to_phone: body.billed_to_phone.as_deref().unwrap_or(&inv.billed_to_phone),
             items_json: &items_json,
             notes_json: &notes_json,
             editor_note: body.editor_note.as_deref().unwrap_or(&inv.editor_note),

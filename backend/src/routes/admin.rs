@@ -41,10 +41,13 @@ pub struct CreateClientRequest {
     pub address_line2: Option<String>,
     pub pin_number: Option<String>,
     pub contact_person: Option<String>,
+    pub phone: Option<String>,
 }
 
 pub async fn create_client(
     State(pool): State<SqlitePool>,
+    State(enc_key): State<EncryptionKey>,
+    State(config): State<Config>,
     _: DeskUser,
     Json(body): Json<CreateClientRequest>,
 ) -> AppResult<impl IntoResponse> {
@@ -53,18 +56,27 @@ pub async fn create_client(
         address_line2: body.address_line2,
         pin_number: body.pin_number,
         contact_person: body.contact_person,
+        phone: body.phone,
     };
-    let user =
-        services::admin::create_client(&pool, body.name, body.email, body.password, Some(profile))
-            .await?;
+    let user = services::admin::create_client(
+        &pool,
+        &enc_key,
+        &config.email_hash_salt,
+        body.name,
+        body.email,
+        body.password,
+        Some(profile),
+    )
+    .await?;
     Ok((StatusCode::CREATED, Json(ClientResponse::from(user))))
 }
 
 pub async fn list_clients(
     State(pool): State<SqlitePool>,
+    State(enc_key): State<EncryptionKey>,
     _: DeskUser,
 ) -> AppResult<impl IntoResponse> {
-    let clients = services::admin::list_clients(&pool).await?;
+    let clients = services::admin::list_clients(&pool, &enc_key).await?;
     let dtos: Vec<ClientResponse> = clients.into_iter().map(ClientResponse::from).collect();
     Ok(Json(dtos))
 }
@@ -100,16 +112,21 @@ pub struct UpdateClientRequest {
     pub address_line2: Option<String>,
     pub pin_number: Option<String>,
     pub contact_person: Option<String>,
+    pub phone: Option<String>,
 }
 
 pub async fn update_client(
     State(pool): State<SqlitePool>,
+    State(enc_key): State<EncryptionKey>,
+    State(config): State<Config>,
     DeskUser(claims): DeskUser,
     Path(client_id): Path<String>,
     Json(body): Json<UpdateClientRequest>,
 ) -> AppResult<impl IntoResponse> {
     let user = services::admin::update_client_profile(
         &pool,
+        &enc_key,
+        &config.email_hash_salt,
         &client_id,
         services::admin::UpdateClientProfileInput {
             name: body.name,
@@ -118,6 +135,7 @@ pub async fn update_client(
             address_line2: body.address_line2,
             pin_number: body.pin_number,
             contact_person: body.contact_person,
+            phone: body.phone,
         },
     )
     .await?;

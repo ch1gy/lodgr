@@ -154,10 +154,10 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    seed_desk_user(&pool, &config.desk_email).await?;
+    seed_desk_user(&pool, &enc_key, &config.desk_email, &config.email_hash_salt).await?;
     services::auth::dummy_hash_warmup();
-    services::auth::check_default_password_warning(&pool, &config.desk_email).await;
-    check_desk_lockout(&pool, &config.desk_email).await;
+    services::auth::check_default_password_warning(&pool, &config.desk_email, &config.email_hash_salt).await;
+    check_desk_lockout(&pool, &config.desk_email, &config.email_hash_salt).await;
 
     // Background tasks — wrapped in a restart supervisor so panics are logged
     // and the task is relaunched after a 5-second cooldown.
@@ -439,8 +439,15 @@ where
     });
 }
 
-async fn check_desk_lockout(pool: &SqlitePool, desk_email: &str) {
-    if let Ok(Some(user)) = db::users::find_by_email(pool, desk_email).await {
+async fn check_desk_lockout(pool: &SqlitePool, desk_email: &str, email_hash_salt: &str) {
+    let hash = match crypto::hash_email(desk_email, email_hash_salt) {
+        Ok(h) => h,
+        Err(e) => {
+            tracing::error!("check_desk_lockout: email hash failed: {e:?}");
+            return;
+        }
+    };
+    if let Ok(Some(user)) = db::users::find_by_email_hash(pool, &hash).await {
         if user.locked_until.is_some() {
             if user.failed_attempts >= services::auth::PERMANENT_LOCKOUT_THRESHOLD {
                 tracing::error!(
@@ -469,14 +476,27 @@ async fn check_desk_lockout(pool: &SqlitePool, desk_email: &str) {
     }
 }
 
-async fn seed_desk_user(pool: &SqlitePool, desk_email: &str) -> anyhow::Result<()> {
-    if db::users::find_by_email(pool, desk_email).await?.is_none() {
+async fn seed_desk_user(
+    pool: &SqlitePool,
+    enc_key: &EncryptionKey,
+    desk_email: &str,
+    email_hash_salt: &str,
+) -> anyhow::Result<()> {
+    let email_hash = crypto::hash_email(desk_email, email_hash_salt)
+        .map_err(|e| anyhow::anyhow!("email hash for seed: {e:?}"))?;
+
+    if db::users::find_by_email_hash(pool, &email_hash).await?.is_none() {
         let initial_password =
             std::env::var("DESK_INITIAL_PASSWORD").unwrap_or_else(|_| "changeme".to_string());
         let id = uuid::Uuid::new_v4().to_string();
         let hash = services::auth::hash_password(&initial_password)
             .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-        db::users::create(pool, &id, "Desk Agent", desk_email, &hash, "desk").await?;
+        let (email_nonce, email_ct) = crypto::encrypt(enc_key, desk_email)
+            .map_err(|e| anyhow::anyhow!("encrypt desk email: {e:?}"))?;
+        db::users::create(
+            pool, &id, "Desk Agent", &email_ct, &email_nonce, &email_hash, &hash, "desk",
+        )
+        .await?;
         if initial_password == "changeme" {
             tracing::warn!(
                 email = %desk_email,

@@ -3,19 +3,29 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS users (
-    id              TEXT PRIMARY KEY,
-    name            TEXT NOT NULL,
-    email           TEXT NOT NULL UNIQUE,
-    password_hash   TEXT NOT NULL,
-    role            TEXT NOT NULL CHECK (role IN ('desk', 'client')),
-    created_at      TEXT NOT NULL,
-    deleted_at      TEXT,
-    failed_attempts INTEGER NOT NULL DEFAULT 0,
-    locked_until    TEXT,
-    address_line1   TEXT,
-    address_line2   TEXT,
-    pin_number      TEXT,
-    contact_person  TEXT
+    id                   TEXT PRIMARY KEY,
+    name                 TEXT NOT NULL,
+    -- email stored AES-256-GCM encrypted; email_hash is Argon2id blind index
+    email                TEXT NOT NULL DEFAULT '',
+    email_nonce          TEXT NOT NULL DEFAULT '',
+    email_hash           TEXT NOT NULL UNIQUE DEFAULT '',
+    password_hash        TEXT NOT NULL,
+    role                 TEXT NOT NULL CHECK (role IN ('desk', 'client')),
+    created_at           TEXT NOT NULL,
+    deleted_at           TEXT,
+    failed_attempts      INTEGER NOT NULL DEFAULT 0,
+    locked_until         TEXT,
+    -- PII fields stored AES-256-GCM encrypted; nonce paired with each value
+    address_line1        TEXT,
+    address_line1_nonce  TEXT,
+    address_line2        TEXT,
+    address_line2_nonce  TEXT,
+    pin_number           TEXT,
+    pin_number_nonce     TEXT,
+    contact_person       TEXT,
+    contact_person_nonce TEXT,
+    phone                TEXT,
+    phone_nonce          TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users (deleted_at);

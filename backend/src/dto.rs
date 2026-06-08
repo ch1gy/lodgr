@@ -120,6 +120,7 @@ pub struct ClientResponse {
     pub address_line2: Option<String>,
     pub pin_number: Option<String>,
     pub contact_person: Option<String>,
+    pub phone: Option<String>,
 }
 
 impl From<User> for ClientResponse {
@@ -135,6 +136,7 @@ impl From<User> for ClientResponse {
             address_line2: u.address_line2,
             pin_number: u.pin_number,
             contact_person: u.contact_person,
+            phone: u.phone,
         }
     }
 }

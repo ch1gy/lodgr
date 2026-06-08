@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use crate::{
     config::Config,
+    crypto::EncryptionKey,
     db,
     dto::{AccessTokenResponse, MeResponse, SessionResponse},
     email::SmtpMailer,
@@ -31,6 +32,7 @@ pub struct LoginRequest {
 pub async fn login(
     State(pool): State<SqlitePool>,
     State(config): State<Config>,
+    State(enc_key): State<EncryptionKey>,
     State(mailer): State<Option<Arc<SmtpMailer>>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Json(body): Json<LoginRequest>,
@@ -38,6 +40,7 @@ pub async fn login(
     let output = services::auth::login(
         &pool,
         &config,
+        &enc_key,
         mailer.as_deref(),
         &body.email,
         &body.password,
@@ -121,11 +124,13 @@ pub async fn change_password(
 /// no failed_attempts, no locked_until).
 pub async fn me(
     State(pool): State<SqlitePool>,
+    State(enc_key): State<EncryptionKey>,
     AuthUser(claims): AuthUser,
 ) -> AppResult<impl IntoResponse> {
-    let user = db::users::find_by_id(&pool, &claims.sub)
+    let raw = db::users::find_by_id(&pool, &claims.sub)
         .await?
         .ok_or(AppError::Unauthorized)?;
+    let user = services::admin::decrypt_user(raw, &enc_key)?;
     Ok(Json(MeResponse::from(user)))
 }
 

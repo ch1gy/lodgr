@@ -3,15 +3,20 @@ use sqlx::SqlitePool;
 
 use crate::{error::AppResult, models::User};
 
-const USER_COLS: &str = "id, name, email, password_hash, role, created_at, deleted_at, \
-    failed_attempts, locked_until, address_line1, address_line2, pin_number, contact_person";
+const USER_COLS: &str = "id, name, email, email_nonce, email_hash, password_hash, role, \
+    created_at, deleted_at, failed_attempts, locked_until, \
+    address_line1, address_line1_nonce, address_line2, address_line2_nonce, \
+    pin_number, pin_number_nonce, contact_person, contact_person_nonce, \
+    phone, phone_nonce";
 
-pub async fn find_by_email(pool: &SqlitePool, email: &str) -> AppResult<Option<User>> {
+pub async fn find_by_email_hash(pool: &SqlitePool, hash: &str) -> AppResult<Option<User>> {
     Ok(
-        sqlx::query_as::<_, User>(&format!("SELECT {USER_COLS} FROM users WHERE email = ?"))
-            .bind(email)
-            .fetch_optional(pool)
-            .await?,
+        sqlx::query_as::<_, User>(&format!(
+            "SELECT {USER_COLS} FROM users WHERE email_hash = ?"
+        ))
+        .bind(hash)
+        .fetch_optional(pool)
+        .await?,
     )
 }
 
@@ -37,17 +42,21 @@ pub async fn create(
     id: &str,
     name: &str,
     email: &str,
+    email_nonce: &str,
+    email_hash: &str,
     password_hash: &str,
     role: &str,
 ) -> AppResult<()> {
     let created_at = Utc::now().to_rfc3339();
     sqlx::query(
-        "INSERT INTO users (id, name, email, password_hash, role, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO users (id, name, email, email_nonce, email_hash, password_hash, role, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(id)
     .bind(name)
     .bind(email)
+    .bind(email_nonce)
+    .bind(email_hash)
     .bind(password_hash)
     .bind(role)
     .bind(&created_at)
@@ -105,10 +114,18 @@ pub async fn find_desk_user(pool: &SqlitePool) -> AppResult<Option<User>> {
 pub struct UpdateProfile<'a> {
     pub name: &'a str,
     pub email: &'a str,
+    pub email_nonce: &'a str,
+    pub email_hash: &'a str,
     pub address_line1: Option<&'a str>,
+    pub address_line1_nonce: Option<&'a str>,
     pub address_line2: Option<&'a str>,
+    pub address_line2_nonce: Option<&'a str>,
     pub pin_number: Option<&'a str>,
+    pub pin_number_nonce: Option<&'a str>,
     pub contact_person: Option<&'a str>,
+    pub contact_person_nonce: Option<&'a str>,
+    pub phone: Option<&'a str>,
+    pub phone_nonce: Option<&'a str>,
 }
 
 pub async fn update_profile(
@@ -117,15 +134,30 @@ pub async fn update_profile(
     p: UpdateProfile<'_>,
 ) -> AppResult<()> {
     sqlx::query(
-        "UPDATE users SET name = ?, email = ?, address_line1 = ?, address_line2 = ?, \
-         pin_number = ?, contact_person = ? WHERE id = ?",
+        "UPDATE users SET
+            name = ?,
+            email = ?, email_nonce = ?, email_hash = ?,
+            address_line1 = ?, address_line1_nonce = ?,
+            address_line2 = ?, address_line2_nonce = ?,
+            pin_number = ?, pin_number_nonce = ?,
+            contact_person = ?, contact_person_nonce = ?,
+            phone = ?, phone_nonce = ?
+         WHERE id = ?",
     )
     .bind(p.name)
     .bind(p.email)
+    .bind(p.email_nonce)
+    .bind(p.email_hash)
     .bind(p.address_line1)
+    .bind(p.address_line1_nonce)
     .bind(p.address_line2)
+    .bind(p.address_line2_nonce)
     .bind(p.pin_number)
+    .bind(p.pin_number_nonce)
     .bind(p.contact_person)
+    .bind(p.contact_person_nonce)
+    .bind(p.phone)
+    .bind(p.phone_nonce)
     .bind(user_id)
     .execute(pool)
     .await?;

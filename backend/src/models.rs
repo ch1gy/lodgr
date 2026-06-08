@@ -6,7 +6,11 @@ use serde::Deserialize;
 pub struct User {
     pub id: String,
     pub name: String,
+    /// AES-256-GCM ciphertext hex — decrypt before exposing to callers.
     pub email: String,
+    pub email_nonce: String,
+    /// Argon2id blind index for WHERE lookups — never decrypt, never expose.
+    pub email_hash: String,
     pub password_hash: String,
     pub role: String,
     pub created_at: String,
@@ -16,11 +20,23 @@ pub struct User {
     #[sqlx(default)]
     pub address_line1: Option<String>,
     #[sqlx(default)]
+    pub address_line1_nonce: Option<String>,
+    #[sqlx(default)]
     pub address_line2: Option<String>,
+    #[sqlx(default)]
+    pub address_line2_nonce: Option<String>,
     #[sqlx(default)]
     pub pin_number: Option<String>,
     #[sqlx(default)]
+    pub pin_number_nonce: Option<String>,
+    #[sqlx(default)]
     pub contact_person: Option<String>,
+    #[sqlx(default)]
+    pub contact_person_nonce: Option<String>,
+    #[sqlx(default)]
+    pub phone: Option<String>,
+    #[sqlx(default)]
+    pub phone_nonce: Option<String>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]

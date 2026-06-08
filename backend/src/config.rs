@@ -31,6 +31,9 @@ pub struct Config {
     /// Defaults to "desk@local". Change this so the address isn't predictable
     /// from reading the open-source code — prevents targeted lockout attacks.
     pub desk_email: String,
+    /// Fixed hex-encoded Argon2id salt for email blind-index hashing.
+    /// Loaded from EMAIL_HASH_SALT. Must never change after first use.
+    pub email_hash_salt: Zeroizing<String>,
 }
 
 impl Config {
@@ -110,6 +113,11 @@ impl Config {
 
         let desk_email = std::env::var("DESK_EMAIL").unwrap_or_else(|_| "desk@local".to_string());
 
+        let email_hash_salt = Zeroizing::new(
+            std::env::var("EMAIL_HASH_SALT")
+                .unwrap_or_else(|_| panic!("FATAL: EMAIL_HASH_SALT not set")),
+        );
+
         // Prevent magic links being generated over plain HTTP in production.
         if cookie_secure && base_url.starts_with("http://") {
             panic!(
@@ -140,6 +148,7 @@ impl Config {
             rate_limit_report_rps,
             rate_limit_report_burst,
             desk_email,
+            email_hash_salt,
         })
     }
 

@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::{
     config::Config,
-    crypto::EncryptionKey,
+    crypto::{self, EncryptionKey},
     db,
     email::SmtpMailer,
     error::{AppError, AppResult},
@@ -16,15 +16,66 @@ use crate::{
     },
 };
 
+// ── Encryption helpers ────────────────────────────────────────────────────────
+
+/// Returns a User with all PII fields decrypted to plaintext.
+/// Callers must always decrypt before passing users to DTOs or business logic.
+pub fn decrypt_user(user: User, key: &EncryptionKey) -> AppResult<User> {
+    let email = if user.email.is_empty() {
+        String::new()
+    } else {
+        crypto::decrypt(key, &user.email_nonce, &user.email)?
+    };
+
+    let address_line1 = decrypt_opt(key, user.address_line1.as_deref(), user.address_line1_nonce.as_deref())?;
+    let address_line2 = decrypt_opt(key, user.address_line2.as_deref(), user.address_line2_nonce.as_deref())?;
+    let pin_number = decrypt_opt(key, user.pin_number.as_deref(), user.pin_number_nonce.as_deref())?;
+    let contact_person = decrypt_opt(key, user.contact_person.as_deref(), user.contact_person_nonce.as_deref())?;
+    let phone = decrypt_opt(key, user.phone.as_deref(), user.phone_nonce.as_deref())?;
+
+    Ok(User {
+        email,
+        address_line1,
+        address_line2,
+        pin_number,
+        contact_person,
+        phone,
+        ..user
+    })
+}
+
+fn decrypt_opt(key: &EncryptionKey, ct: Option<&str>, nonce: Option<&str>) -> AppResult<Option<String>> {
+    match (ct, nonce) {
+        (Some(c), Some(n)) if !c.is_empty() => Ok(Some(crypto::decrypt(key, n, c)?)),
+        _ => Ok(None),
+    }
+}
+
+/// Encrypts an optional plaintext field. Returns `(ciphertext, nonce)` or `(None, None)`.
+fn encrypt_opt(key: &EncryptionKey, value: Option<&str>) -> AppResult<(Option<String>, Option<String>)> {
+    match value {
+        Some(v) if !v.is_empty() => {
+            let (nonce, ct) = crypto::encrypt(key, v)?;
+            Ok((Some(ct), Some(nonce)))
+        }
+        _ => Ok((None, None)),
+    }
+}
+
+// ── Public structs ────────────────────────────────────────────────────────────
+
 pub struct NewClientProfile {
     pub address_line1: Option<String>,
     pub address_line2: Option<String>,
     pub pin_number: Option<String>,
     pub contact_person: Option<String>,
+    pub phone: Option<String>,
 }
 
 pub async fn create_client(
     pool: &SqlitePool,
+    enc_key: &EncryptionKey,
+    email_hash_salt: &str,
     name: String,
     email: String,
     password: String,
@@ -39,7 +90,10 @@ pub async fn create_client(
     let id = Uuid::new_v4().to_string();
     let hash = hash_password(&password)?;
 
-    db::users::create(pool, &id, &name, &email, &hash, "client")
+    let (email_nonce, email_ct) = crypto::encrypt(enc_key, &email)?;
+    let email_hash = crypto::hash_email(&email, email_hash_salt)?;
+
+    db::users::create(pool, &id, &name, &email_ct, &email_nonce, &email_hash, &hash, "client")
         .await
         .map_err(|e| match e {
             AppError::Internal(ref msg) if msg.contains("UNIQUE") => {
@@ -52,31 +106,48 @@ pub async fn create_client(
         let has_any = p.address_line1.is_some()
             || p.address_line2.is_some()
             || p.pin_number.is_some()
-            || p.contact_person.is_some();
+            || p.contact_person.is_some()
+            || p.phone.is_some();
         if has_any {
+            let (addr1_ct, addr1_nonce) = encrypt_opt(enc_key, p.address_line1.as_deref())?;
+            let (addr2_ct, addr2_nonce) = encrypt_opt(enc_key, p.address_line2.as_deref())?;
+            let (pin_ct, pin_nonce) = encrypt_opt(enc_key, p.pin_number.as_deref())?;
+            let (cp_ct, cp_nonce) = encrypt_opt(enc_key, p.contact_person.as_deref())?;
+            let (phone_ct, phone_nonce) = encrypt_opt(enc_key, p.phone.as_deref())?;
+
             db::users::update_profile(
                 pool,
                 &id,
                 db::users::UpdateProfile {
                     name: &name,
-                    email: &email,
-                    address_line1: p.address_line1.as_deref(),
-                    address_line2: p.address_line2.as_deref(),
-                    pin_number: p.pin_number.as_deref(),
-                    contact_person: p.contact_person.as_deref(),
+                    email: &email_ct,
+                    email_nonce: &email_nonce,
+                    email_hash: &email_hash,
+                    address_line1: addr1_ct.as_deref(),
+                    address_line1_nonce: addr1_nonce.as_deref(),
+                    address_line2: addr2_ct.as_deref(),
+                    address_line2_nonce: addr2_nonce.as_deref(),
+                    pin_number: pin_ct.as_deref(),
+                    pin_number_nonce: pin_nonce.as_deref(),
+                    contact_person: cp_ct.as_deref(),
+                    contact_person_nonce: cp_nonce.as_deref(),
+                    phone: phone_ct.as_deref(),
+                    phone_nonce: phone_nonce.as_deref(),
                 },
             )
             .await?;
         }
     }
 
-    db::users::find_by_id(pool, &id)
+    let raw = db::users::find_by_id(pool, &id)
         .await?
-        .ok_or_else(|| AppError::Internal("user vanished after insert".into()))
+        .ok_or_else(|| AppError::Internal("user vanished after insert".into()))?;
+    decrypt_user(raw, enc_key)
 }
 
-pub async fn list_clients(pool: &SqlitePool) -> AppResult<Vec<User>> {
-    db::users::find_all_clients(pool).await
+pub async fn list_clients(pool: &SqlitePool, enc_key: &EncryptionKey) -> AppResult<Vec<User>> {
+    let raw_users = db::users::find_all_clients(pool).await?;
+    raw_users.into_iter().map(|u| decrypt_user(u, enc_key)).collect()
 }
 
 pub async fn delete_client_sessions(pool: &SqlitePool, client_id: &str) -> AppResult<u64> {
@@ -178,13 +249,14 @@ pub async fn hard_delete_client(
     client_id: &str,
     confirm: &str,
 ) -> AppResult<()> {
-    let user = db::users::find_by_id(pool, client_id)
+    let raw = db::users::find_by_id(pool, client_id)
         .await?
         .ok_or(AppError::NotFound)?;
-    if user.role != "client" {
+    if raw.role != "client" {
         return Err(AppError::BadRequest("target user is not a client".into()));
     }
 
+    let user = decrypt_user(raw, enc_key)?;
     let expected = format!("permanently delete {}", user.email);
     if confirm != expected {
         return Err(AppError::BadRequest(format!(
@@ -244,17 +316,20 @@ pub struct UpdateClientProfileInput {
     pub address_line2: Option<String>,
     pub pin_number: Option<String>,
     pub contact_person: Option<String>,
+    pub phone: Option<String>,
 }
 
 pub async fn update_client_profile(
     pool: &SqlitePool,
+    enc_key: &EncryptionKey,
+    email_hash_salt: &str,
     client_id: &str,
     input: UpdateClientProfileInput,
 ) -> AppResult<User> {
-    let user = db::users::find_by_id(pool, client_id)
+    let raw = db::users::find_by_id(pool, client_id)
         .await?
         .ok_or(AppError::NotFound)?;
-    if user.role != "client" {
+    if raw.role != "client" {
         return Err(AppError::BadRequest("target user is not a client".into()));
     }
 
@@ -265,54 +340,83 @@ pub async fn update_client_profile(
             }
             n.clone()
         }
-        None => user.name.clone(),
+        None => raw.name.clone(),
     };
 
-    let email = match input.email {
-        Some(ref e) => {
-            validate_email(e)?;
-            e.clone()
-        }
-        None => user.email.clone(),
+    // For email: if new value provided, encrypt + hash; otherwise reuse existing ciphertext.
+    let (email_ct, email_nonce, email_hash) = if let Some(ref new_email) = input.email {
+        validate_email(new_email)?;
+        let (nonce, ct) = crypto::encrypt(enc_key, new_email)?;
+        let hash = crypto::hash_email(new_email, email_hash_salt)?;
+        (ct, nonce, hash)
+    } else {
+        (raw.email.clone(), raw.email_nonce.clone(), raw.email_hash.clone())
     };
 
-    let addr1 = input
-        .address_line1
-        .as_deref()
-        .or(user.address_line1.as_deref());
-    let addr2 = input
-        .address_line2
-        .as_deref()
-        .or(user.address_line2.as_deref());
-    let pin = input.pin_number.as_deref().or(user.pin_number.as_deref());
-    let cp = input
-        .contact_person
-        .as_deref()
-        .or(user.contact_person.as_deref());
+    // For each optional field: if new value provided, encrypt it; else keep existing.
+    let (addr1_ct, addr1_nonce) = if input.address_line1.is_some() {
+        encrypt_opt(enc_key, input.address_line1.as_deref())?
+    } else {
+        (raw.address_line1.clone(), raw.address_line1_nonce.clone())
+    };
+
+    let (addr2_ct, addr2_nonce) = if input.address_line2.is_some() {
+        encrypt_opt(enc_key, input.address_line2.as_deref())?
+    } else {
+        (raw.address_line2.clone(), raw.address_line2_nonce.clone())
+    };
+
+    let (pin_ct, pin_nonce) = if input.pin_number.is_some() {
+        encrypt_opt(enc_key, input.pin_number.as_deref())?
+    } else {
+        (raw.pin_number.clone(), raw.pin_number_nonce.clone())
+    };
+
+    let (cp_ct, cp_nonce) = if input.contact_person.is_some() {
+        encrypt_opt(enc_key, input.contact_person.as_deref())?
+    } else {
+        (raw.contact_person.clone(), raw.contact_person_nonce.clone())
+    };
+
+    let (phone_ct, phone_nonce) = if input.phone.is_some() {
+        encrypt_opt(enc_key, input.phone.as_deref())?
+    } else {
+        (raw.phone.clone(), raw.phone_nonce.clone())
+    };
 
     db::users::update_profile(
         pool,
         client_id,
         db::users::UpdateProfile {
             name: &name,
-            email: &email,
-            address_line1: addr1,
-            address_line2: addr2,
-            pin_number: pin,
-            contact_person: cp,
+            email: &email_ct,
+            email_nonce: &email_nonce,
+            email_hash: &email_hash,
+            address_line1: addr1_ct.as_deref(),
+            address_line1_nonce: addr1_nonce.as_deref(),
+            address_line2: addr2_ct.as_deref(),
+            address_line2_nonce: addr2_nonce.as_deref(),
+            pin_number: pin_ct.as_deref(),
+            pin_number_nonce: pin_nonce.as_deref(),
+            contact_person: cp_ct.as_deref(),
+            contact_person_nonce: cp_nonce.as_deref(),
+            phone: phone_ct.as_deref(),
+            phone_nonce: phone_nonce.as_deref(),
         },
     )
     .await
     .map_err(|e| match e {
         AppError::Internal(ref msg) if msg.contains("UNIQUE") => {
-            AppError::Conflict(format!("email '{email}' is already registered"))
+            let email_plain = input.email.as_deref().unwrap_or("");
+            AppError::Conflict(format!("email '{email_plain}' is already registered"))
         }
         other => other,
     })?;
 
-    db::users::find_by_id(pool, client_id)
+    let updated_raw = db::users::find_by_id(pool, client_id)
         .await?
-        .ok_or_else(|| AppError::Internal("user vanished after update".into()))
+        .ok_or_else(|| AppError::Internal("user vanished after update".into()))?;
+    decrypt_user(updated_raw, enc_key)
 }
 
 pub async fn unlock_client(pool: &SqlitePool, client_id: &str) -> AppResult<()> {
@@ -339,21 +443,6 @@ pub async fn generate_magic_link(
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 /// Run the full child-row cascade for a user inside an *existing* transaction.
-///
-/// Deletes in FK-safe order:
-///   magic_links → thread_entries → internal_notes → tickets
-///   → sessions → jwt_revocations → client_exports → users
-///
-/// Callers own the transaction and must call `tx.commit()` after this returns.
-/// Called from both `hard_delete_client` (desk-initiated) and
-/// `cascade_hard_delete_user` (background 30-day expiry task).
-///
-/// # TODO
-/// `client_exports.client_id` has a FK to `users.id` that should be
-/// `ON DELETE CASCADE` at the schema level, which would make this DELETE
-/// unnecessary and remove an entire class of "forgot one call site" bug.
-/// SQLite requires a full table-recreation migration to alter FKs — see
-/// PLANNED.md for the tracked item.
 pub(crate) async fn cascade_delete_user_data(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     user_id: &str,
@@ -384,7 +473,6 @@ pub(crate) async fn cascade_delete_user_data(
         .bind(user_id)
         .execute(&mut **tx)
         .await?;
-    // jwt_revocations and auth_events both FK to users — delete before the user row.
     sqlx::query("DELETE FROM jwt_revocations WHERE user_id = ?")
         .bind(user_id)
         .execute(&mut **tx)
@@ -405,7 +493,6 @@ pub(crate) async fn cascade_delete_user_data(
 }
 
 /// Basic RFC-5321 email validation without external crates.
-/// Checks for a single '@', non-empty local part, and a valid domain.
 fn validate_email(email: &str) -> AppResult<()> {
     if email != email.trim() {
         return Err(AppError::BadRequest(

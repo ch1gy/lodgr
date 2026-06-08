@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     config::Config,
+    crypto::{self, EncryptionKey},
     db,
     email::SmtpMailer,
     error::{AppError, AppResult},
@@ -179,12 +180,14 @@ fn dummy_hash() -> Option<&'static str> {
 pub async fn login(
     pool: &SqlitePool,
     config: &Config,
+    enc_key: &EncryptionKey,
     mailer: Option<&SmtpMailer>,
     email: &str,
     password: &str,
     peer_ip: IpAddr,
 ) -> AppResult<LoginOutput> {
-    let user_opt = db::users::find_by_email(pool, email).await?;
+    let email_hash = crypto::hash_email(email, &config.email_hash_salt)?;
+    let user_opt = db::users::find_by_email_hash(pool, &email_hash).await?;
 
     // Check lockout before running argon2. A locked account's existence is
     // already known (it wouldn't be locked otherwise), so returning early is
@@ -311,7 +314,8 @@ pub async fn login(
                         let config2 = config.clone();
                         let m2 = m.clone();
                         let uid = u.id.clone();
-                        let uemail = u.email.clone();
+                        let uemail = crypto::decrypt(enc_key, &u.email_nonce, &u.email)
+                            .unwrap_or_default();
                         let uname = u.name.clone();
                         tokio::spawn(async move {
                             magic::send_desk_recovery_link(
@@ -471,19 +475,21 @@ pub async fn change_password(
     issue_tokens(pool, config, user_id, &user.role).await
 }
 
-pub async fn check_default_password_warning(pool: &SqlitePool, desk_email: &str) {
-    if let Ok(Some(user)) = db::users::find_by_email(pool, desk_email).await {
-        if verify_password("changeme", &user.password_hash).unwrap_or(false) {
-            tracing::warn!(
-                "SECURITY WARNING: desk@local is still using the default password 'changeme'. \
-                 Change it immediately before exposing this service."
-            );
-            eprintln!(
-                "\n╔══════════════════════════════════════════════════════════╗\
-                 \n║  WARNING: desk@local still uses the default password     ║\
-                 \n║  Change it immediately in any non-development deployment ║\
-                 \n╚══════════════════════════════════════════════════════════╝\n"
-            );
+pub async fn check_default_password_warning(pool: &SqlitePool, desk_email: &str, email_hash_salt: &str) {
+    if let Ok(hash) = crypto::hash_email(desk_email, email_hash_salt) {
+        if let Ok(Some(user)) = db::users::find_by_email_hash(pool, &hash).await {
+            if verify_password("changeme", &user.password_hash).unwrap_or(false) {
+                tracing::warn!(
+                    "SECURITY WARNING: desk@local is still using the default password 'changeme'. \
+                     Change it immediately before exposing this service."
+                );
+                eprintln!(
+                    "\n╔══════════════════════════════════════════════════════════╗\
+                     \n║  WARNING: desk@local still uses the default password     ║\
+                     \n║  Change it immediately in any non-development deployment ║\
+                     \n╚══════════════════════════════════════════════════════════╝\n"
+                );
+            }
         }
     }
 }

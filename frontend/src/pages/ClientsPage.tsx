@@ -143,6 +143,7 @@ function ClientRow({ client, onAction, disabled = false }: RowProps) {
     pin_number:     client.pin_number     ?? '',
     address_line1:  client.address_line1  ?? '',
     address_line2:  client.address_line2  ?? '',
+    phone:          client.phone          ?? '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -167,6 +168,7 @@ function ClientRow({ client, onAction, disabled = false }: RowProps) {
         pin_number:     profile.pin_number     || undefined,
         address_line1:  profile.address_line1  || undefined,
         address_line2:  profile.address_line2  || undefined,
+        phone:          profile.phone          || undefined,
       });
       void qc.invalidateQueries({ queryKey: ['clients'] });
     } finally {
@@ -268,6 +270,11 @@ function ClientRow({ client, onAction, disabled = false }: RowProps) {
                     <input className="lg-cl-expand__inp" value={profile.address_line2} placeholder="City, Country"
                       onChange={(e) => setProfile((p) => ({ ...p, address_line2: e.target.value }))} />
                   </div>
+                  <div>
+                    <div className="lg-cl-expand__field-label">Phone</div>
+                    <input className="lg-cl-expand__inp" value={profile.phone} placeholder="+254 700 000 000"
+                      onChange={(e) => setProfile((p) => ({ ...p, phone: e.target.value }))} />
+                  </div>
                   <div className="lg-cl-expand__save">
                     <button type="button" onClick={saveProfile} disabled={saving}>
                       {saving ? 'Saving…' : 'Save profile'}
@@ -302,6 +309,7 @@ function NewClientModal({ onClose, onCreated }: NewClientModalProps) {
     pin_number:     '',
     address_line1:  '',
     address_line2:  '',
+    phone:          '',
   });
 
   const createM = useMutation({
@@ -313,6 +321,7 @@ function NewClientModal({ onClose, onCreated }: NewClientModalProps) {
       pin_number:     profile.pin_number.trim()     || undefined,
       address_line1:  profile.address_line1.trim()  || undefined,
       address_line2:  profile.address_line2.trim()  || undefined,
+      phone:          profile.phone.trim()          || undefined,
     }),
     onSuccess: () => {
       onCreated();
@@ -434,6 +443,11 @@ function NewClientModal({ onClose, onCreated }: NewClientModalProps) {
                       <div style={{ color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 4 }}>Address line 2</div>
                       <input style={monoInput} value={profile.address_line2} placeholder="City, Country"
                         onChange={(e) => setProfile((p) => ({ ...p, address_line2: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div style={{ color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 4 }}>Phone</div>
+                      <input style={monoInput} value={profile.phone} placeholder="+254 700 000 000"
+                        onChange={(e) => setProfile((p) => ({ ...p, phone: e.target.value }))} />
                     </div>
                   </div>
                 )}

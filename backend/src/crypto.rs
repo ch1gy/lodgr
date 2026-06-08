@@ -64,6 +64,19 @@ pub fn encrypt(key: &[u8; 32], plaintext: &str) -> AppResult<(String, String)> {
     Ok((hex_encode(&nonce_bytes), hex_encode(&ciphertext)))
 }
 
+/// Hash an email address for blind-index lookup using Argon2id with a fixed
+/// system-wide salt. Same algorithm and parameters as `derive_key` so an
+/// attacker must run the full memory-hard computation per guess.
+///
+/// The result is a 64-character hex string stored in `users.email_hash`.
+/// `salt_hex` must be the `EMAIL_HASH_SALT` env value — never change it after
+/// the first user is written, as all login lookups depend on it.
+pub fn hash_email(email: &str, salt_hex: &str) -> AppResult<String> {
+    let raw = derive_key(email, salt_hex)
+        .map_err(|e| AppError::Internal(format!("email hash: {e}")))?;
+    Ok(hex_encode(&raw))
+}
+
 /// Decrypt `ciphertext_hex` using `key` and `nonce_hex`.
 ///
 /// Returns the plaintext string, or `AppError::Internal` if decryption fails

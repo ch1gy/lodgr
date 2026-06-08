@@ -112,6 +112,7 @@ export interface Client {
   address_line2: string | null;
   pin_number: string | null;
   contact_person: string | null;
+  phone: string | null;
 }
 
 // ── Invoices ─────────────────────────────────────────────────────────────────
@@ -193,6 +194,7 @@ export interface CreateClientPayload {
   address_line2?: string;
   pin_number?: string;
   contact_person?: string;
+  phone?: string;
 }
 
 export interface ExportResponse {

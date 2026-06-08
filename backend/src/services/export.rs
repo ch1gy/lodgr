@@ -106,11 +106,20 @@ pub async fn export_client(
         });
     }
 
+    let client_email = if user.email.is_empty() {
+        String::new()
+    } else {
+        crypto::decrypt(enc_key, &user.email_nonce, &user.email).unwrap_or_else(|_| {
+            tracing::warn!(client_id = %client_id, "failed to decrypt email for export");
+            "[encrypted]".to_owned()
+        })
+    };
+
     let exported_at = chrono::Utc::now().to_rfc3339();
     let doc = ExportDocument {
         client_id: client_id.to_owned(),
         client_name: user.name.clone(),
-        client_email: user.email.clone(),
+        client_email,
         client_created_at: user.created_at.clone(),
         exported_at: exported_at.clone(),
         tickets: export_tickets,

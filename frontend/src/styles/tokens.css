@@ -415,8 +415,7 @@ a { color: inherit; }
   -webkit-tap-highlight-color: transparent;
 }
 .lg-theme-switch:focus-visible {
-  outline: 1px solid var(--ink);
-  outline-offset: 2px;
+  outline: none;
 }
 .lg-theme-switch .seg {
   font-family: var(--mono);
@@ -439,8 +438,9 @@ a { color: inherit; }
 [data-theme="light"] .lg-theme-switch .seg.light,
 [data-theme="dark"]  .lg-theme-switch .seg.dark {
   color: var(--ink);
-  border-bottom: 1.5px solid var(--ink);
-  padding-bottom: 1px;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -492,6 +492,14 @@ a:focus-visible {
 /* Masthead links pick up a soft hover treatment. */
 .lg-mast-link { position: relative; }
 .lg-mast-link:hover { color: var(--ink); }
+
+/* Reset browser button styles when lg-mast-link is on a <button> element. */
+button.lg-mast-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+}
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Reusable entrance animations — drop on any element with a stagger via the

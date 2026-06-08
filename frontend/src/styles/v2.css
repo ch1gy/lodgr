@@ -460,6 +460,7 @@
   display: grid; grid-template-columns: 1fr auto; gap: 32px;
   padding: 36px 40px 24px; border-bottom: 1px solid var(--rule);
   align-items: baseline;
+  animation: lg-enter-fade var(--dur-slow) var(--ease-out) both;
 }
 .lg-cl-head h1 {
   font-family: var(--serif); font-style: italic; font-weight: 400;
@@ -487,6 +488,7 @@
 .lg-cl-filt {
   display: flex; align-items: center; gap: 0;
   padding: 12px 40px; border-bottom: 1px solid var(--rule);
+  animation: lg-enter-fade var(--dur-base) var(--ease-out) 80ms both;
 }
 .lg-cl-filt .group { display: flex; gap: 18px; }
 .lg-cl-filt .tab {
@@ -508,7 +510,7 @@
 }
 .lg-cl-filt .new:hover { opacity: 0.8; }
 
-.lg-cl-rows { flex: 1; overflow-y: auto; }
+.lg-cl-rows { flex: 1; overflow-y: auto; animation: lg-enter-fade var(--dur-slow) var(--ease-out) 140ms both; }
 .lg-cl-row {
   display: grid;
   grid-template-columns: 60px 1.4fr 1fr 100px 120px minmax(280px, auto);
@@ -679,6 +681,7 @@
   border-right: 1px solid var(--rule);
   display: flex; flex-direction: column;
   position: relative; overflow: hidden;
+  animation: lg-enter-fade var(--dur-slow) var(--ease-out) both;
 }
 .lg-rp__bgnum {
   position: absolute; bottom: -100px; right: -40px;
@@ -732,6 +735,7 @@
   padding: 48px 48px 40px;
   display: flex; flex-direction: column;
   background: var(--cream); overflow-y: auto;
+  animation: lg-enter-fade var(--dur-slow) var(--ease-out) 80ms both;
 }
 .lg-rp__form { display: flex; flex-direction: column; gap: 24px; }
 .lg-rp__pickyr { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -797,6 +801,7 @@
   padding: 48px 28px 28px;
   display: flex; flex-direction: column;
   overflow-y: auto;
+  animation: lg-enter-fade var(--dur-slow) var(--ease-out) both;
 }
 .lg-set__eye {
   font-family: var(--mono); font-size: 9px; letter-spacing: .22em;
@@ -823,7 +828,7 @@
 .lg-set__item.on { background: rgba(13,13,13,0.04); }
 .lg-set__item:hover:not(.on) { background: rgba(13,13,13,0.02); }
 
-.lg-set__body { padding: 48px 56px 40px; overflow-y: auto; display: flex; flex-direction: column; }
+.lg-set__body { padding: 48px 56px 40px; overflow-y: auto; display: flex; flex-direction: column; animation: lg-enter-fade var(--dur-slow) var(--ease-out) 80ms both; }
 .lg-set__sec-eye {
   font-family: var(--mono); font-size: 9px; letter-spacing: .22em;
   text-transform: uppercase; color: var(--red); margin-bottom: 14px;

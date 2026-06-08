@@ -315,6 +315,10 @@ async fn main() -> anyhow::Result<()> {
             get(routes::invoices::print_html),
         )
         .route(
+            "/admin/invoices/:id/pdf",
+            get(routes::invoices::pdf_download),
+        )
+        .route(
             "/admin/exports/:client_id/:filename",
             get(routes::admin::get_export_file),
         )

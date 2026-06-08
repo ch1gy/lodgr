@@ -1,3 +1,4 @@
+use std::process::Stdio;
 use axum::{
     extract::{Path, Query, State},
     http::{header, StatusCode},
@@ -5,6 +6,7 @@ use axum::{
     Json,
 };
 use chrono::NaiveDate;
+use tokio::io::AsyncWriteExt;
 use serde::Deserialize;
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -565,6 +567,62 @@ pub async fn delete(
         .ok_or(AppError::NotFound)?;
     db::invoices::delete(&pool, &id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Generates and streams a PDF download of the invoice via Puppeteer.
+pub async fn pdf_download(
+    State(pool): State<SqlitePool>,
+    _: DeskUser,
+    Path(id): Path<String>,
+) -> AppResult<impl IntoResponse> {
+    let inv = db::invoices::find_by_id(&pool, &id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let desk = db::desk_profile::get(&pool).await?;
+    let dto = InvoiceResponse::from(inv);
+    let number = dto.number.clone();
+    let html = render_invoice_html(&dto, &desk);
+
+    let worker = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdf-worker.js");
+    let mut child = tokio::process::Command::new("node")
+        .arg(&worker)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| crate::error::AppError::Internal(format!("spawn node: {e}")))?;
+
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| crate::error::AppError::Internal("no stdin".into()))?;
+    stdin
+        .write_all(html.as_bytes())
+        .await
+        .map_err(|e| crate::error::AppError::Internal(format!("write stdin: {e}")))?;
+    drop(stdin);
+
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|e| crate::error::AppError::Internal(format!("pdf worker: {e}")))?;
+
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        return Err(crate::error::AppError::Internal(format!("pdf-worker: {err}")));
+    }
+
+    let filename = format!("invoice-{number}.pdf");
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/pdf".to_owned()),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{filename}\""),
+            ),
+        ],
+        output.stdout,
+    ))
 }
 
 /// Returns a print-ready HTML page for the invoice.

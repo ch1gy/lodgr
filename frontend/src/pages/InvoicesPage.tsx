@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Masthead } from '../components/Masthead';
 import { BottomTabBar } from '../components/BottomTabBar';
 import { admin } from '../api/admin';
+import { downloadBlob } from '../utils/format';
 import type {
   Client,
   CreateInvoicePayload,
@@ -580,11 +581,12 @@ interface InvoiceRowProps {
   clientName: string;
   onStatusChange: (id: string, status: InvoiceStatus) => void;
   onDelete: (id: string) => void;
-  onPrint: (id: string) => void;
+  onDownload: (id: string) => void;
+  onPreview: (id: string) => void;
   onEdit: (invoice: InvoiceResponse) => void;
 }
 
-function InvoiceRow({ invoice, clientName, onStatusChange, onDelete, onPrint, onEdit }: InvoiceRowProps) {
+function InvoiceRow({ invoice, clientName, onStatusChange, onDelete, onDownload, onPreview, onEdit }: InvoiceRowProps) {
   const [expanded, setExpanded] = useState(false);
   const total = invoice.items.reduce((acc, it) => acc + it.qty * it.rate, 0);
 
@@ -629,9 +631,13 @@ function InvoiceRow({ invoice, clientName, onStatusChange, onDelete, onPrint, on
             style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--ink)' }}>
             Edit ✎
           </button>
-          <button type="button" onClick={(e) => { e.stopPropagation(); onPrint(invoice.id); }}
+          <button type="button" onClick={(e) => { e.stopPropagation(); void onPreview(invoice.id); }}
             style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--mid)' }}>
-            Print ↗
+            Preview ↗
+          </button>
+          <button type="button" onClick={(e) => { e.stopPropagation(); void onDownload(invoice.id); }}
+            style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--mid)' }}>
+            Download ↓
           </button>
           <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(invoice.id); }}
             style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--red)' }}>
@@ -747,8 +753,32 @@ export function InvoicesPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['invoices'] }),
   });
 
-  function handlePrint(id: string) {
-    window.open(admin.invoicePrintUrl(id), '_blank');
+  async function fetchWithAuth(url: string): Promise<Response | null> {
+    const { tokenStore } = await import('../api/client');
+    const token = tokenStore.get();
+    const res = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    return res.ok ? res : null;
+  }
+
+  async function handlePreview(id: string) {
+    const res = await fetchWithAuth(`/admin/invoices/${id}/print`);
+    if (!res) return;
+    const html = await res.text();
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (win) win.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+  }
+
+  async function handleDownload(id: string) {
+    const res = await fetchWithAuth(`/admin/invoices/${id}/pdf`);
+    if (!res) return;
+    const blob = await res.blob();
+    const inv = invoices.find((i) => i.id === id);
+    const num = inv?.number ?? id.slice(0, 8);
+    downloadBlob(blob, `invoice-${num}.pdf`);
   }
 
   const counts = useMemo(() => {
@@ -857,7 +887,8 @@ export function InvoicesPage() {
               onDelete={(id) => {
                 if (window.confirm('Delete this invoice?')) deleteM.mutate(id);
               }}
-              onPrint={handlePrint}
+              onPreview={handlePreview}
+              onDownload={handleDownload}
             />
           ))}
         </div>

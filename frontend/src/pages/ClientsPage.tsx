@@ -20,6 +20,8 @@ import { PasswordGenerator } from '../components/PasswordGenerator';
 import { MagicLinkModal } from '../components/MagicLinkModal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import type { ConfirmOptions } from '../components/ConfirmModal';
+import { Dropdown } from '../components/Dropdown';
+import type { DropdownItem } from '../components/Dropdown';
 import { admin } from '../api/admin';
 import { downloadBlob } from '../utils/format';
 import type { Client, SubClient } from '../api/types';
@@ -210,19 +212,29 @@ function ClientRow({ client, onAction, disabled = false }: RowProps) {
         <div className="acts" onClick={(e) => e.stopPropagation()}>
           {isArchived ? (
             <>
-              <button type="button" className="a" disabled={disabled} onClick={() => onAction('restore', client.id)}>Restore ⟲</button>
-              <button type="button" className="a" disabled={disabled} onClick={() => onAction('export', client.id)}>Export ↓</button>
-              <button type="button" className="a danger" disabled={disabled} onClick={() => onAction('hard-delete', client.id)}>Hard delete ✕</button>
+              <button type="button" className="a primary" disabled={disabled} onClick={() => onAction('restore', client.id)}>Restore ⟲</button>
+              <Dropdown
+                align="right"
+                trigger={<button type="button" className="a" disabled={disabled}>Actions ▾</button>}
+                items={[
+                  { label: 'Export ↓', onClick: () => onAction('export', client.id), disabled },
+                  { label: 'Hard delete ✕', onClick: () => onAction('hard-delete', client.id), danger: true, disabled },
+                ] satisfies DropdownItem[]}
+              />
             </>
           ) : (
             <>
               <button type="button" className="a primary" disabled={disabled} onClick={() => onAction('magic-link', client.id)}>Magic link ↗</button>
-              {isLocked && (
-                <button type="button" className="a" disabled={disabled} onClick={() => onAction('unlock', client.id)}>Unlock ⊙</button>
-              )}
-              <button type="button" className="a" disabled={disabled} onClick={() => onAction('revoke', client.id)}>Revoke sessions</button>
-              <button type="button" className="a" disabled={disabled} onClick={() => onAction('export', client.id)}>Export ↓</button>
-              <button type="button" className="a danger" disabled={disabled} onClick={() => onAction('archive', client.id)}>Archive ⌫</button>
+              <Dropdown
+                align="right"
+                trigger={<button type="button" className="a" disabled={disabled}>Actions ▾</button>}
+                items={[
+                  ...(isLocked ? [{ label: 'Unlock ⊙', onClick: () => onAction('unlock', client.id), disabled }] : []),
+                  { label: 'Revoke sessions', onClick: () => onAction('revoke', client.id), disabled },
+                  { label: 'Export ↓', onClick: () => onAction('export', client.id), disabled },
+                  { label: 'Archive ⌫', onClick: () => onAction('archive', client.id), danger: true, disabled },
+                ] satisfies DropdownItem[]}
+              />
             </>
           )}
         </div>

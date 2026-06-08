@@ -58,6 +58,22 @@ pub async fn create_capped(
     Ok(())
 }
 
+/// List all active (non-revoked, non-expired) sessions for a user, newest first.
+pub async fn list_active_for_user(pool: &SqlitePool, user_id: &str) -> AppResult<Vec<Session>> {
+    let now = Utc::now().to_rfc3339();
+    Ok(sqlx::query_as::<_, Session>(
+        "SELECT id, user_id, token_hash, created_at, expires_at, revoked_at, replaced_by,
+                session_type, scoped_ticket_id
+         FROM sessions
+         WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?
+         ORDER BY created_at DESC",
+    )
+    .bind(user_id)
+    .bind(&now)
+    .fetch_all(pool)
+    .await?)
+}
+
 pub async fn find_by_token_hash(pool: &SqlitePool, token_hash: &str) -> AppResult<Option<Session>> {
     Ok(sqlx::query_as::<_, Session>(
         "SELECT id, user_id, token_hash, created_at, expires_at, revoked_at, replaced_by,

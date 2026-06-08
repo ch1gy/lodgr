@@ -1,5 +1,5 @@
 use axum::{
-    extract::{ConnectInfo, State},
+    extract::{ConnectInfo, Path, State},
     http::{HeaderName, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -13,7 +13,7 @@ use std::sync::Arc;
 use crate::{
     config::Config,
     db,
-    dto::{AccessTokenResponse, MeResponse},
+    dto::{AccessTokenResponse, MeResponse, SessionResponse},
     email::SmtpMailer,
     error::{AppError, AppResult},
     middleware::{
@@ -127,6 +127,33 @@ pub async fn me(
         .await?
         .ok_or(AppError::Unauthorized)?;
     Ok(Json(MeResponse::from(user)))
+}
+
+/// GET /auth/sessions — list the caller's own active sessions (newest first).
+/// Full sessions only; scoped magic-link tokens are rejected (they have no session row).
+pub async fn list_sessions(
+    State(pool): State<SqlitePool>,
+    FullSessionUser(claims): FullSessionUser,
+) -> AppResult<impl IntoResponse> {
+    let sessions = db::sessions::list_active_for_user(&pool, &claims.sub).await?;
+    let dtos: Vec<SessionResponse> = sessions.into_iter().map(SessionResponse::from).collect();
+    Ok(Json(dtos))
+}
+
+/// DELETE /auth/sessions/:id — revoke one of the caller's own sessions by id.
+/// Full sessions only. The caller can revoke any of their own sessions.
+pub async fn revoke_session(
+    State(pool): State<SqlitePool>,
+    FullSessionUser(claims): FullSessionUser,
+    Path(session_id): Path<String>,
+) -> AppResult<StatusCode> {
+    // Confirm the session belongs to this user before deleting.
+    let sessions = db::sessions::list_active_for_user(&pool, &claims.sub).await?;
+    if !sessions.iter().any(|s| s.id == session_id) {
+        return Err(AppError::NotFound);
+    }
+    db::sessions::delete(&pool, &session_id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn build_token_response(

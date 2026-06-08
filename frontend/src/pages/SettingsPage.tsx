@@ -10,6 +10,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { SessionResponse } from '../api/types';
 import { Masthead } from '../components/Masthead';
 import { BottomTabBar } from '../components/BottomTabBar';
 import { PasswordGenerator } from '../components/PasswordGenerator';
@@ -66,9 +67,7 @@ export function SettingsPage() {
           {section === 'profile' && (
             <PlaceholderSection title="Profile" note="Profile editing is coming soon. Contact the desk to update your name or email." />
           )}
-          {section === 'sessions' && (
-            <PlaceholderSection title="Sessions" note="Active session management is coming soon." />
-          )}
+          {section === 'sessions' && <SessionsSection />}
           {section === 'notifications' && (
             <PlaceholderSection title="Notifications" note="Notification preferences are coming soon." />
           )}
@@ -344,6 +343,93 @@ function DeskProfileSection() {
         <button type="button" className="lg-bt lg-bt--solid" onClick={() => updateM.mutate()} disabled={updateM.isPending}>
           {updateM.isPending ? 'Saving…' : 'Save profile'} <span className="arr">↗</span>
         </button>
+      </div>
+    </>
+  );
+}
+
+// ── Sessions section ─────────────────────────────────────────────────────────
+function SessionsSection() {
+  const qc = useQueryClient();
+  const sessionsQ = useQuery({
+    queryKey: ['auth-sessions'],
+    queryFn: () => authApi.listSessions(),
+  });
+
+  const revokeM = useMutation({
+    mutationFn: (id: string) => authApi.revokeSession(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['auth-sessions'] }),
+  });
+
+  const sessions: SessionResponse[] = sessionsQ.data ?? [];
+
+  function fmtDate(iso: string) {
+    return new Date(iso).toLocaleString('en-GB', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+  }
+
+  return (
+    <>
+      <div className="lg-set__sec-eye">— Section 03 · Sessions</div>
+      <h2 className="lg-set__h2">Active <em>devices.</em></h2>
+      <div className="lg-set__dek">
+        Every browser session with a live refresh token. Revoke any you don't recognise.
+        Revoking this session signs you out immediately.
+      </div>
+
+      <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {sessionsQ.isLoading && (
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--mid)', letterSpacing: '.12em', textTransform: 'uppercase' }}>
+            — Loading sessions —
+          </div>
+        )}
+        {sessionsQ.isError && (
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--red)' }}>
+            Failed to load sessions.
+          </div>
+        )}
+        {!sessionsQ.isLoading && sessions.length === 0 && (
+          <div style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 18, color: 'var(--mid)' }}>
+            No active sessions found.
+          </div>
+        )}
+        {sessions.map((s, i) => (
+          <div
+            key={s.id}
+            style={{
+              display: 'grid', gridTemplateColumns: '1fr auto',
+              alignItems: 'center', gap: 16,
+              padding: '12px 0',
+              borderBottom: '1px solid var(--rule)',
+            }}
+          >
+            <div>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--mid)', marginBottom: 3 }}>
+                {s.session_type === 'full' ? 'Full session' : 'Scoped session'}
+                {i === 0 && (
+                  <span style={{ marginLeft: 10, color: 'var(--green, #4f6f4a)' }}>← Current</span>
+                )}
+              </div>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink)', marginBottom: 2 }}>
+                ID {s.id.slice(0, 12)}…
+              </div>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--mid)', letterSpacing: '.1em' }}>
+                Created {fmtDate(s.created_at)} · Expires {fmtDate(s.expires_at)}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="lg-bt lg-bt--ghost"
+              disabled={revokeM.isPending}
+              onClick={() => revokeM.mutate(s.id)}
+              style={{ fontSize: 11 }}
+            >
+              Revoke ✕
+            </button>
+          </div>
+        ))}
       </div>
     </>
   );

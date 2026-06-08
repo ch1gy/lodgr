@@ -220,6 +220,14 @@ export interface MeResponse {
   created_at: string;
 }
 
+// ── Sessions (GET /auth/sessions) ────────────────────────────────────────────
+export interface SessionResponse {
+  id: string;
+  created_at: string;
+  expires_at: string;
+  session_type: string;
+}
+
 // ── Error shape ─────────────────────────────────────────────────────────────
 export interface ApiError {
   error: string;

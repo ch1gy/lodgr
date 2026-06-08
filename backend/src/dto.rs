@@ -2,8 +2,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::models::{
-    AuthEvent, ClientExport, DeskProfile, InternalNote, Invoice, SubClient, ThreadEntry, Ticket,
-    User,
+    AuthEvent, ClientExport, DeskProfile, InternalNote, Invoice, Session, SubClient, ThreadEntry,
+    Ticket, User,
 };
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
@@ -37,6 +37,27 @@ impl From<AuthEvent> for AuthEventResponse {
             id: e.id,
             event_type: e.event_type,
             created_at: e.created_at,
+        }
+    }
+}
+
+// ── Sessions ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct SessionResponse {
+    pub id: String,
+    pub created_at: String,
+    pub expires_at: String,
+    pub session_type: String,
+}
+
+impl From<Session> for SessionResponse {
+    fn from(s: Session) -> Self {
+        SessionResponse {
+            id: s.id,
+            created_at: s.created_at,
+            expires_at: s.expires_at,
+            session_type: s.session_type,
         }
     }
 }

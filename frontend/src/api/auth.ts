@@ -1,5 +1,5 @@
 import { api, tokenStore } from './client';
-import type { AccessTokenResponse, MeResponse } from './types';
+import type { AccessTokenResponse, MeResponse, SessionResponse } from './types';
 
 export const auth = {
   async login(email: string, password: string): Promise<string> {
@@ -33,5 +33,14 @@ export const auth = {
     });
     tokenStore.set(r.data.access_token);
     return r.data.access_token;
+  },
+
+  async listSessions(): Promise<SessionResponse[]> {
+    const r = await api.get<SessionResponse[]>('/auth/sessions');
+    return r.data;
+  },
+
+  async revokeSession(sessionId: string): Promise<void> {
+    await api.delete(`/auth/sessions/${sessionId}`);
   },
 };

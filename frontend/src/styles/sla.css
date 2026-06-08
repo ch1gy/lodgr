@@ -1,0 +1,59 @@
+/* ── SLA Odometer (§6.8) ─────────────────────────────────────────────────────*/
+.sla-od {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 3px 7px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Bucket colours */
+.sla-od--hot  { border-color: var(--red);   color: var(--red);   background: color-mix(in oklab, var(--red) 8%, transparent); }
+.sla-od--warn { border-color: var(--amber); color: var(--amber); background: color-mix(in oklab, var(--amber) 8%, transparent); }
+.sla-od--ok   { color: var(--mid); }
+.sla-od--over {
+  border-color: var(--ink); color: var(--cream);
+  background: var(--ink);
+}
+[data-theme="dark"] .sla-od--over { background: var(--ink); color: var(--cream); }
+
+/* Size variants */
+.sla-od--md { font-size: 13px; padding: 5px 10px; }
+
+/* Rolling digit slot */
+.sla-od__slot {
+  display: inline-block;
+  height: 1.2em;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.sla-od__strip {
+  display: flex;
+  flex-direction: column;
+  transition: transform var(--dur-base) var(--ease-spring);
+}
+.sla-od__digit {
+  display: block;
+  height: 1.2em;
+  line-height: 1.2em;
+  text-align: center;
+}
+.sla-od__sep {
+  vertical-align: middle;
+  opacity: 0.5;
+  padding: 0 1px;
+}
+.sla-od__breach {
+  margin-left: 4px;
+  font-size: 7px;
+  vertical-align: middle;
+}
+
+/* Reduced motion: no strip animation */
+@media (prefers-reduced-motion: reduce) {
+  .sla-od__strip { transition: none; }
+}

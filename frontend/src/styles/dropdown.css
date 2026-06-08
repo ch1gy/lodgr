@@ -1,0 +1,48 @@
+/* ── Dropdown menu (§6.6c, §9.6) ─────────────────────────────────────────────*/
+.lg-dd__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 300;
+  background: var(--cream);
+  border: 1px solid var(--ink);
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  transform-origin: top left;
+  animation: dd-open var(--dur-fast) var(--ease-spring) both;
+}
+.lg-dd__menu--right { right: 0; left: auto; transform-origin: top right; }
+@keyframes dd-open {
+  from { transform: scale(0.88); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+/* Red index tab on the left edge */
+.lg-dd__menu::before {
+  content: '';
+  position: absolute; left: 0; top: 8px; bottom: 8px;
+  width: 2px; background: var(--red);
+}
+.lg-dd__item {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 10px 16px 10px 20px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+  transition: background var(--dur-xfast) var(--ease-out), color var(--dur-xfast) var(--ease-out);
+}
+.lg-dd__item:hover {
+  background: color-mix(in oklab, var(--ink) 4%, transparent);
+  color: var(--red);
+}
+.lg-dd__item.danger { color: var(--red); }
+.lg-dd__item.danger:hover { background: color-mix(in oklab, var(--red) 6%, transparent); }
+.lg-dd__item:disabled { opacity: 0.4; pointer-events: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-dd__menu { animation: none; }
+}

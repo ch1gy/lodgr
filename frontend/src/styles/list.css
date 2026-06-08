@@ -20,6 +20,11 @@
   background: var(--cream);
 }
 
+/* Skeleton rows — no hover effects, pointer-events disabled */
+.lg-row--skel { pointer-events: none; }
+.lg-row--skel:hover { background: none !important; transform: none !important; }
+.lg-row--skel:hover::before { width: 0 !important; }
+
 /* The body sits below the global masthead. */
 .lg-list__body {
   flex: 1;
@@ -137,12 +142,64 @@
   cursor: pointer;
 }
 
+/* ── Sort control ─────────────────────────────────────────────────────── */
+.lg-list__sort {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  margin-left: 16px;
+}
+.lg-list__sort .seg__o { padding: 4px 10px; font-size: 9px; }
+
+/* ── New-arrived pill ─────────────────────────────────────────────────── */
+.lg-list__arrived {
+  display: flex;
+  justify-content: center;
+  padding: 8px 40px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--cream);
+  animation: lg-enter-pop var(--dur-base) var(--ease-spring) both;
+}
+.lg-list__arrived-pill {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cream);
+  background: var(--ink);
+  border: none;
+  padding: 6px 16px;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-spring);
+}
+.lg-list__arrived-pill:hover { background: var(--red); transform: translateY(-1px); }
+
 /* ── Rows ─────────────────────────────────────────────────────────────── */
 .lg-list__rows { flex: 1; }
 
+/* Swipe-to-triage wrapper rails */
+.lg-drag-wrap { position: relative; overflow: hidden; }
+.lg-drag-rail {
+  position: absolute; top: 0; bottom: 0;
+  display: flex; align-items: center;
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+  padding: 0 24px;
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 0;
+}
+.lg-drag-rail--ack { left: 0; background: var(--green); color: var(--cream); }
+.lg-drag-rail--res { right: 0; background: var(--red);   color: var(--cream); }
+
+/* New-arrived rows get a brief amber highlight that fades */
+.lg-row.is-new { animation: lg-row-new 2.4s var(--ease-out) forwards; }
+@keyframes lg-row-new {
+  0%   { background: color-mix(in oklab, var(--amber) 12%, transparent); }
+  100% { background: transparent; }
+}
+
 .lg-row {
   display: grid;
-  grid-template-columns: 60px 110px 1fr 200px 120px 100px 30px;
+  grid-template-columns: 60px 110px 1fr 150px 140px 30px;
   gap: 20px;
   padding: 24px 40px;
   border-bottom: 1px solid var(--rule);
@@ -276,7 +333,8 @@
 
 /* ── Responsive ───────────────────────────────────────────────────────── */
 @media (max-width: 1280px) {
-  .lg-row { grid-template-columns: 50px 1fr 180px 110px 90px 28px; }
+  /* Drop the client column */
+  .lg-row { grid-template-columns: 50px 1fr 140px 120px 28px; }
   .lg-row__client { display: none; }
 }
 
@@ -284,9 +342,12 @@
   .lg-list__head { padding: 28px 28px 20px; }
   .lg-list__title { font-size: 56px; }
   .lg-list__filt { padding: 10px 28px; }
-  .lg-row { padding: 20px 28px; grid-template-columns: 40px 1fr 140px 90px 22px; }
+  .lg-list__sort { display: none; } /* sort collapses on tablet — use filter tabs */
+  /* Drop status, keep SLA */
+  .lg-row { padding: 20px 28px; grid-template-columns: 40px 1fr 110px 22px; }
   .lg-row__title { font-size: 20px; }
-  .lg-row__due { display: none; }   /* due now lives inside meta */
+  /* StatusPill too wide at this breakpoint — hide it, SLA carries urgency */
+  .lg-row > .lg-status { display: none; }
 }
 
 /* ── Mobile cards (≤ 540px) — from design spec: list-responsive.jsx ────── */
@@ -308,7 +369,7 @@
   /* Hide the "+ New ticket" button — FAB handles it on mobile */
   .lg-list__filt-new { display: none; }
 
-  /* Card rows: single column, stacked sections */
+  /* Card rows: num | title-block | sla+chevron */
   .lg-row {
     display: grid;
     grid-template-columns: 36px 1fr auto;
@@ -319,11 +380,9 @@
   .lg-row__num    { font-size: 20px; padding-top: 2px; }
   .lg-row__title  { font-size: 17px; white-space: normal; } /* allow wrapping on mobile */
   .lg-row__client { display: none; }
-  .lg-row__due    {
-    min-width: 52px; text-align: right;
-    font-size: 9px;
-  }
-  .lg-row__due-v  { font-size: 15px; }
+  .lg-row > .lg-status { display: none; }
+  /* SLA chip — compact on mobile */
+  .sla-od { font-size: 9px; padding: 2px 5px; }
 
   .lg-list__state { padding: 48px 18px; }
 

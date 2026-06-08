@@ -10,10 +10,10 @@
 import { createContext, useCallback, useContext, useId, useState } from 'react';
 import '../styles/v2.css';
 
-interface ToastItem { id: string; text: string; leaving: boolean; }
+interface ToastItem { id: string; text: string; leaving: boolean; undo?: () => void; }
 
 interface ToastCtx {
-  show: (text: string) => void;
+  show: (text: string, opts?: { undo?: () => void }) => void;
 }
 
 const Ctx = createContext<ToastCtx>({ show: () => {} });
@@ -26,9 +26,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const baseId = useId();
   let counter = 0;
 
-  const show = useCallback((text: string) => {
+  const show = useCallback((text: string, opts?: { undo?: () => void }) => {
     const id = `${baseId}-${Date.now()}-${counter++}`;
-    setToasts((prev) => [...prev, { id, text, leaving: false }]);
+    setToasts((prev) => [...prev, { id, text, leaving: false, undo: opts?.undo }]);
 
     // Mark leaving after DISMISS_MS so exit animation plays.
     setTimeout(() => {
@@ -40,6 +40,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     }, DISMISS_MS);
   }, [baseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const dismiss = useCallback((id: string) => {
+    setToasts((prev) => prev.map((t) => t.id === id ? { ...t, leaving: true } : t));
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, EXIT_MS);
+  }, []);
+
   return (
     <Ctx.Provider value={{ show }}>
       {children}
@@ -47,6 +54,26 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((t) => (
           <div key={t.id} className={`lg-toast${t.leaving ? ' is-leaving' : ''}`}>
             {t.text}
+            {t.undo && (
+              <button
+                type="button"
+                onClick={() => { t.undo!(); dismiss(t.id); }}
+                style={{
+                  fontFamily: 'var(--mono)',
+                  fontSize: '9px',
+                  letterSpacing: '.14em',
+                  textTransform: 'uppercase',
+                  color: 'var(--red)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  marginLeft: '16px',
+                  padding: 0,
+                }}
+              >
+                Undo
+              </button>
+            )}
           </div>
         ))}
       </div>

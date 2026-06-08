@@ -49,17 +49,17 @@
 }
 
 /* ── Dark theme ────────────────────────────────────────────────────────────
- * Lifted from the Roadmap page palette. We swap cream/ink, soften rule lines
- * to translucent white, and bump the red a touch so it still reads on near-
- * black. Everything else (gaps, fonts, motion tokens) is inherited from :root.
+ * Darkroom: warm near-black #15110d as base, safelight red #e0564a.
+ * We swap cream/ink, soften rule lines to translucent white.
+ * Everything else (gaps, fonts, motion tokens) is inherited from :root.
  * ──────────────────────────────────────────────────────────────────────── */
 [data-theme="dark"] {
-  --cream:    oklch(0.10 0.01 60);
+  --cream:    #15110d;
   --ink:      #ede8df;
   --ink-soft: rgba(237, 232, 223, 0.78);
   --mid:      rgba(237, 232, 223, 0.38);
   --rule:     rgba(255, 255, 255, 0.08);
-  --red:      #d94539;
+  --red:      #e0564a;
   --green:    #6a8c63;
   --amber:    #d4a23e;
   --slate:    #8a96a8;
@@ -125,6 +125,52 @@ a { color: inherit; }
   background-size: 200px;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
+
+/* ── Letterpress type — headlines pressed into the stock ────────────────────
+ * Add .press to any headline. Dark mode inverts to a soft upper glow. */
+.press {
+  text-shadow: 0 1px 0 color-mix(in oklab, var(--cream) 60%, #fff 40%);
+}
+[data-theme="dark"] .press {
+  text-shadow: 0 -1px 0 rgba(255,255,255,0.06), 0 1px 0 rgba(0,0,0,0.5);
+}
+
+/* ── Red ink-bleed — the red accent gets a faint halo ───────────────────────
+ * Add .ink-red to any element that uses var(--red). Dark mode: real glow. */
+.ink-red { text-shadow: 0 0 12px color-mix(in oklab, var(--red) 30%, transparent); }
+[data-theme="dark"] .ink-red { text-shadow: 0 0 16px color-mix(in oklab, var(--red) 55%, transparent); }
+
+/* ── Stage vignette + soft top-light ────────────────────────────────────────
+ * Apply .sig-stage to the outermost shell div for a subtle depth effect.
+ * The radials don't intercept clicks (pointer-events: none on ::after). */
+.sig-stage { position: relative; }
+.sig-stage::after {
+  content: '';
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, color-mix(in oklab, var(--cream) 85%, #fff 15%) 0%, transparent 70%),
+    radial-gradient(ellipse 120% 80% at 50% 110%, rgba(0,0,0,0.06) 0%, transparent 70%);
+}
+[data-theme="dark"] .sig-stage::after {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, color-mix(in oklab, var(--red) 8%, transparent) 0%, transparent 70%),
+    radial-gradient(ellipse 120% 80% at 50% 110%, rgba(0,0,0,0.3) 0%, transparent 70%);
+}
+
+/* ── Themed scrollbars (§9.1) ────────────────────────────────────────────────
+ * Square thumbs — editorial, not pill. Applied via .scroll-area class.
+ * Firefox uses the shorthand; WebKit uses the verbose form. */
+.scroll-area { scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+.scroll-area::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroll-area::-webkit-scrollbar-track { background: transparent; }
+.scroll-area::-webkit-scrollbar-thumb {
+  background: var(--rule);
+  border-radius: 0;
+  border: 2px solid var(--cream);
+}
+.scroll-area::-webkit-scrollbar-thumb:hover { background: var(--mid); }
 
 /* ── Shared atoms ─────────────────────────────────────────────────────────
  * Small, reusable pieces. Keep them small — page-specific styles live in
@@ -390,9 +436,14 @@ button, a {
     border-color    var(--dur-fast) var(--ease-out),
     transform       var(--dur-fast) var(--ease-spring),
     box-shadow      var(--dur-fast) var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
 }
 button:active:not(:disabled),
 a:active { transform: scale(0.98); }
+
+/* ── Global element defaults (§9.0) ─────────────────────────────────────────*/
+input, textarea { caret-color: var(--red); }
+::selection { background: color-mix(in oklab, var(--red) 22%, transparent); color: var(--ink); }
 
 button:focus-visible,
 a:focus-visible {
@@ -439,4 +490,3 @@ a:focus-visible {
   animation: lg-enter-pop var(--dur-base) var(--ease-spring) both;
   animation-delay: calc(var(--i, 0) * 40ms);
 }
-

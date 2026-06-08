@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tickets as ticketsApi } from '../api/tickets';
 import type { TicketResponse, TicketStatus } from '../api/types';
 import { Masthead } from '../components/Masthead';
@@ -39,6 +39,7 @@ import { timeAgo, TICKET_TYPE_LABEL } from '../utils/format';
 const vt = (name: string): React.CSSProperties =>
   ({ viewTransitionName: name } as unknown as React.CSSProperties);
 import '../styles/list.css';
+import '../styles/palette.css';
 
 type Filter  = 'all' | TicketStatus;
 type SortKey = 'newest' | 'sla' | 'status' | 'priority';
@@ -123,6 +124,35 @@ export function TicketListPage() {
   const [page,       setPage]       = useState(1);
   const [newCount,   setNewCount]   = useState(0);
   const [newIds,     setNewIds]     = useState<Set<string>>(new Set());
+
+  // ── Bulk triage ─────────────────────────────────────────────────────────
+  const [selected,   setSelected]   = useState<Set<string>>(new Set());
+  const qc = useQueryClient();
+
+  const bulkAckM = useMutation({
+    mutationFn: (ids: string[]) => Promise.all(ids.map((id) => ticketsApi.ack(id))),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['tickets'] });
+      setSelected(new Set());
+    },
+  });
+  const bulkCloseM = useMutation({
+    mutationFn: (ids: string[]) => Promise.all(ids.map((id) => ticketsApi.close(id))),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['tickets'] });
+      setSelected(new Set());
+    },
+  });
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const isSelecting = selected.size > 0;
 
   const LIMIT = 50;
 
@@ -346,7 +376,7 @@ export function TicketListPage() {
         )}
 
         {/* ── Rows ───────────────────────────────────────────────────── */}
-        <div className="lg-list__rows scroll-area">
+        <div className={`lg-list__rows scroll-area${isSelecting ? ' is-selecting' : ''}`}>
 
           {/* Loading: skeleton rows */}
           {query.isLoading && (
@@ -409,21 +439,39 @@ export function TicketListPage() {
 
           {/* Ticket rows */}
           {visible.map((t, i) => {
-            const isHot  = t.priority === 'urgent' && t.status !== 'closed';
-            const isNew  = newIds.has(t.id);
+            const isHot   = t.priority === 'urgent' && t.status !== 'closed';
+            const isNew   = newIds.has(t.id);
             const isMorph = morphId === t.id;
+            const isChecked = selected.has(t.id);
+            const canSelect = isDesk && t.status !== 'closed';
 
             const rowLink = (
               <Link
                 to={`/tickets/${t.id}`}
                 className={
                   'lg-row' +
-                  (isHot ? ' is-hot' : '') +
-                  (isNew ? ' is-new' : '')
+                  (isHot     ? ' is-hot'     : '') +
+                  (isNew     ? ' is-new'     : '') +
+                  (isChecked ? ' is-checked' : '')
                 }
                 style={{ '--i': i } as React.CSSProperties}
-                onClick={(e) => handleRowClick(e, t.id)}
+                onClick={(e) => {
+                  // If a checkbox is being used, don't navigate
+                  if (isSelecting && canSelect) { e.preventDefault(); toggleSelect(t.id); return; }
+                  handleRowClick(e, t.id);
+                }}
               >
+                {canSelect && (
+                  <div className={`lg-row__sel${isSelecting ? ' forced' : ''}`} onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleSelect(t.id); }}>
+                    <input
+                      type="checkbox"
+                      className="lg-row__selck"
+                      checked={isChecked}
+                      onChange={() => toggleSelect(t.id)}
+                      aria-label={`Select ticket ${t.id.slice(0, 8)}`}
+                    />
+                  </div>
+                )}
                 <div className="lg-row__num">{String(i + 1).padStart(3, '0')}</div>
                 <div className="lg-row__client">
                   <span
@@ -492,6 +540,38 @@ export function TicketListPage() {
         aria-label="Open new ticket"
         onClick={() => setCreateOpen(true)}
       >+</button>
+
+      {/* Bulk triage action bar — fixed bottom, springs up when rows selected */}
+      {isSelecting && isDesk && (
+        <div className="lg-tribar" role="toolbar" aria-label="Bulk triage">
+          <span className="lg-tribar__count">{selected.size} selected</span>
+          <button
+            type="button"
+            className="lg-tribar__btn"
+            disabled={bulkAckM.isPending || bulkCloseM.isPending}
+            onClick={() => bulkAckM.mutate([...selected].filter((id) => {
+              const t = all.find((x) => x.id === id);
+              return t?.status === 'open';
+            }))}
+          >
+            ✓ Acknowledge
+          </button>
+          <button
+            type="button"
+            className="lg-tribar__btn lg-tribar__btn--danger"
+            disabled={bulkAckM.isPending || bulkCloseM.isPending}
+            onClick={() => bulkCloseM.mutate([...selected])}
+          >
+            × Close all
+          </button>
+          <button
+            type="button"
+            className="lg-tribar__dismiss"
+            onClick={() => setSelected(new Set())}
+            aria-label="Deselect all"
+          >✕ Deselect</button>
+        </div>
+      )}
 
       <BottomTabBar active="tickets" />
 

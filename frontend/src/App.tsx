@@ -27,6 +27,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './auth/AuthContext';
 import { ThemeProvider } from './theme/ThemeContext';
 import { MorphProvider } from './theme/MorphContext';
+import { CommandPaletteProvider } from './components/CommandPalette';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { MagicLandingPage } from './pages/MagicLandingPage';
@@ -84,6 +85,7 @@ export function App() {
         <ThemeProvider>
           <AuthProvider>
             <MorphProvider>
+            <CommandPaletteProvider>
             <ToastProvider>
             <Routes>
               {/* Public */}
@@ -147,6 +149,7 @@ export function App() {
               <Route path="*" element={<Navigate to="/tickets" replace />} />
             </Routes>
             </ToastProvider>
+            </CommandPaletteProvider>
             </MorphProvider>
           </AuthProvider>
         </ThemeProvider>

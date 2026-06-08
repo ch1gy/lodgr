@@ -1,0 +1,315 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * palette.css — ⌘K command palette styles (§8)
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+@keyframes lg-pal-in {
+  from { opacity: 0; transform: translateY(-12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)     scale(1); }
+}
+@keyframes lg-pal-out {
+  from { opacity: 1; transform: translateY(0)     scale(1); }
+  to   { opacity: 0; transform: translateY(-8px)  scale(0.98); }
+}
+
+/* Backdrop */
+.lg-pal-ov {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklab, var(--ink) 40%, transparent 60%);
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: clamp(60px, 12vh, 120px);
+}
+
+/* Panel */
+.lg-pal {
+  width: min(600px, 90vw);
+  background: var(--cream);
+  border: 1px solid var(--ink);
+  animation: lg-pal-in var(--dur-base) var(--ease-spring) both;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 70vh;
+}
+
+/* Search row */
+.lg-pal__search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--rule);
+  flex-shrink: 0;
+}
+
+.lg-pal__icon {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--mid);
+  flex-shrink: 0;
+}
+
+.lg-pal__inp {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 18px;
+  color: var(--ink);
+  caret-color: var(--red);
+}
+
+.lg-pal__inp::placeholder { color: var(--mid); }
+
+.lg-pal__count {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .12em;
+  color: var(--mid);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+/* Results list */
+.lg-pal__results {
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Section header */
+.lg-pal__sec {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--mid);
+  padding: 10px 16px 4px;
+  border-top: 1px solid var(--rule);
+}
+
+.lg-pal__sec:first-child { border-top: none; }
+
+/* Result row */
+.lg-pal__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.lg-pal__item:hover,
+.lg-pal__item.is-active {
+  background: color-mix(in oklab, var(--ink) 5%, transparent 95%);
+}
+
+.lg-pal__item.is-active {
+  border-left: 2px solid var(--red);
+  padding-left: 14px;
+}
+
+.lg-pal__item__av {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--ink);
+  flex-shrink: 0;
+}
+
+.lg-pal__item__body {
+  flex: 1;
+  overflow: hidden;
+}
+
+.lg-pal__item__title {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 15px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.lg-pal__item__meta {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--mid);
+  letter-spacing: .08em;
+  margin-top: 1px;
+}
+
+.lg-pal__item__tag {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--mid);
+  border: 1px solid var(--rule);
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+
+/* Empty state */
+.lg-pal__empty {
+  padding: 32px 16px;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 16px;
+  color: var(--mid);
+  text-align: center;
+}
+
+/* Footer hint */
+.lg-pal__foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--rule);
+  flex-shrink: 0;
+}
+
+.lg-pal__hint {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--mid);
+  letter-spacing: .08em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+kbd {
+  font-family: var(--mono);
+  font-size: 9px;
+  border: 1px solid var(--rule);
+  padding: 2px 6px;
+  color: var(--ink);
+  background: none;
+}
+
+/* Bulk triage action bar */
+@keyframes lg-tribar-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.lg-tribar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--ink);
+  color: var(--cream);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px clamp(16px, 4vw, 40px);
+  animation: lg-tribar-up var(--dur-base) var(--ease-spring) both;
+}
+
+.lg-tribar__count {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--cream) 70%, transparent 30%);
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.lg-tribar__btn {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  background: none;
+  border: 1px solid color-mix(in oklab, var(--cream) 30%, transparent 70%);
+  color: var(--cream);
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+
+.lg-tribar__btn:hover {
+  border-color: var(--cream);
+  background: color-mix(in oklab, var(--cream) 10%, transparent 90%);
+}
+
+.lg-tribar__btn--danger { color: #e0564a; border-color: color-mix(in oklab, #e0564a 50%, transparent 50%); }
+.lg-tribar__btn--danger:hover { background: color-mix(in oklab, #e0564a 12%, transparent 88%); }
+
+.lg-tribar__dismiss {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  background: none;
+  border: none;
+  color: color-mix(in oklab, var(--cream) 50%, transparent 50%);
+  cursor: pointer;
+}
+.lg-tribar__dismiss:hover { color: var(--cream); }
+
+/* Checkbox column in rows */
+.lg-row__sel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.is-selecting .lg-row__sel,
+.lg-row:hover .lg-row__sel,
+.lg-row.is-checked .lg-row__sel {
+  opacity: 1;
+}
+
+.lg-row__selck {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--ink);
+  background: none;
+  appearance: none;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.lg-row__selck:checked {
+  background: var(--ink);
+}
+
+.lg-row__selck:checked::after {
+  content: '';
+  position: absolute;
+  left: 3px; top: 1px;
+  width: 6px; height: 9px;
+  border-right: 1.5px solid var(--cream);
+  border-bottom: 1.5px solid var(--cream);
+  transform: rotate(40deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-pal { animation-duration: 0.01ms; }
+  .lg-tribar { animation-duration: 0.01ms; }
+}

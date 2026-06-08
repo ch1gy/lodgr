@@ -1,0 +1,130 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * filing.css — The filing ritual (§6.7): stamp → fly-up animation for
+ * CreateTicketModal. Three phases:
+ *   1. is-filing  — form blurs while mutation is pending
+ *   2. is-stamping — RECEIVED stamp presses in with ink-spread ring
+ *   3. is-filed    — slip flies upward off screen
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/* ── Phase 1: form blur during mutation ────────────────────────────────────── */
+.lg-mdl.is-filing .lg-mdl__body,
+.lg-mdl.is-filing form {
+  filter: blur(3px);
+  opacity: 0.35;
+  pointer-events: none;
+  transition: filter 240ms var(--ease-out), opacity 240ms var(--ease-out);
+}
+
+/* ── Phase 2: stamp presses in ─────────────────────────────────────────────── */
+@keyframes lg-stamp-press {
+  0%   { opacity: 0; transform: rotate(var(--rot, 0deg)) scale(1.6); }
+  45%  { opacity: 1; transform: rotate(var(--rot, 0deg)) scale(0.88); }
+  68%  { transform: rotate(var(--rot, 0deg)) scale(1.05); }
+  100% { transform: rotate(var(--rot, 0deg)) scale(1); }
+}
+
+@keyframes lg-stamp-spread {
+  0%   { opacity: 0.75; transform: scale(1); }
+  100% { opacity: 0;    transform: scale(2.6); }
+}
+
+.lg-stamp-ov {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.lg-stamp {
+  --rot: 0deg;
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 14px 28px 12px;
+  border: 3px solid var(--red);
+  border-radius: 2px;
+  transform: rotate(var(--rot));
+  animation: lg-stamp-press 560ms var(--ease-spring) both;
+}
+
+.lg-stamp__ring {
+  position: absolute;
+  inset: -10px;
+  border: 2px solid var(--red);
+  border-radius: 3px;
+  animation: lg-stamp-spread 700ms var(--ease-out) 80ms both;
+  pointer-events: none;
+}
+
+.lg-stamp__received {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.22em;
+  color: var(--red);
+  text-transform: uppercase;
+  /* letterpress: light shadow below presses text into stock */
+  text-shadow: 0 1px 0 color-mix(in oklab, var(--cream) 55%, #fff 45%);
+}
+
+.lg-stamp__no {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 36px;
+  color: var(--red);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-shadow: 0 1px 0 color-mix(in oklab, var(--cream) 55%, #fff 45%);
+}
+
+.lg-stamp__date {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  color: var(--red);
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+[data-theme="dark"] .lg-stamp__received,
+[data-theme="dark"] .lg-stamp__no,
+[data-theme="dark"] .lg-stamp__date {
+  /* darkroom: glow instead of shadow */
+  text-shadow: 0 0 12px color-mix(in oklab, var(--red) 60%, transparent 40%);
+}
+
+/* ── Phase 3: slip flies up ─────────────────────────────────────────────────── */
+@keyframes lg-filed {
+  0%   { transform: translateY(0)     scale(1);    opacity: 1; }
+  100% { transform: translateY(-110vh) scale(0.96); opacity: 0; }
+}
+
+.lg-mdl.is-filed {
+  animation: lg-filed 480ms var(--ease-in-out) both;
+  pointer-events: none;
+}
+
+/* Keep overlay centred during fly-up */
+.lg-mdl.is-filed .lg-stamp-ov {
+  opacity: 0;
+  transition: opacity 100ms;
+}
+
+/* Reduced motion: no fly-up, just fade */
+@media (prefers-reduced-motion: reduce) {
+  .lg-stamp {
+    animation-duration: 0.01ms;
+  }
+  .lg-stamp__ring {
+    animation-duration: 0.01ms;
+  }
+  .lg-mdl.is-filed {
+    animation: none;
+    opacity: 0;
+    transition: opacity 200ms;
+  }
+}

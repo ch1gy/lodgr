@@ -18,6 +18,9 @@ import type { Client, SubClient, TicketPriority, TicketType, TicketStatus } from
 import { useAuth } from '../auth/AuthContext';
 
 import '../styles/v2.css';
+import '../styles/filing.css';
+
+type FilingPhase = 'idle' | 'filing' | 'stamping' | 'filed';
 
 interface Props {
   onClose: () => void;
@@ -35,6 +38,10 @@ export function CreateTicketModal({ onClose }: Props) {
   const nav = useNavigate();
   const qc  = useQueryClient();
   const { user, profile, isDesk } = useAuth();
+
+  const [phase, setPhase]       = useState<FilingPhase>('idle');
+  const [stampNo, setStampNo]   = useState('');
+  const stampRot = useRef(0);
 
   // Close on Escape.
   const stableClose = useCallback(onClose, [onClose]);
@@ -126,6 +133,9 @@ export function CreateTicketModal({ onClose }: Props) {
         initial_status: isDesk && closeNow ? 'closed' : undefined,
         sub_client_id: subClientId || undefined,
       }),
+    onMutate: () => {
+      setPhase('filing');
+    },
     onSuccess: async (data) => {
       if (attachment) {
         try {
@@ -135,8 +145,21 @@ export function CreateTicketModal({ onClose }: Props) {
         }
       }
       void qc.invalidateQueries({ queryKey: ['tickets'] });
-      onClose();
-      nav(`/tickets/${data.id}`);
+
+      // Filing ritual: stamp → fly-up → navigate
+      stampRot.current = (Math.random() - 0.5) * 14; // -7° to +7°
+      setStampNo(data.id.slice(0, 6).toUpperCase());
+      setPhase('stamping');
+      setTimeout(() => {
+        setPhase('filed');
+        setTimeout(() => {
+          onClose();
+          nav(`/tickets/${data.id}`);
+        }, 500);
+      }, 640);
+    },
+    onError: () => {
+      setPhase('idle');
     },
   });
 
@@ -156,9 +179,39 @@ export function CreateTicketModal({ onClose }: Props) {
   const filedAs = profile?.name ?? profile?.email ?? user?.email ?? 'you';
   const filedDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
+  const mdlClass = [
+    'lg-mdl create',
+    phase === 'filing' || phase === 'stamping' ? 'is-filing' : '',
+    phase === 'filed' ? 'is-filed' : '',
+  ].filter(Boolean).join(' ');
+
   return (
     <div className="lg-ov" role="dialog" aria-modal aria-label="Open a new ticket">
-      <div className="lg-mdl create">
+      {/* Hidden SVG filter for ink-roughen effect on stamp */}
+      <svg width="0" height="0" style={{ position: 'absolute', overflow: 'hidden' }} aria-hidden>
+        <defs>
+          <filter id="inkrough" x="-8%" y="-8%" width="116%" height="116%">
+            <feTurbulence type="turbulence" baseFrequency="0.04 0.03" numOctaves="3" seed="5" result="noise" />
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.5" xChannelSelector="R" yChannelSelector="G" />
+          </filter>
+        </defs>
+      </svg>
+      <div className={mdlClass}>
+        {/* ── Filing ritual stamp overlay ──────────────────────────── */}
+        {(phase === 'stamping' || phase === 'filed') && (
+          <div className="lg-stamp-ov" aria-hidden>
+            <div
+              className="lg-stamp"
+              style={{ '--rot': `${stampRot.current}deg`, filter: 'url(#inkrough)' } as React.CSSProperties}
+            >
+              <div className="lg-stamp__ring" />
+              <span className="lg-stamp__received">Received</span>
+              <span className="lg-stamp__no">No.&thinsp;{stampNo}</span>
+              <span className="lg-stamp__date">{filedDate}</span>
+            </div>
+          </div>
+        )}
+
         {/* ── Header ──────────────────────────────────────────────── */}
         <div className="lg-mdl__top">
           <span className="lg-mdl__eye">— Section 02 — Open a new ticket</span>

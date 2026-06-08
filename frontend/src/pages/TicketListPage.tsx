@@ -15,8 +15,9 @@
 //   • Clients see a quieter headline ("Your tickets · N open").
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { tickets as ticketsApi } from '../api/tickets';
 import type { TicketResponse, TicketStatus } from '../api/types';
@@ -30,7 +31,13 @@ import { CountUp } from '../components/CountUp';
 import { DraggableRow } from '../components/DraggableRow';
 import { useAuth } from '../auth/AuthContext';
 import { useFlip } from '../hooks/useFlip';
+import { useMorph, type DocumentWithVT } from '../theme/MorphContext';
 import { timeAgo, TICKET_TYPE_LABEL } from '../utils/format';
+
+// Applies a view-transition-name inline style. Casting needed — the property
+// is not yet in TypeScript's React.CSSProperties definitions.
+const vt = (name: string): React.CSSProperties =>
+  ({ viewTransitionName: name } as unknown as React.CSSProperties);
 import '../styles/list.css';
 
 type Filter  = 'all' | TicketStatus;
@@ -106,6 +113,8 @@ function SkeletonRow({ i }: { i: number }) {
 
 export function TicketListPage() {
   const { isDesk } = useAuth();
+  const navigate = useNavigate();
+  const { morphId, setMorphId } = useMorph();
 
   const [filter,     setFilter]     = useState<Filter>('all');
   const [search,     setSearch]     = useState('');
@@ -200,6 +209,22 @@ export function TicketListPage() {
   };
 
   const totalPages = Math.ceil((query.data?.total ?? 0) / LIMIT);
+
+  // ── VT row-click: intercepts primary clicks to morph into detail (§6.2) ──
+  const handleRowClick = useCallback((e: React.MouseEvent, ticketId: string) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const doc = document as DocumentWithVT;
+    if (typeof doc.startViewTransition !== 'function') return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    e.preventDefault();
+    // Apply morphId synchronously so the named elements exist in the "before" snapshot
+    flushSync(() => setMorphId(ticketId));
+    doc.startViewTransition(() => {
+      flushSync(() => navigate(`/tickets/${ticketId}`));
+    });
+    // Clear after transition completes
+    setTimeout(() => setMorphId(null), 700);
+  }, [navigate, setMorphId]);
 
   const headline = isDesk ? 'The desk' : 'Your tickets';
   const sub = isDesk
@@ -384,8 +409,9 @@ export function TicketListPage() {
 
           {/* Ticket rows */}
           {visible.map((t, i) => {
-            const isHot = t.priority === 'urgent' && t.status !== 'closed';
-            const isNew = newIds.has(t.id);
+            const isHot  = t.priority === 'urgent' && t.status !== 'closed';
+            const isNew  = newIds.has(t.id);
+            const isMorph = morphId === t.id;
 
             const rowLink = (
               <Link
@@ -396,10 +422,16 @@ export function TicketListPage() {
                   (isNew ? ' is-new' : '')
                 }
                 style={{ '--i': i } as React.CSSProperties}
+                onClick={(e) => handleRowClick(e, t.id)}
               >
                 <div className="lg-row__num">{String(i + 1).padStart(3, '0')}</div>
                 <div className="lg-row__client">
-                  <span className="lg-row__av">{clientInitials(t.client_id)}</span>
+                  <span
+                    className="lg-row__av"
+                    style={isMorph ? vt('sig-avatar') : undefined}
+                  >
+                    {clientInitials(t.client_id)}
+                  </span>
                   <span className="lg-row__client-nm">{t.client_id.slice(0, 8)}</span>
                 </div>
                 <div className="lg-row__title-blk">
@@ -411,7 +443,12 @@ export function TicketListPage() {
                       </span>
                     )}
                   </div>
-                  <div className="lg-row__title">{t.title}</div>
+                  <div
+                    className="lg-row__title"
+                    style={isMorph ? vt('sig-headline') : undefined}
+                  >
+                    {t.title}
+                  </div>
                   <div className="lg-row__meta">
                     <span>opened <b>{timeAgo(t.created_at)}</b></span>
                     {t.recurring && (
@@ -420,10 +457,12 @@ export function TicketListPage() {
                   </div>
                 </div>
                 <StatusPill status={t.status} />
-                <SlaOdometer
-                  dueDate={t.due_date}
-                  estimatedCompletion={t.estimated_completion}
-                />
+                <span style={isMorph ? vt('sig-clock') : undefined}>
+                  <SlaOdometer
+                    dueDate={t.due_date}
+                    estimatedCompletion={t.estimated_completion}
+                  />
+                </span>
                 <div className="lg-row__chevron">→</div>
               </Link>
             );

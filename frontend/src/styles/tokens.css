@@ -490,3 +490,50 @@ a:focus-visible {
   animation: lg-enter-pop var(--dur-base) var(--ease-spring) both;
   animation-delay: calc(var(--i, 0) * 40ms);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * View Transitions — row→detail shared-element morph (§6.2)
+ *
+ * Three named groups: sig-headline (title text), sig-avatar (initials pill),
+ * sig-clock (SLA odometer). The old/new pseudo-elements cross-fade while the
+ * group itself morphs position + size with the specified timing.
+ * ───────────────────────────────────────────────────────────────────────── */
+@keyframes vt-fade-out {
+  to { opacity: 0; }
+}
+@keyframes vt-fade-in {
+  from { opacity: 0; }
+}
+
+::view-transition-group(sig-headline) {
+  animation-duration: 560ms;
+  animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+::view-transition-group(sig-avatar) {
+  animation-duration: 480ms;
+  animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+::view-transition-group(sig-clock) {
+  animation-duration: 400ms;
+  animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+::view-transition-old(sig-headline),
+::view-transition-old(sig-avatar),
+::view-transition-old(sig-clock) {
+  animation: 200ms vt-fade-out ease-out both;
+}
+::view-transition-new(sig-headline),
+::view-transition-new(sig-avatar),
+::view-transition-new(sig-clock) {
+  animation: 200ms vt-fade-in ease-in 200ms both;
+}
+
+/* Suppress VT for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(sig-headline),
+  ::view-transition-group(sig-avatar),
+  ::view-transition-group(sig-clock) {
+    animation-duration: 0.01ms;
+  }
+}

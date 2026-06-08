@@ -45,10 +45,14 @@ import { BottomTabBar } from '../components/BottomTabBar';
 import { MagicLinkModal } from '../components/MagicLinkModal';
 import { StatusPill } from '../components/StatusPill';
 import { PriorityBars } from '../components/PriorityBars';
+import { SlaOdometer } from '../components/SlaOdometer';
 import { useAuth } from '../auth/AuthContext';
 import { timeAgo, daysUntil, fmtDateTime, TICKET_TYPE_LABEL } from '../utils/format';
 import '../styles/detail.css';
 import '../styles/v2.css';
+
+const vt = (name: string): React.CSSProperties =>
+  ({ viewTransitionName: name } as unknown as React.CSSProperties);
 
 type ComposerTab = 'reply' | 'note';
 
@@ -384,7 +388,7 @@ export function TicketDetailPage() {
             </div>
           </div>
 
-          <h1 className="lg-article__h1">{ticket.title}</h1>
+          <h1 className="lg-article__h1" style={vt('sig-headline')}>{ticket.title}</h1>
           {ticket.description && (
             <div className="lg-article__md">
               <ReactMarkdown>{ticket.description}</ReactMarkdown>
@@ -392,7 +396,7 @@ export function TicketDetailPage() {
           )}
 
           <div className="lg-article__byline">
-            <span className="lg-article__byline-av">
+            <span className="lg-article__byline-av" style={vt('sig-avatar')}>
               {ticket.client_id.slice(0, 2).toUpperCase()}
             </span>
             <div className="lg-article__byline-nm">
@@ -404,6 +408,12 @@ export function TicketDetailPage() {
             <div className="lg-article__byline-pills">
               <StatusPill status={ticket.status} />
               <PriorityBars priority={ticket.priority} />
+              <span style={vt('sig-clock')}>
+                <SlaOdometer
+                  dueDate={ticket.due_date}
+                  estimatedCompletion={ticket.estimated_completion}
+                />
+              </span>
             </div>
           </div>
 

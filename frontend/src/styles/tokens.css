@@ -42,6 +42,33 @@
   --mono: 'DM Mono', 'Courier New', monospace;     /* labels, IDs, meta */
 }
 
+/* ── Cursor lighting (§6.12) ──────────────────────────────────────────────── */
+/* --mx/--my are updated by CursorLight on mousemove (px values, no unit needed). */
+.sig-light {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  background: radial-gradient(
+    circle 220px at var(--mx, -999px) var(--my, -999px),
+    color-mix(in oklab, #ffffff 9%, transparent 91%),
+    transparent 70%
+  );
+  mix-blend-mode: soft-light;
+}
+
+[data-theme="dark"] .sig-light {
+  background: radial-gradient(
+    circle 190px at var(--mx, -999px) var(--my, -999px),
+    color-mix(in oklab, #e0564a 14%, transparent 86%),
+    transparent 65%
+  );
+  mix-blend-mode: screen;
+}
+
+/* No cursor on touch-only devices */
+@media (hover: none) { .sig-light { display: none; } }
+
 /* ── Reset ────────────────────────────────────────────────────────────────── */
 * {
   box-sizing: border-box;

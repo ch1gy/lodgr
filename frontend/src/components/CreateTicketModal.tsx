@@ -19,6 +19,7 @@ import { useAuth } from '../auth/AuthContext';
 
 import '../styles/v2.css';
 import '../styles/filing.css';
+import { sfx } from '../utils/sfx';
 
 type FilingPhase = 'idle' | 'filing' | 'stamping' | 'filed';
 
@@ -150,8 +151,10 @@ export function CreateTicketModal({ onClose }: Props) {
       stampRot.current = (Math.random() - 0.5) * 14; // -7° to +7°
       setStampNo(data.id.slice(0, 6).toUpperCase());
       setPhase('stamping');
+      sfx.stamp();
       setTimeout(() => {
         setPhase('filed');
+        sfx.file();
         setTimeout(() => {
           onClose();
           nav(`/tickets/${data.id}`);

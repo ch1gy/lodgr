@@ -11,9 +11,11 @@
 // All styles live in tokens.css under .lg-mast*.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
+import { sfx } from '../utils/sfx';
 
 interface Props {
   active?: 'tickets' | 'clients' | 'invoices' | 'reports' | 'settings';
@@ -32,6 +34,7 @@ function issueLabel(now = new Date()): string {
 export function Masthead({ active = 'tickets' }: Props) {
   const { user, profile, isDesk, logout } = useAuth();
   const { theme, toggle } = useTheme();
+  const [soundOn, setSoundOn] = useState(sfx.isEnabled());
 
   // Use server-side profile for email — JWT does not carry the email field.
   const email = profile?.email ?? '';
@@ -78,6 +81,19 @@ export function Masthead({ active = 'tickets' }: Props) {
         <Link to="/settings" className={'lg-mast-link' + (active === 'settings' ? ' active' : '')}>
           Settings
         </Link>
+
+        {/* Sound toggle — off by default (§6.13) */}
+        <button
+          type="button"
+          className="lg-mast-link"
+          aria-label={soundOn ? 'Disable sound' : 'Enable sound'}
+          aria-pressed={soundOn}
+          onClick={() => setSoundOn(sfx.toggle())}
+          title={soundOn ? 'Sound: on' : 'Sound: off'}
+          style={{ opacity: soundOn ? 1 : 0.45 }}
+        >
+          {soundOn ? '♪' : '♩'}
+        </button>
 
         {/* Light / dark toggle. We pass the click coordinates so the View
             Transitions reveal radiates from the toggle itself. */}

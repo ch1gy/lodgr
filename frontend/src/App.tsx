@@ -56,6 +56,22 @@ const queryClient = new QueryClient({
   },
 });
 
+// Cursor lighting — soft specular highlight follows the cursor (§6.12)
+function CursorLight() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    function onMove(e: MouseEvent) {
+      el!.style.setProperty('--mx', `${e.clientX}px`);
+      el!.style.setProperty('--my', `${e.clientY}px`);
+    }
+    document.addEventListener('mousemove', onMove, { passive: true });
+    return () => document.removeEventListener('mousemove', onMove);
+  }, []);
+  return <div ref={ref} className="sig-light" aria-hidden />;
+}
+
 // Page slide transition — wraps every routed page.
 // Slides right→left on forward nav, left→right on back.
 function PageTransition({ children }: { children: React.ReactNode }) {
@@ -80,6 +96,7 @@ function PageTransition({ children }: { children: React.ReactNode }) {
 export function App() {
   return (
     <ErrorBoundary>
+    <CursorLight />
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>

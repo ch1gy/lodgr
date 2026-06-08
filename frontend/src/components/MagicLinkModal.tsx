@@ -17,7 +17,7 @@
 //                  shows the "Regenerate" button.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import QRCode from 'react-qr-code';
 import '../styles/v2.css';
 
@@ -32,12 +32,46 @@ interface Props {
 export function MagicLinkModal({ url, scope, ticketId, onClose, onRegenerate }: Props) {
   const [copied, setCopied]       = useState(false);
   const [regen, setRegen]         = useState(false);
+  const qrRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handle = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handle);
     return () => document.removeEventListener('keydown', handle);
   }, [onClose]);
+
+  // QR assemble stagger (§6.5) — animate each module rect on mount
+  useEffect(() => {
+    const container = qrRef.current;
+    if (!container) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const rects = Array.from(container.querySelectorAll('svg rect'));
+    rects.forEach((rect, i) => {
+      const el = rect as SVGRectElement;
+      // Detect finder-pattern squares by checking if they're near the corners of the QR
+      const svgWidth = el.ownerSVGElement?.viewBox?.baseVal?.width ?? 200;
+      const x = parseFloat(el.getAttribute('x') ?? '0');
+      const y = parseFloat(el.getAttribute('y') ?? '0');
+      const cornerSize = svgWidth * 0.4;
+      const isFinderArea =
+        (x < cornerSize && y < cornerSize) ||               // top-left
+        (x > svgWidth - cornerSize && y < cornerSize) ||    // top-right
+        (x < cornerSize && y > svgWidth - cornerSize);      // bottom-left
+      if (isFinderArea) return;
+
+      el.style.opacity = '0';
+      el.style.transform = 'scale(0.3)';
+      const cx = parseFloat(el.getAttribute('x') ?? '0') + parseFloat(el.getAttribute('width') ?? '4') / 2;
+      const cy = parseFloat(el.getAttribute('y') ?? '0') + parseFloat(el.getAttribute('height') ?? '4') / 2;
+      el.style.transformOrigin = `${cx}px ${cy}px`;
+      el.style.transition = `opacity 120ms ease-out ${i * 3}ms, transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1) ${i * 3}ms`;
+
+      requestAnimationFrame(() => {
+        el.style.opacity = '1';
+        el.style.transform = 'scale(1)';
+      });
+    });
+  }, [url]);
 
   async function handleCopy() {
     try {
@@ -68,7 +102,7 @@ export function MagicLinkModal({ url, scope, ticketId, onClose, onRegenerate }: 
         {/* ── Body ────────────────────────────────────────────────── */}
         <div className="lg-mdl__body">
           {/* QR code — always light-on-cream regardless of theme; scanners need contrast. */}
-          <div className="qr-frame">
+          <div className="qr-frame" ref={qrRef}>
             <QRCode
               value={url}
               size={200}

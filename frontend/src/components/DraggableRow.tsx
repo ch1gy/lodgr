@@ -11,6 +11,7 @@ import { ReactNode, useCallback, useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { tickets as ticketsApi } from '../api/tickets';
 import { useToast } from './Toast';
+import { sfx } from '../utils/sfx';
 
 const THRESHOLD = 130;
 const RESISTANCE = 0.2;
@@ -87,6 +88,7 @@ export function DraggableRow({ id, status, children }: Props) {
       // Acknowledge — spring back, fire mutation, toast
       setTranslate(0, true);
       ackMut.mutate();
+      sfx.ack();
       show('Acknowledged ✓');
 
     } else if (dx < -THRESHOLD && status !== 'closed') {
@@ -107,6 +109,7 @@ export function DraggableRow({ id, status, children }: Props) {
         }
       };
 
+      sfx.file();
       show('Ticket resolved', { undo });
 
       // Fire the API call just before the toast auto-dismisses

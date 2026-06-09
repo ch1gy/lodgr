@@ -13,7 +13,7 @@ import { Masthead } from '../components/Masthead';
 import { BottomTabBar } from '../components/BottomTabBar';
 import { admin } from '../api/admin';
 import { api } from '../api/client';
-import { downloadBlob } from '../utils/format';
+import { downloadBlob, extractApiError } from '../utils/format';
 import type { Client } from '../api/types';
 import '../styles/v2.css';
 
@@ -88,8 +88,7 @@ export function ReportsPage() {
   const years = [THIS_YEAR - 1, THIS_YEAR];
 
   const downloadErr = downloadM.error
-    ? ((downloadM.error as { response?: { data?: { error?: string } } })
-        .response?.data?.error ?? 'Report generation failed. Try again.')
+    ? extractApiError(downloadM.error, 'Report generation failed. Try again.')
     : null;
 
   return (

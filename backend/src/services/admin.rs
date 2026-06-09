@@ -62,6 +62,22 @@ fn encrypt_opt(key: &EncryptionKey, value: Option<&str>) -> AppResult<(Option<St
     }
 }
 
+/// If `new_val` is `Some`, re-encrypt it; otherwise pass the existing
+/// ciphertext/nonce through unchanged. Used by `update_client_profile` to
+/// avoid re-encrypting fields the caller didn't touch.
+fn keep_or_reencrypt(
+    key: &EncryptionKey,
+    new_val: &Option<String>,
+    existing_ct: &Option<String>,
+    existing_nonce: &Option<String>,
+) -> AppResult<(Option<String>, Option<String>)> {
+    if new_val.is_some() {
+        encrypt_opt(key, new_val.as_deref())
+    } else {
+        Ok((existing_ct.clone(), existing_nonce.clone()))
+    }
+}
+
 // ── Public structs ────────────────────────────────────────────────────────────
 
 pub struct NewClientProfile {
@@ -272,9 +288,7 @@ pub async fn hard_delete_client(
     }
 
     // Collect ticket IDs before deletion so we can clean up upload directories.
-    let tickets = db::tickets::list_all_for_client(pool, client_id)
-        .await
-        .unwrap_or_default();
+    let tickets = db::tickets::list_all_for_client(pool, client_id).await?;
 
     // Final export — must succeed before any data is deleted.
     export_client(pool, enc_key, client_id).await?;
@@ -353,36 +367,12 @@ pub async fn update_client_profile(
         (raw.email.clone(), raw.email_nonce.clone(), raw.email_hash.clone())
     };
 
-    // For each optional field: if new value provided, encrypt it; else keep existing.
-    let (addr1_ct, addr1_nonce) = if input.address_line1.is_some() {
-        encrypt_opt(enc_key, input.address_line1.as_deref())?
-    } else {
-        (raw.address_line1.clone(), raw.address_line1_nonce.clone())
-    };
-
-    let (addr2_ct, addr2_nonce) = if input.address_line2.is_some() {
-        encrypt_opt(enc_key, input.address_line2.as_deref())?
-    } else {
-        (raw.address_line2.clone(), raw.address_line2_nonce.clone())
-    };
-
-    let (pin_ct, pin_nonce) = if input.pin_number.is_some() {
-        encrypt_opt(enc_key, input.pin_number.as_deref())?
-    } else {
-        (raw.pin_number.clone(), raw.pin_number_nonce.clone())
-    };
-
-    let (cp_ct, cp_nonce) = if input.contact_person.is_some() {
-        encrypt_opt(enc_key, input.contact_person.as_deref())?
-    } else {
-        (raw.contact_person.clone(), raw.contact_person_nonce.clone())
-    };
-
-    let (phone_ct, phone_nonce) = if input.phone.is_some() {
-        encrypt_opt(enc_key, input.phone.as_deref())?
-    } else {
-        (raw.phone.clone(), raw.phone_nonce.clone())
-    };
+    // For each optional field: if new value provided, re-encrypt it; else keep existing ciphertext.
+    let (addr1_ct, addr1_nonce)  = keep_or_reencrypt(enc_key, &input.address_line1, &raw.address_line1, &raw.address_line1_nonce)?;
+    let (addr2_ct, addr2_nonce)  = keep_or_reencrypt(enc_key, &input.address_line2, &raw.address_line2, &raw.address_line2_nonce)?;
+    let (pin_ct, pin_nonce)      = keep_or_reencrypt(enc_key, &input.pin_number, &raw.pin_number, &raw.pin_number_nonce)?;
+    let (cp_ct, cp_nonce)        = keep_or_reencrypt(enc_key, &input.contact_person, &raw.contact_person, &raw.contact_person_nonce)?;
+    let (phone_ct, phone_nonce)  = keep_or_reencrypt(enc_key, &input.phone, &raw.phone, &raw.phone_nonce)?;
 
     db::users::update_profile(
         pool,

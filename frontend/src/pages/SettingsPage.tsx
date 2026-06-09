@@ -17,6 +17,7 @@ import { PasswordGenerator } from '../components/PasswordGenerator';
 import { useAuth } from '../auth/AuthContext';
 import { auth as authApi } from '../api/auth';
 import { admin } from '../api/admin';
+import { extractApiError } from '../utils/format';
 import '../styles/v2.css';
 
 type NavItem = 'password' | 'desk-profile' | 'profile' | 'sessions' | 'notifications' | 'danger';
@@ -102,8 +103,7 @@ function PasswordSection({ userEmail }: { userEmail?: string }) {
   const canSubmit = current.length > 0 && newPw.length >= 8 && newPw === confirm && !changeM.isPending;
 
   const err = changeM.error
-    ? ((changeM.error as { response?: { data?: { error?: string } } })
-        .response?.data?.error ?? 'Password change failed. Check your current password.')
+    ? extractApiError(changeM.error, 'Password change failed. Check your current password.')
     : null;
 
   return (
@@ -293,7 +293,7 @@ function DeskProfileSection() {
   });
 
   const err = updateM.error
-    ? ((updateM.error as { response?: { data?: { error?: string } } }).response?.data?.error ?? 'Save failed.')
+    ? extractApiError(updateM.error, 'Save failed.')
     : null;
 
   return (

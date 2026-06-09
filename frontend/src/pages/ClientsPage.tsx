@@ -23,7 +23,7 @@ import type { ConfirmOptions } from '../components/ConfirmModal';
 import { Dropdown } from '../components/Dropdown';
 import type { DropdownItem } from '../components/Dropdown';
 import { admin } from '../api/admin';
-import { downloadBlob } from '../utils/format';
+import { downloadBlob, extractApiError } from '../utils/format';
 import type { Client, SubClient } from '../api/types';
 import '../styles/v2.css';
 
@@ -330,8 +330,7 @@ function NewClientModal({ onClose, onCreated }: NewClientModalProps) {
   });
 
   const err = createM.error
-    ? ((createM.error as { response?: { data?: { error?: string } } })
-        .response?.data?.error ?? 'Failed to create client. Try again.')
+    ? extractApiError(createM.error, 'Failed to create client. Try again.')
     : null;
 
   const canSubmit =

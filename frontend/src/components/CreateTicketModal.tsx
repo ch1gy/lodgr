@@ -20,6 +20,7 @@ import { useAuth } from '../auth/AuthContext';
 import '../styles/v2.css';
 import '../styles/filing.css';
 import { sfx } from '../utils/sfx';
+import { extractApiError } from '../utils/format';
 
 type FilingPhase = 'idle' | 'filing' | 'stamping' | 'filed';
 
@@ -167,8 +168,7 @@ export function CreateTicketModal({ onClose }: Props) {
   });
 
   const err = createM.error
-    ? ((createM.error as { response?: { data?: { error?: string } } })
-        .response?.data?.error ?? 'Something went wrong. Try again.')
+    ? extractApiError(createM.error, 'Something went wrong. Try again.')
     : null;
 
   function handleSubmit(e: React.FormEvent) {

@@ -201,19 +201,7 @@ pub async fn create(
             db::users::find_by_id(pool, &resolved_client_id).await
         };
         match user_result {
-            Ok(Some(user)) => {
-                let m = m.clone();
-                let title = ticket.title.clone();
-                tokio::spawn(async move {
-                    m.send_ticket_notification(
-                        &user.email,
-                        &user.name,
-                        &title,
-                        TicketEvent::Created,
-                    )
-                    .await;
-                });
-            }
+            Ok(Some(user)) => spawn_ticket_notification_email(m, user, ticket.title.clone(), TicketEvent::Created),
             Ok(None) => {}
             Err(e) => tracing::warn!(%e, "failed to fetch user for ticket-created email"),
         }
@@ -366,6 +354,16 @@ pub async fn transition_close(
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+/// Spawn a fire-and-forget ticket notification email. Non-fatal: failures are
+/// logged as warnings and never bubble up to the caller.
+fn spawn_ticket_notification_email(mailer: &SmtpMailer, user: User, ticket_title: String, event: TicketEvent) {
+    let m = mailer.clone();
+    tokio::spawn(async move {
+        m.send_ticket_notification(&user.email, &user.name, &ticket_title, event)
+            .await;
+    });
+}
+
 async fn apply_transition(
     pool: &SqlitePool,
     ticket_id: &str,
@@ -385,14 +383,7 @@ async fn apply_transition(
     // Fire-and-forget email — failure is non-fatal but logged.
     if let Some(m) = mailer {
         match db::users::find_by_id(pool, &ticket.client_id).await {
-            Ok(Some(user)) => {
-                let m = m.clone();
-                let title = ticket.title.clone();
-                tokio::spawn(async move {
-                    m.send_ticket_notification(&user.email, &user.name, &title, event)
-                        .await;
-                });
-            }
+            Ok(Some(user)) => spawn_ticket_notification_email(m, user, ticket.title.clone(), event),
             Ok(None) => {}
             Err(e) => tracing::warn!(%e, "failed to fetch client for transition email"),
         }

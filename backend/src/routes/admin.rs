@@ -4,16 +4,6 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-
-/// Deletes a file when dropped — fires even on panic or task cancellation.
-struct DeleteOnDrop(Option<std::path::PathBuf>);
-impl Drop for DeleteOnDrop {
-    fn drop(&mut self) {
-        if let Some(path) = self.0.take() {
-            let _ = std::fs::remove_file(&path);
-        }
-    }
-}
 use serde::Deserialize;
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -31,6 +21,16 @@ use crate::{
     middleware::DeskUser,
     services,
 };
+
+/// Deletes a file when dropped — fires even on panic or task cancellation.
+struct DeleteOnDrop(Option<std::path::PathBuf>);
+impl Drop for DeleteOnDrop {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
 
 #[derive(Deserialize)]
 pub struct CreateClientRequest {

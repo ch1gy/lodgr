@@ -46,8 +46,8 @@ export const admin = {
       .then(() => undefined);
   },
 
-  updateClient(id: string, payload: Partial<{ name: string; email: string; address_line1: string; address_line2: string; pin_number: string; contact_person: string; phone: string }>): Promise<import('./types').Client> {
-    return api.patch<import('./types').Client>(`/admin/clients/${id}`, payload).then((r) => r.data);
+  updateClient(id: string, payload: Partial<{ name: string; email: string; address_line1: string; address_line2: string; pin_number: string; contact_person: string; phone: string }>): Promise<Client> {
+    return api.patch<Client>(`/admin/clients/${id}`, payload).then((r) => r.data);
   },
 
   unlockClient(id: string): Promise<void> {

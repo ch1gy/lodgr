@@ -267,62 +267,10 @@ pub async fn login(
             // On first permanent lockout, take automated action.
             if new_attempts >= PERMANENT_LOCKOUT_THRESHOLD {
                 if u.role == "client" {
-                    // Auto-open a security_log ticket so the desk sees it without
-                    // having to check the admin panel. Guard against duplicates.
-                    match db::tickets::has_recent_security_lockout_ticket(pool, &u.id).await {
-                        Ok(false) => {
-                            let ticket_id = Uuid::new_v4().to_string();
-                            let desc = format!(
-                                "Client account {} was permanently locked after {} consecutive \
-                                 failed login attempts. Generate a magic link to restore access.",
-                                u.id, new_attempts
-                            );
-                            if let Err(e) = db::tickets::create(
-                                pool,
-                                db::tickets::NewTicket {
-                                    id: &ticket_id,
-                                    title: "Account locked — repeated failed login attempts",
-                                    description: &desc,
-                                    created_by: &u.id,
-                                    client_id: &u.id,
-                                    priority: "urgent",
-                                    category: None,
-                                    due_date: None,
-                                    estimated_completion: None,
-                                    ticket_type: "security_log",
-                                    recurring: false,
-                                    recurring_interval_days: None,
-                                    sub_client_id: None,
-                                },
-                            )
-                            .await
-                            {
-                                tracing::warn!(user_id = %u.id, %e, "failed to auto-create lockout ticket");
-                            } else {
-                                tracing::warn!(user_id = %u.id, ticket_id = %ticket_id, "auto-created security_log ticket on permanent lockout");
-                            }
-                        }
-                        Ok(true) => {}
-                        Err(e) => {
-                            tracing::warn!(user_id = %u.id, %e, "failed to check for existing lockout ticket");
-                        }
-                    }
+                    maybe_auto_lockout_ticket(pool, &u.id, new_attempts).await;
                 } else if u.role == "desk" {
-                    // Send a recovery magic link to the desk's email if SMTP is configured.
                     if let Some(m) = mailer {
-                        let pool2 = pool.clone();
-                        let config2 = config.clone();
-                        let m2 = m.clone();
-                        let uid = u.id.clone();
-                        let uemail = crypto::decrypt(enc_key, &u.email_nonce, &u.email)
-                            .unwrap_or_default();
-                        let uname = u.name.clone();
-                        tokio::spawn(async move {
-                            magic::send_desk_recovery_link(
-                                &pool2, &config2, &m2, &uid, &uemail, &uname,
-                            )
-                            .await;
-                        });
+                        spawn_desk_recovery_link(pool, config, m, enc_key, &u.id, &u.email_nonce, &u.email, &u.name);
                     } else {
                         tracing::error!(
                             user_id = %u.id,
@@ -341,6 +289,78 @@ pub async fn login(
             tracing::warn!(email = %email, ip = %peer_ip, "failed login — unknown email");
             Err(AppError::Unauthorized)
         }
+    }
+}
+
+/// Auto-opens a security_log ticket when a client account is permanently locked.
+/// Guards against duplicates by checking for a recent ticket first.
+async fn maybe_auto_lockout_ticket(pool: &SqlitePool, user_id: &str, attempts: i64) {
+    match db::tickets::has_recent_security_lockout_ticket(pool, user_id).await {
+        Ok(false) => {
+            let ticket_id = Uuid::new_v4().to_string();
+            let desc = format!(
+                "Client account {} was permanently locked after {} consecutive \
+                 failed login attempts. Generate a magic link to restore access.",
+                user_id, attempts
+            );
+            if let Err(e) = db::tickets::create(
+                pool,
+                db::tickets::NewTicket {
+                    id: &ticket_id,
+                    title: "Account locked — repeated failed login attempts",
+                    description: &desc,
+                    created_by: user_id,
+                    client_id: user_id,
+                    priority: "urgent",
+                    category: None,
+                    due_date: None,
+                    estimated_completion: None,
+                    ticket_type: "security_log",
+                    recurring: false,
+                    recurring_interval_days: None,
+                    sub_client_id: None,
+                },
+            )
+            .await
+            {
+                tracing::warn!(user_id = %user_id, %e, "failed to auto-create lockout ticket");
+            } else {
+                tracing::warn!(user_id = %user_id, ticket_id = %ticket_id, "auto-created security_log ticket on permanent lockout");
+            }
+        }
+        Ok(true) => {}
+        Err(e) => tracing::warn!(user_id = %user_id, %e, "failed to check for existing lockout ticket"),
+    }
+}
+
+/// Decrypts the desk user's email and spawns a recovery magic-link email.
+/// Logs an error and skips the dispatch if decryption fails.
+fn spawn_desk_recovery_link(
+    pool: &SqlitePool,
+    config: &Config,
+    mailer: &SmtpMailer,
+    enc_key: &EncryptionKey,
+    user_id: &str,
+    email_nonce: &str,
+    email_ct: &str,
+    user_name: &str,
+) {
+    match crypto::decrypt(enc_key, email_nonce, email_ct) {
+        Ok(uemail) => {
+            let pool2 = pool.clone();
+            let config2 = config.clone();
+            let m2 = mailer.clone();
+            let uid = user_id.to_owned();
+            let uname = user_name.to_owned();
+            tokio::spawn(async move {
+                magic::send_desk_recovery_link(&pool2, &config2, &m2, &uid, &uemail, &uname).await;
+            });
+        }
+        Err(err) => tracing::error!(
+            user_id = %user_id,
+            %err,
+            "failed to decrypt desk email — skipping recovery link dispatch"
+        ),
     }
 }
 

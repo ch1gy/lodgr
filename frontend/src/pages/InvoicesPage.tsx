@@ -1,8 +1,10 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Masthead } from '../components/Masthead';
 import { BottomTabBar } from '../components/BottomTabBar';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { admin } from '../api/admin';
+import { api } from '../api/client';
 import { downloadBlob } from '../utils/format';
 import type {
   Client,
@@ -52,6 +54,86 @@ function InvField({ label, children, span2 }: { label: string; children: React.R
   );
 }
 
+// ── Shared sub-components ─────────────────────────────────────────────────────
+
+interface LineItemsEditorProps {
+  items: InvoiceItem[];
+  currency: string;
+  total: number;
+  onSetItem: (i: number, f: keyof InvoiceItem, v: string | number) => void;
+  onAddItem: () => void;
+  onRemoveItem: (i: number) => void;
+}
+
+function LineItemsEditor({ items, currency, total, onSetItem, onAddItem, onRemoveItem }: LineItemsEditorProps) {
+  return (
+    <>
+      <div className="inv-sec">Line items</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 56px 96px 22px', gap: 6, marginBottom: 4 }}>
+        {(['Description', 'Qty', 'Rate'] as const).map((h) => (
+          <span key={h} style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--mid)', textAlign: h !== 'Description' ? 'right' : 'left' }}>{h}</span>
+        ))}
+      </div>
+      {items.map((it, i) => (
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 56px 96px 22px', gap: 6, marginBottom: 6, alignItems: 'start' }}>
+          <div>
+            <input className="inv-inp" value={it.name} onChange={(e) => onSetItem(i, 'name', e.target.value)} placeholder="Item name" />
+            <input className="inv-inp" style={{ marginTop: 3, fontSize: 10, color: 'var(--mid)' }} value={it.sub ?? ''} onChange={(e) => onSetItem(i, 'sub', e.target.value)} placeholder="Description (optional)" />
+          </div>
+          <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="1" value={it.qty} onChange={(e) => onSetItem(i, 'qty', Number(e.target.value))} placeholder="1" />
+          <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="0" value={it.rate} onChange={(e) => onSetItem(i, 'rate', Number(e.target.value))} placeholder="0" />
+          <button type="button" onClick={() => onRemoveItem(i)} disabled={items.length === 1}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 12, padding: 0, alignSelf: 'center' }}>✕</button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+        <button type="button" onClick={onAddItem}
+          style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'none', border: '1px dashed var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--mid)' }}>
+          + Add item
+        </button>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink)' }}>
+          Total: <b>{currency} {total.toLocaleString('en-US')}</b>
+        </span>
+      </div>
+    </>
+  );
+}
+
+interface NotesEditorProps {
+  editorNote: string;
+  onEditorNoteChange: (v: string) => void;
+  notes: InvoiceNote[];
+  onSetNote: (i: number, f: 'k' | 'v', v: string) => void;
+  onAddNote: () => void;
+  onRemoveNote: (i: number) => void;
+}
+
+function NotesEditor({ editorNote, onEditorNoteChange, notes, onSetNote, onAddNote, onRemoveNote }: NotesEditorProps) {
+  return (
+    <>
+      <div className="inv-sec">Notes</div>
+      <InvField label="Editor note (shown on invoice)">
+        <textarea className="inv-inp" style={{ height: 52, resize: 'vertical', fontStyle: 'italic' }}
+          value={editorNote} onChange={(e) => onEditorNoteChange(e.target.value)} placeholder="A short personal note to the client…" />
+      </InvField>
+      <div style={{ marginTop: 10 }}>
+        {notes.map((n, i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 22px', gap: 6, marginBottom: 6 }}>
+            <input className="inv-inp" value={n.k} onChange={(e) => onSetNote(i, 'k', e.target.value)} placeholder="Label" />
+            <input className="inv-inp" value={n.v} onChange={(e) => onSetNote(i, 'v', e.target.value)} placeholder="Text" />
+            <button type="button" onClick={() => onRemoveNote(i)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 12 }}>✕</button>
+          </div>
+        ))}
+        <button type="button" onClick={onAddNote}
+          style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'none', border: '1px dashed var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--mid)' }}>
+          + Add note
+        </button>
+      </div>
+    </>
+  );
+}
+
 // ── Create invoice modal ──────────────────────────────────────────────────────
 
 interface CreateModalProps {
@@ -91,7 +173,7 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
   const [err, setErr] = useState('');
 
   // Outside-click closes client dropdown
-  useState(() => {
+  useEffect(() => {
     if (!clientDropOpen) return;
     function h(e: MouseEvent) {
       if (clientDropRef.current && !clientDropRef.current.contains(e.target as Node))
@@ -99,7 +181,7 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
     }
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
-  });
+  }, [clientDropOpen]);
 
   const activeClients = useMemo(() => clients.filter((c) => c.deleted_at === null), [clients]);
   const filteredClients = useMemo(() => {
@@ -261,54 +343,16 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
             </div>
 
             {/* ── Line items ────────────────────────────────────────────── */}
-            <div className="inv-sec">Line items</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 56px 96px 22px', gap: 6, marginBottom: 4 }}>
-              {(['Description', 'Qty', 'Rate'] as const).map((h) => (
-                <span key={h} style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--mid)', textAlign: h !== 'Description' ? 'right' : 'left' }}>{h}</span>
-              ))}
-            </div>
-            {items.map((it, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 56px 96px 22px', gap: 6, marginBottom: 6, alignItems: 'start' }}>
-                <div>
-                  <input className="inv-inp" value={it.name} onChange={(e) => setItem(i, 'name', e.target.value)} placeholder="Item name" />
-                  <input className="inv-inp" style={{ marginTop: 3, fontSize: 10, color: 'var(--mid)' }} value={it.sub ?? ''} onChange={(e) => setItem(i, 'sub', e.target.value)} placeholder="Description (optional)" />
-                </div>
-                <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="1" value={it.qty} onChange={(e) => setItem(i, 'qty', Number(e.target.value))} placeholder="1" />
-                <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="0" value={it.rate} onChange={(e) => setItem(i, 'rate', Number(e.target.value))} placeholder="0" />
-                <button type="button" onClick={() => removeItem(i)} disabled={items.length === 1}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 12, padding: 0, alignSelf: 'center' }}>✕</button>
-              </div>
-            ))}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-              <button type="button" onClick={addItem}
-                style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'none', border: '1px dashed var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--mid)' }}>
-                + Add item
-              </button>
-              <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink)' }}>
-                Total: <b>{currency} {total.toLocaleString('en-US')}</b>
-              </span>
-            </div>
+            <LineItemsEditor
+              items={items} currency={currency} total={total}
+              onSetItem={setItem} onAddItem={addItem} onRemoveItem={removeItem}
+            />
 
             {/* ── Editor note & notes ───────────────────────────────────── */}
-            <div className="inv-sec">Notes</div>
-            <InvField label="Editor note (shown on invoice)">
-              <textarea className="inv-inp" style={{ height: 52, resize: 'vertical', fontStyle: 'italic' }}
-                value={editorNote} onChange={(e) => setEditorNote(e.target.value)} placeholder="A short personal note to the client…" />
-            </InvField>
-            <div style={{ marginTop: 10 }}>
-              {notes.map((n, i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 22px', gap: 6, marginBottom: 6 }}>
-                  <input className="inv-inp" value={n.k} onChange={(e) => setNote(i, 'k', e.target.value)} placeholder="Label" />
-                  <input className="inv-inp" value={n.v} onChange={(e) => setNote(i, 'v', e.target.value)} placeholder="Text" />
-                  <button type="button" onClick={() => removeNote(i)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 12 }}>✕</button>
-                </div>
-              ))}
-              <button type="button" onClick={addNote}
-                style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'none', border: '1px dashed var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--mid)' }}>
-                + Add note
-              </button>
-            </div>
+            <NotesEditor
+              editorNote={editorNote} onEditorNoteChange={setEditorNote}
+              notes={notes} onSetNote={setNote} onAddNote={addNote} onRemoveNote={removeNote}
+            />
 
             {/* ── Recurring ─────────────────────────────────────────────── */}
             <div className="inv-sec">Recurring</div>
@@ -507,54 +551,16 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
             </div>
 
             {/* ── Line items ────────────────────────────────────────────── */}
-            <div className="inv-sec">Line items</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 56px 96px 22px', gap: 6, marginBottom: 4 }}>
-              {(['Description', 'Qty', 'Rate'] as const).map((h) => (
-                <span key={h} style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--mid)', textAlign: h !== 'Description' ? 'right' : 'left' }}>{h}</span>
-              ))}
-            </div>
-            {items.map((it, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 56px 96px 22px', gap: 6, marginBottom: 6, alignItems: 'start' }}>
-                <div>
-                  <input className="inv-inp" value={it.name} onChange={(e) => setItem(i, 'name', e.target.value)} placeholder="Item name" />
-                  <input className="inv-inp" style={{ marginTop: 3, fontSize: 10, color: 'var(--mid)' }} value={it.sub ?? ''} onChange={(e) => setItem(i, 'sub', e.target.value)} placeholder="Description (optional)" />
-                </div>
-                <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="1" value={it.qty} onChange={(e) => setItem(i, 'qty', Number(e.target.value))} placeholder="1" />
-                <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="0" value={it.rate} onChange={(e) => setItem(i, 'rate', Number(e.target.value))} placeholder="0" />
-                <button type="button" onClick={() => removeItem(i)} disabled={items.length === 1}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 12, padding: 0, alignSelf: 'center' }}>✕</button>
-              </div>
-            ))}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-              <button type="button" onClick={addItem}
-                style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'none', border: '1px dashed var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--mid)' }}>
-                + Add item
-              </button>
-              <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink)' }}>
-                Total: <b>{currency} {total.toLocaleString('en-US')}</b>
-              </span>
-            </div>
+            <LineItemsEditor
+              items={items} currency={currency} total={total}
+              onSetItem={setItem} onAddItem={addItem} onRemoveItem={removeItem}
+            />
 
             {/* ── Notes ─────────────────────────────────────────────────── */}
-            <div className="inv-sec">Notes</div>
-            <InvField label="Editor note (shown on invoice)">
-              <textarea className="inv-inp" style={{ height: 52, resize: 'vertical', fontStyle: 'italic' }}
-                value={editorNote} onChange={(e) => setEditorNote(e.target.value)} placeholder="A short personal note…" />
-            </InvField>
-            <div style={{ marginTop: 10 }}>
-              {notes.map((n, i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 22px', gap: 6, marginBottom: 6 }}>
-                  <input className="inv-inp" value={n.k} onChange={(e) => setNote(i, 'k', e.target.value)} placeholder="Label" />
-                  <input className="inv-inp" value={n.v} onChange={(e) => setNote(i, 'v', e.target.value)} placeholder="Text" />
-                  <button type="button" onClick={() => removeNote(i)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 12 }}>✕</button>
-                </div>
-              ))}
-              <button type="button" onClick={addNote}
-                style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'none', border: '1px dashed var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--mid)' }}>
-                + Add note
-              </button>
-            </div>
+            <NotesEditor
+              editorNote={editorNote} onEditorNoteChange={setEditorNote}
+              notes={notes} onSetNote={setNote} onAddNote={addNote} onRemoveNote={removeNote}
+            />
 
             {/* ── Recurring ─────────────────────────────────────────────── */}
             <div className="inv-sec">Recurring</div>
@@ -747,6 +753,7 @@ export function InvoicesPage() {
   const [createOpen, setCreateOpen]         = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<InvoiceResponse | null>(null);
   const [filterStatus, setFilterStatus]     = useState<InvoiceStatus | 'all'>('all');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const invoicesQ = useQuery({
     queryKey: ['invoices'],
@@ -783,19 +790,10 @@ export function InvoicesPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['invoices'] }),
   });
 
-  async function fetchWithAuth(url: string): Promise<Response | null> {
-    const { tokenStore } = await import('../api/client');
-    const token = tokenStore.get();
-    const res = await fetch(url, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    return res.ok ? res : null;
-  }
-
   async function handlePreview(id: string) {
-    const res = await fetchWithAuth(`/admin/invoices/${id}/print`);
-    if (!res) return;
-    const html = await res.text();
+    const html = await api
+      .get<string>(`/admin/invoices/${id}/print`, { responseType: 'text' })
+      .then((r) => r.data);
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const win = window.open(url, '_blank');
@@ -803,9 +801,9 @@ export function InvoicesPage() {
   }
 
   async function handleDownload(id: string) {
-    const res = await fetchWithAuth(`/admin/invoices/${id}/pdf`);
-    if (!res) return;
-    const blob = await res.blob();
+    const blob = await api
+      .get<Blob>(`/admin/invoices/${id}/pdf`, { responseType: 'blob' })
+      .then((r) => r.data);
     const inv = invoices.find((i) => i.id === id);
     const num = inv?.number ?? id.slice(0, 8);
     downloadBlob(blob, `invoice-${num}.pdf`);
@@ -914,9 +912,7 @@ export function InvoicesPage() {
               clientName={clientMap[inv.client_id] ?? inv.client_id.slice(0, 8)}
               onStatusChange={(id, status) => statusM.mutate({ id, status })}
               onEdit={(inv) => setEditingInvoice(inv)}
-              onDelete={(id) => {
-                if (window.confirm('Delete this invoice?')) deleteM.mutate(id);
-              }}
+              onDelete={(id) => setConfirmDeleteId(id)}
               onPreview={handlePreview}
               onDownload={handleDownload}
             />
@@ -936,6 +932,16 @@ export function InvoicesPage() {
         <EditInvoiceModal
           invoice={editingInvoice}
           onClose={() => setEditingInvoice(null)}
+        />
+      )}
+      {confirmDeleteId && (
+        <ConfirmModal
+          title="Delete this invoice?"
+          body="This cannot be undone."
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => { deleteM.mutate(confirmDeleteId); setConfirmDeleteId(null); }}
+          onCancel={() => setConfirmDeleteId(null)}
         />
       )}
     </div>

@@ -6,9 +6,7 @@ use axum::{
 };
 use serde::Deserialize;
 use sqlx::SqlitePool;
-use std::{net::SocketAddr, str::FromStr};
-
-use std::sync::Arc;
+use std::{net::SocketAddr, str::FromStr, sync::Arc};
 
 use crate::{
     config::Config,
@@ -82,7 +80,7 @@ pub async fn logout(
         HeaderValue::from_str(&value).map_err(|e| AppError::Internal(e.to_string()))?;
     Ok((
         StatusCode::NO_CONTENT,
-        [(HeaderName::from_str(name).unwrap(), header_value)],
+        [(HeaderName::from_str(name).map_err(|e| AppError::Internal(e.to_string()))?, header_value)],
     )
         .into_response())
 }
@@ -172,7 +170,7 @@ fn build_token_response(
         HeaderValue::from_str(&value).map_err(|e| AppError::Internal(e.to_string()))?;
     Ok((
         StatusCode::OK,
-        [(HeaderName::from_str(name).unwrap(), header_value)],
+        [(HeaderName::from_str(name).map_err(|e| AppError::Internal(e.to_string()))?, header_value)],
         Json(AccessTokenResponse { access_token }),
     )
         .into_response())

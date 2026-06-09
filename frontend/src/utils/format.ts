@@ -51,6 +51,13 @@ export function fmtDateTime(iso: string): string {
 // Typed record so a new backend value triggers a TS error rather than
 // silently displaying a raw underscore-separated string at runtime.
 
+// ── API error extraction ───────────────────────────────────────────────────
+
+/** Extract the server-side `error` string from an axios error response. */
+export function extractApiError(err: unknown, fallback = 'Something went wrong'): string {
+  return (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? fallback;
+}
+
 export const TICKET_TYPE_LABEL: Record<TicketType, string> = {
   standard: 'Standard',
   maintenance: 'Maintenance',

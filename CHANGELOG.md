@@ -4,6 +4,100 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — code-audit cleanup (B1, L1, L2, I1–I3, C1–C5, S1–S4)
+
+### Bug fixes
+
+#### B1 — `useState` lazy-init never re-ran on `clientDropOpen` change (`InvoicesPage.tsx`)
+The outside-click handler for the client dropdown was registered inside a
+`useState` initializer, which runs only once at mount — so the listener was
+never re-added when the dropdown re-opened. Replaced with a `useEffect` keyed
+on `[clientDropOpen]` so the `mousedown` listener is attached and removed
+correctly on each open/close cycle.
+
+### Safety / correctness
+
+#### L1 — DB error in `hard_delete_client` was silently swallowed (`services/admin.rs`)
+`db::tickets::list_all_for_client(...).unwrap_or_default()` meant that if the
+query failed, the delete would proceed against an empty ticket list while
+orphaning every upload directory on disk. Changed to `?` so the error
+propagates and the delete is aborted.
+
+#### L2 — Decryption failure produced empty email address for desk-recovery link (`services/auth.rs`)
+`crypto::decrypt(...).unwrap_or_default()` silently fell back to `""` as the
+email address, causing `send_desk_recovery_link` to attempt delivery to an empty
+string. Replaced with a `match` that logs an error and skips the spawn on
+decryption failure.
+
+### Consistency / style
+
+#### I1 — Raw `fetchWithAuth` helper replaced with axios wrapper (`InvoicesPage.tsx`)
+`handlePreview` and `handleDownload` used a hand-rolled `fetch` with a manual
+`Authorization` header. Replaced with `api.get<string>(..., { responseType: 'text' })`
+and `api.get<Blob>(..., { responseType: 'blob' })` so all HTTP calls go through
+the shared interceptors.
+
+#### I2 — `extractApiError` utility extracted; five cast-patterns replaced
+Added `extractApiError(err, fallback)` to `utils/format.ts`. Replaced identical
+inline `(err as ...).response?.data?.error` casts in `CreateTicketModal`,
+`ClientsPage`, `SettingsPage`, `ReportsPage`, and `TicketDetailPage`.
+
+#### I3 — `window.confirm()` replaced with `ConfirmModal` (`InvoicesPage.tsx`)
+The delete-invoice confirmation used the blocking `window.confirm()`. Replaced
+with the existing `ConfirmModal` component driven by a `confirmDeleteId` state
+variable, consistent with the rest of the app.
+
+### Complexity reduction
+
+#### C1 — `login()` match arm extracted into two helpers (`services/auth.rs`)
+The `(Some(u), false)` arm (~97 lines) was split into:
+- `maybe_auto_lockout_ticket(pool, user_id, attempts)` — async, creates the
+  security-log ticket when needed.
+- `spawn_desk_recovery_link(pool, config, mailer, enc_key, …)` — sync, spawns
+  the magic-link email and subsumes the L2 fix.
+
+#### C2 — Duplicate `tokio::spawn` email blocks collapsed into helper (`services/tickets.rs`)
+`create()` and `apply_transition()` both contained identical notification-spawn
+blocks. Extracted into `spawn_ticket_notification_email(mailer, user, title, event)`.
+
+#### C3 — Five repeated encrypt-or-keep blocks collapsed into helper (`services/admin.rs`)
+`update_client_profile` had five identical `if new_val.is_some() { encrypt } else { keep }`
+blocks. Extracted into `keep_or_reencrypt(key, new_val, existing_ct, existing_nonce)`
+and replaced with five one-liner calls.
+
+#### C4 — `EditPropsPanel` and `ReadOnlyProps` extracted from `TicketDetailPage.tsx`
+~185 lines of inline component definitions (plus their constants) moved to
+`frontend/src/components/EditPropsPanel.tsx` and `ReadOnlyProps.tsx`.
+`TicketDetailPage.tsx` now imports them.
+
+#### C5 — `LineItemsEditor` and `NotesEditor` extracted from `InvoicesPage.tsx`
+The line-items grid and notes editor were duplicated verbatim inside both
+`CreateInvoiceModal` and `EditInvoiceModal`. Extracted into two sub-components
+(`LineItemsEditor`, `NotesEditor`) defined once above the modals; both modals
+now render them via props.
+
+### Style nits
+
+#### S1 — Duplicate `use std::` merged (`backend/src/auth.rs`)
+`use std::{net::SocketAddr, str::FromStr}` and `use std::sync::Arc` were on
+separate lines. Merged into one.
+
+#### S2 — `HeaderName::from_str(name).unwrap()` made consistent (`backend/src/auth.rs`)
+`HeaderValue::from_str` already used `.map_err(|e| AppError::Internal(...))?`.
+`HeaderName::from_str` used `.unwrap()`. Applied the same `.map_err(...)? ` pattern
+to both call sites (`logout` and `build_token_response`).
+
+#### S3 — `DeleteOnDrop` struct moved after imports (`backend/src/routes/admin.rs`)
+The struct definition appeared between the external `use` block and the `use crate::…`
+block, breaking the conventional import-then-definitions ordering. Moved to after
+all `use` statements.
+
+#### S4 — Inline `import('./types').Client` replaced with top-level import (`frontend/src/api/admin.ts`)
+`updateClient` return type used `import('./types').Client` inline. `Client` is
+already imported at the top of the file; the inline import was redundant.
+
+---
+
 ## [Unreleased] — lockout hardening, theme toggle, test suite fixes
 
 ### Backend — lockout auto-actions

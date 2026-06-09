@@ -88,9 +88,9 @@ export function Masthead({ active = 'tickets' }: Props) {
           aria-pressed={theme === 'dark'}
           onClick={(e) => toggle({ x: e.clientX, y: e.clientY })}
         >
-          <span className="seg light">LGT</span>
+          <span className="th-seg th-seg--light">LGT</span>
           <span className="slash" aria-hidden>/</span>
-          <span className="seg dark">DRK</span>
+          <span className="th-seg th-seg--dark">DRK</span>
         </button>
 
         <button

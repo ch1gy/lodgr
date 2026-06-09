@@ -145,9 +145,9 @@ export function LoginPage() {
             onClick={(e) => toggle({ x: e.clientX, y: e.clientY })}
             aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           >
-            <span className="seg light">LGT</span>
+            <span className="th-seg th-seg--light">LGT</span>
             <span className="slash">/</span>
-            <span className="seg dark">DRK</span>
+            <span className="th-seg th-seg--dark">DRK</span>
           </button>
         </span>
       </div>

@@ -20,12 +20,11 @@ import { admin } from '../api/admin';
 import { extractApiError } from '../utils/format';
 import '../styles/v2.css';
 
-type NavItem = 'password' | 'desk-profile' | 'profile' | 'sessions' | 'notifications' | 'danger';
+type NavItem = 'password' | 'desk-profile' | 'sessions' | 'notifications' | 'danger';
 
 const NAV_ITEMS: Array<{ key: NavItem; label: string; sub: string }> = [
   { key: 'password',      label: '— Password',       sub: 'Change your passphrase' },
   { key: 'desk-profile',  label: '— Desk profile',   sub: 'Invoice "From" info' },
-  { key: 'profile',       label: '— Profile',        sub: 'Name and contact email' },
   { key: 'sessions',      label: '— Sessions',       sub: 'Active device list' },
   { key: 'notifications', label: '— Notifications',  sub: 'Email and in-app alerts' },
   { key: 'danger',        label: '— Sign out everywhere', sub: 'Revoke every other session' },
@@ -65,9 +64,6 @@ export function SettingsPage() {
             <PasswordSection userEmail={profile?.email ?? user?.email} />
           )}
           {section === 'desk-profile' && <DeskProfileSection />}
-          {section === 'profile' && (
-            <PlaceholderSection title="Profile" note="Profile editing is coming soon. Contact the desk to update your name or email." />
-          )}
           {section === 'sessions' && <SessionsSection />}
           {section === 'notifications' && (
             <PlaceholderSection title="Notifications" note="Notification preferences are coming soon." />

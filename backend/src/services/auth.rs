@@ -275,10 +275,12 @@ pub async fn login(
                             config,
                             m,
                             enc_key,
-                            &u.id,
-                            &u.email_nonce,
-                            &u.email,
-                            &u.name,
+                            DeskUser {
+                                id: &u.id,
+                                email_nonce: &u.email_nonce,
+                                email_ct: &u.email,
+                                name: &u.name,
+                            },
                         );
                     } else {
                         tracing::error!(
@@ -344,6 +346,13 @@ async fn maybe_auto_lockout_ticket(pool: &SqlitePool, user_id: &str, attempts: i
     }
 }
 
+struct DeskUser<'a> {
+    id: &'a str,
+    email_nonce: &'a str,
+    email_ct: &'a str,
+    name: &'a str,
+}
+
 /// Decrypts the desk user's email and spawns a recovery magic-link email.
 /// Logs an error and skips the dispatch if decryption fails.
 fn spawn_desk_recovery_link(
@@ -351,24 +360,21 @@ fn spawn_desk_recovery_link(
     config: &Config,
     mailer: &SmtpMailer,
     enc_key: &EncryptionKey,
-    user_id: &str,
-    email_nonce: &str,
-    email_ct: &str,
-    user_name: &str,
+    desk: DeskUser<'_>,
 ) {
-    match crypto::decrypt(enc_key, email_nonce, email_ct) {
+    match crypto::decrypt(enc_key, desk.email_nonce, desk.email_ct) {
         Ok(uemail) => {
             let pool2 = pool.clone();
             let config2 = config.clone();
             let m2 = mailer.clone();
-            let uid = user_id.to_owned();
-            let uname = user_name.to_owned();
+            let uid = desk.id.to_owned();
+            let uname = desk.name.to_owned();
             tokio::spawn(async move {
                 magic::send_desk_recovery_link(&pool2, &config2, &m2, &uid, &uemail, &uname).await;
             });
         }
         Err(err) => tracing::error!(
-            user_id = %user_id,
+            user_id = %desk.id,
             %err,
             "failed to decrypt desk email — skipping recovery link dispatch"
         ),

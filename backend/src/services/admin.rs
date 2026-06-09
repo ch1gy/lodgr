@@ -134,13 +134,15 @@ pub async fn create_client(
 
     db::users::create(
         pool,
-        &id,
-        &name,
-        &email_ct,
-        &email_nonce,
-        &email_hash,
-        &hash,
-        "client",
+        db::users::NewUser {
+            id: &id,
+            name: &name,
+            email: &email_ct,
+            email_nonce: &email_nonce,
+            email_hash: &email_hash,
+            password_hash: &hash,
+            role: "client",
+        },
     )
     .await
     .map_err(|e| match e {

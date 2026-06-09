@@ -503,13 +503,15 @@ async fn seed_desk_user(
             .map_err(|e| anyhow::anyhow!("encrypt desk email: {e:?}"))?;
         db::users::create(
             pool,
-            &id,
-            "Desk Agent",
-            &email_ct,
-            &email_nonce,
-            &email_hash,
-            &hash,
-            "desk",
+            db::users::NewUser {
+                id: &id,
+                name: "Desk Agent",
+                email: &email_ct,
+                email_nonce: &email_nonce,
+                email_hash: &email_hash,
+                password_hash: &hash,
+                role: "desk",
+            },
         )
         .await?;
         if initial_password == "changeme" {

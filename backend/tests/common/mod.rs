@@ -72,13 +72,15 @@ pub async fn create_test_client(pool: &SqlitePool) -> (String, String, String) {
 
     db::users::create(
         pool,
-        &id,
-        "Test Client",
-        &email_ct,
-        &email_nonce,
-        &email_hash,
-        &hash,
-        "client",
+        db::users::NewUser {
+            id: &id,
+            name: "Test Client",
+            email: &email_ct,
+            email_nonce: &email_nonce,
+            email_hash: &email_hash,
+            password_hash: &hash,
+            role: "client",
+        },
     )
     .await
     .unwrap();
@@ -99,13 +101,15 @@ pub async fn create_test_desk(pool: &SqlitePool) -> (String, String, String) {
 
     db::users::create(
         pool,
-        &id,
-        "Test Desk",
-        &email_ct,
-        &email_nonce,
-        &email_hash,
-        &hash,
-        "desk",
+        db::users::NewUser {
+            id: &id,
+            name: "Test Desk",
+            email: &email_ct,
+            email_nonce: &email_nonce,
+            email_hash: &email_hash,
+            password_hash: &hash,
+            role: "desk",
+        },
     )
     .await
     .unwrap();

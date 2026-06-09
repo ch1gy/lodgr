@@ -35,28 +35,29 @@ pub async fn find_all_clients(pool: &SqlitePool) -> AppResult<Vec<User>> {
     .await?)
 }
 
-pub async fn create(
-    pool: &SqlitePool,
-    id: &str,
-    name: &str,
-    email: &str,
-    email_nonce: &str,
-    email_hash: &str,
-    password_hash: &str,
-    role: &str,
-) -> AppResult<()> {
+pub struct NewUser<'a> {
+    pub id: &'a str,
+    pub name: &'a str,
+    pub email: &'a str,
+    pub email_nonce: &'a str,
+    pub email_hash: &'a str,
+    pub password_hash: &'a str,
+    pub role: &'a str,
+}
+
+pub async fn create(pool: &SqlitePool, u: NewUser<'_>) -> AppResult<()> {
     let created_at = Utc::now().to_rfc3339();
     sqlx::query(
         "INSERT INTO users (id, name, email, email_nonce, email_hash, password_hash, role, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
-    .bind(id)
-    .bind(name)
-    .bind(email)
-    .bind(email_nonce)
-    .bind(email_hash)
-    .bind(password_hash)
-    .bind(role)
+    .bind(u.id)
+    .bind(u.name)
+    .bind(u.email)
+    .bind(u.email_nonce)
+    .bind(u.email_hash)
+    .bind(u.password_hash)
+    .bind(u.role)
     .bind(&created_at)
     .execute(pool)
     .await?;

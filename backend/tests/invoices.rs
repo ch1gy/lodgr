@@ -3,7 +3,11 @@ mod common;
 use backend::db;
 use uuid::Uuid;
 
-fn base_invoice<'a>(id: &'a str, client_id: &'a str, number: &'a str) -> db::invoices::NewInvoice<'a> {
+fn base_invoice<'a>(
+    id: &'a str,
+    client_id: &'a str,
+    number: &'a str,
+) -> db::invoices::NewInvoice<'a> {
     db::invoices::NewInvoice {
         id,
         client_id,
@@ -75,8 +79,12 @@ async fn list_invoices_returns_all() {
 
     let id1 = Uuid::new_v4().to_string();
     let id2 = Uuid::new_v4().to_string();
-    db::invoices::create(&pool, base_invoice(&id1, &client_id, "INV-A")).await.unwrap();
-    db::invoices::create(&pool, base_invoice(&id2, &client_id, "INV-B")).await.unwrap();
+    db::invoices::create(&pool, base_invoice(&id1, &client_id, "INV-A"))
+        .await
+        .unwrap();
+    db::invoices::create(&pool, base_invoice(&id2, &client_id, "INV-B"))
+        .await
+        .unwrap();
 
     let all = db::invoices::list(&pool).await.unwrap();
     assert_eq!(all.len(), 2);
@@ -90,10 +98,16 @@ async fn list_for_client_filters_by_client() {
 
     let id_a = Uuid::new_v4().to_string();
     let id_b = Uuid::new_v4().to_string();
-    db::invoices::create(&pool, base_invoice(&id_a, &client_a, "INV-A")).await.unwrap();
-    db::invoices::create(&pool, base_invoice(&id_b, &client_b, "INV-B")).await.unwrap();
+    db::invoices::create(&pool, base_invoice(&id_a, &client_a, "INV-A"))
+        .await
+        .unwrap();
+    db::invoices::create(&pool, base_invoice(&id_b, &client_b, "INV-B"))
+        .await
+        .unwrap();
 
-    let for_a = db::invoices::list_for_client(&pool, &client_a).await.unwrap();
+    let for_a = db::invoices::list_for_client(&pool, &client_a)
+        .await
+        .unwrap();
     assert_eq!(for_a.len(), 1);
     assert_eq!(for_a[0].client_id, client_a);
 }

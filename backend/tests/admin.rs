@@ -280,11 +280,31 @@ async fn update_profile_touching_only_name_preserves_pii_fields() {
     .unwrap();
 
     assert_eq!(updated.name, "Alice Updated");
-    assert_eq!(updated.address_line1.as_deref(), Some("123 Main St"), "address_line1 must be preserved");
-    assert_eq!(updated.address_line2.as_deref(), Some("Apt 4"), "address_line2 must be preserved");
-    assert_eq!(updated.pin_number.as_deref(), Some("SECRET-PIN"), "pin_number must be preserved");
-    assert_eq!(updated.contact_person.as_deref(), Some("Bob"), "contact_person must be preserved");
-    assert_eq!(updated.phone.as_deref(), Some("+1-555-0100"), "phone must be preserved");
+    assert_eq!(
+        updated.address_line1.as_deref(),
+        Some("123 Main St"),
+        "address_line1 must be preserved"
+    );
+    assert_eq!(
+        updated.address_line2.as_deref(),
+        Some("Apt 4"),
+        "address_line2 must be preserved"
+    );
+    assert_eq!(
+        updated.pin_number.as_deref(),
+        Some("SECRET-PIN"),
+        "pin_number must be preserved"
+    );
+    assert_eq!(
+        updated.contact_person.as_deref(),
+        Some("Bob"),
+        "contact_person must be preserved"
+    );
+    assert_eq!(
+        updated.phone.as_deref(),
+        Some("+1-555-0100"),
+        "phone must be preserved"
+    );
 }
 
 // ── T3 — email update rotates blind index ─────────────────────────────────────
@@ -318,13 +338,23 @@ async fn email_update_rotates_blind_index_and_old_hash_no_longer_finds_user() {
     .unwrap();
 
     // Old hash must no longer find the user.
-    let by_old = db::users::find_by_email_hash(&pool, &old_hash).await.unwrap();
-    assert!(by_old.is_none(), "old email hash must not find user after email update");
+    let by_old = db::users::find_by_email_hash(&pool, &old_hash)
+        .await
+        .unwrap();
+    assert!(
+        by_old.is_none(),
+        "old email hash must not find user after email update"
+    );
 
     // New hash must find the user.
     let new_hash = backend::crypto::hash_email(&new_email, &config.email_hash_salt).unwrap();
-    let by_new = db::users::find_by_email_hash(&pool, &new_hash).await.unwrap();
-    assert!(by_new.is_some(), "new email hash must find user after email update");
+    let by_new = db::users::find_by_email_hash(&pool, &new_hash)
+        .await
+        .unwrap();
+    assert!(
+        by_new.is_some(),
+        "new email hash must find user after email update"
+    );
 }
 
 // ── Export content ────────────────────────────────────────────────────────────

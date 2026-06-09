@@ -156,7 +156,12 @@ async fn main() -> anyhow::Result<()> {
 
     seed_desk_user(&pool, &enc_key, &config.desk_email, &config.email_hash_salt).await?;
     services::auth::dummy_hash_warmup();
-    services::auth::check_default_password_warning(&pool, &config.desk_email, &config.email_hash_salt).await;
+    services::auth::check_default_password_warning(
+        &pool,
+        &config.desk_email,
+        &config.email_hash_salt,
+    )
+    .await;
     check_desk_lockout(&pool, &config.desk_email, &config.email_hash_salt).await;
 
     // Background tasks — wrapped in a restart supervisor so panics are logged
@@ -485,7 +490,10 @@ async fn seed_desk_user(
     let email_hash = crypto::hash_email(desk_email, email_hash_salt)
         .map_err(|e| anyhow::anyhow!("email hash for seed: {e:?}"))?;
 
-    if db::users::find_by_email_hash(pool, &email_hash).await?.is_none() {
+    if db::users::find_by_email_hash(pool, &email_hash)
+        .await?
+        .is_none()
+    {
         let initial_password =
             std::env::var("DESK_INITIAL_PASSWORD").unwrap_or_else(|_| "changeme".to_string());
         let id = uuid::Uuid::new_v4().to_string();
@@ -494,7 +502,14 @@ async fn seed_desk_user(
         let (email_nonce, email_ct) = crypto::encrypt(enc_key, desk_email)
             .map_err(|e| anyhow::anyhow!("encrypt desk email: {e:?}"))?;
         db::users::create(
-            pool, &id, "Desk Agent", &email_ct, &email_nonce, &email_hash, &hash, "desk",
+            pool,
+            &id,
+            "Desk Agent",
+            &email_ct,
+            &email_nonce,
+            &email_hash,
+            &hash,
+            "desk",
         )
         .await?;
         if initial_password == "changeme" {

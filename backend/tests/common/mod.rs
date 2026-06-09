@@ -70,9 +70,18 @@ pub async fn create_test_client(pool: &SqlitePool) -> (String, String, String) {
     let (email_nonce, email_ct) = crypto::encrypt(&enc_key, &email).unwrap();
     let email_hash = crypto::hash_email(&email, &config.email_hash_salt).unwrap();
 
-    db::users::create(pool, &id, "Test Client", &email_ct, &email_nonce, &email_hash, &hash, "client")
-        .await
-        .unwrap();
+    db::users::create(
+        pool,
+        &id,
+        "Test Client",
+        &email_ct,
+        &email_nonce,
+        &email_hash,
+        &hash,
+        "client",
+    )
+    .await
+    .unwrap();
     (id, email, password)
 }
 
@@ -88,8 +97,17 @@ pub async fn create_test_desk(pool: &SqlitePool) -> (String, String, String) {
     let (email_nonce, email_ct) = crypto::encrypt(&enc_key, &email).unwrap();
     let email_hash = crypto::hash_email(&email, &config.email_hash_salt).unwrap();
 
-    db::users::create(pool, &id, "Test Desk", &email_ct, &email_nonce, &email_hash, &hash, "desk")
-        .await
-        .unwrap();
+    db::users::create(
+        pool,
+        &id,
+        "Test Desk",
+        &email_ct,
+        &email_nonce,
+        &email_hash,
+        &hash,
+        "desk",
+    )
+    .await
+    .unwrap();
     (id, email, password)
 }

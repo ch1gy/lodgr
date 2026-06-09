@@ -72,8 +72,8 @@ pub fn encrypt(key: &[u8; 32], plaintext: &str) -> AppResult<(String, String)> {
 /// `salt_hex` must be the `EMAIL_HASH_SALT` env value — never change it after
 /// the first user is written, as all login lookups depend on it.
 pub fn hash_email(email: &str, salt_hex: &str) -> AppResult<String> {
-    let raw = derive_key(email, salt_hex)
-        .map_err(|e| AppError::Internal(format!("email hash: {e}")))?;
+    let raw =
+        derive_key(email, salt_hex).map_err(|e| AppError::Internal(format!("email hash: {e}")))?;
     Ok(hex_encode(&raw))
 }
 

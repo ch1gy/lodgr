@@ -201,7 +201,9 @@ pub async fn create(
             db::users::find_by_id(pool, &resolved_client_id).await
         };
         match user_result {
-            Ok(Some(user)) => spawn_ticket_notification_email(m, user, ticket.title.clone(), TicketEvent::Created),
+            Ok(Some(user)) => {
+                spawn_ticket_notification_email(m, user, ticket.title.clone(), TicketEvent::Created)
+            }
             Ok(None) => {}
             Err(e) => tracing::warn!(%e, "failed to fetch user for ticket-created email"),
         }
@@ -356,7 +358,12 @@ pub async fn transition_close(
 
 /// Spawn a fire-and-forget ticket notification email. Non-fatal: failures are
 /// logged as warnings and never bubble up to the caller.
-fn spawn_ticket_notification_email(mailer: &SmtpMailer, user: User, ticket_title: String, event: TicketEvent) {
+fn spawn_ticket_notification_email(
+    mailer: &SmtpMailer,
+    user: User,
+    ticket_title: String,
+    event: TicketEvent,
+) {
     let m = mailer.clone();
     tokio::spawn(async move {
         m.send_ticket_notification(&user.email, &user.name, &ticket_title, event)

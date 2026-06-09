@@ -34,7 +34,16 @@ async fn permanent_lockout_auto_creates_urgent_security_log_ticket() {
         .unwrap();
 
     // 9th wrong attempt → permanent lock → auto-ticket.
-    let _ = auth::login(&pool, &config, &common::test_enc_key(), None, &email, "BadPass1234!", peer_ip()).await;
+    let _ = auth::login(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &email,
+        "BadPass1234!",
+        peer_ip(),
+    )
+    .await;
 
     let (count,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM tickets
@@ -78,7 +87,16 @@ async fn lockout_ticket_not_duplicated_within_24h() {
         .execute(&pool)
         .await
         .unwrap();
-    let _ = auth::login(&pool, &config, &common::test_enc_key(), None, &email, "BadPass1234!", peer_ip()).await;
+    let _ = auth::login(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &email,
+        "BadPass1234!",
+        peer_ip(),
+    )
+    .await;
 
     // Simulate admin recovery (unlock without full reset — same scenario the desk
     // would do via the unlock endpoint, which clears the lockout but the guard
@@ -90,7 +108,16 @@ async fn lockout_ticket_not_duplicated_within_24h() {
         .unwrap();
 
     // Second lockout within 24 h — must NOT create a duplicate.
-    let _ = auth::login(&pool, &config, &common::test_enc_key(), None, &email, "BadPass1234!", peer_ip()).await;
+    let _ = auth::login(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &email,
+        "BadPass1234!",
+        peer_ip(),
+    )
+    .await;
 
     let (count,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM tickets
@@ -163,7 +190,16 @@ async fn desk_permanent_lockout_does_not_create_ticket() {
         .unwrap();
 
     // 9th wrong attempt — desk account hits permanent lockout.
-    let _ = auth::login(&pool, &config, &common::test_enc_key(), None, &desk_email, "BadPass1234!", peer_ip()).await;
+    let _ = auth::login(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &desk_email,
+        "BadPass1234!",
+        peer_ip(),
+    )
+    .await;
 
     let (count,): (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM tickets WHERE ticket_type = 'security_log'")

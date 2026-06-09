@@ -10,14 +10,12 @@ const USER_COLS: &str = "id, name, email, email_nonce, email_hash, password_hash
     phone, phone_nonce";
 
 pub async fn find_by_email_hash(pool: &SqlitePool, hash: &str) -> AppResult<Option<User>> {
-    Ok(
-        sqlx::query_as::<_, User>(&format!(
-            "SELECT {USER_COLS} FROM users WHERE email_hash = ?"
-        ))
-        .bind(hash)
-        .fetch_optional(pool)
-        .await?,
-    )
+    Ok(sqlx::query_as::<_, User>(&format!(
+        "SELECT {USER_COLS} FROM users WHERE email_hash = ?"
+    ))
+    .bind(hash)
+    .fetch_optional(pool)
+    .await?)
 }
 
 pub async fn find_by_id(pool: &SqlitePool, id: &str) -> AppResult<Option<User>> {

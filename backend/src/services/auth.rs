@@ -270,7 +270,16 @@ pub async fn login(
                     maybe_auto_lockout_ticket(pool, &u.id, new_attempts).await;
                 } else if u.role == "desk" {
                     if let Some(m) = mailer {
-                        spawn_desk_recovery_link(pool, config, m, enc_key, &u.id, &u.email_nonce, &u.email, &u.name);
+                        spawn_desk_recovery_link(
+                            pool,
+                            config,
+                            m,
+                            enc_key,
+                            &u.id,
+                            &u.email_nonce,
+                            &u.email,
+                            &u.name,
+                        );
                     } else {
                         tracing::error!(
                             user_id = %u.id,
@@ -329,7 +338,9 @@ async fn maybe_auto_lockout_ticket(pool: &SqlitePool, user_id: &str, attempts: i
             }
         }
         Ok(true) => {}
-        Err(e) => tracing::warn!(user_id = %user_id, %e, "failed to check for existing lockout ticket"),
+        Err(e) => {
+            tracing::warn!(user_id = %user_id, %e, "failed to check for existing lockout ticket")
+        }
     }
 }
 
@@ -495,7 +506,11 @@ pub async fn change_password(
     issue_tokens(pool, config, user_id, &user.role).await
 }
 
-pub async fn check_default_password_warning(pool: &SqlitePool, desk_email: &str, email_hash_salt: &str) {
+pub async fn check_default_password_warning(
+    pool: &SqlitePool,
+    desk_email: &str,
+    email_hash_salt: &str,
+) {
     if let Ok(hash) = crypto::hash_email(desk_email, email_hash_salt) {
         if let Ok(Some(user)) = db::users::find_by_email_hash(pool, &hash).await {
             if verify_password("changeme", &user.password_hash).unwrap_or(false) {

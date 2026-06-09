@@ -27,10 +27,26 @@ pub fn decrypt_user(user: User, key: &EncryptionKey) -> AppResult<User> {
         crypto::decrypt(key, &user.email_nonce, &user.email)?
     };
 
-    let address_line1 = decrypt_opt(key, user.address_line1.as_deref(), user.address_line1_nonce.as_deref())?;
-    let address_line2 = decrypt_opt(key, user.address_line2.as_deref(), user.address_line2_nonce.as_deref())?;
-    let pin_number = decrypt_opt(key, user.pin_number.as_deref(), user.pin_number_nonce.as_deref())?;
-    let contact_person = decrypt_opt(key, user.contact_person.as_deref(), user.contact_person_nonce.as_deref())?;
+    let address_line1 = decrypt_opt(
+        key,
+        user.address_line1.as_deref(),
+        user.address_line1_nonce.as_deref(),
+    )?;
+    let address_line2 = decrypt_opt(
+        key,
+        user.address_line2.as_deref(),
+        user.address_line2_nonce.as_deref(),
+    )?;
+    let pin_number = decrypt_opt(
+        key,
+        user.pin_number.as_deref(),
+        user.pin_number_nonce.as_deref(),
+    )?;
+    let contact_person = decrypt_opt(
+        key,
+        user.contact_person.as_deref(),
+        user.contact_person_nonce.as_deref(),
+    )?;
     let phone = decrypt_opt(key, user.phone.as_deref(), user.phone_nonce.as_deref())?;
 
     Ok(User {
@@ -44,7 +60,11 @@ pub fn decrypt_user(user: User, key: &EncryptionKey) -> AppResult<User> {
     })
 }
 
-fn decrypt_opt(key: &EncryptionKey, ct: Option<&str>, nonce: Option<&str>) -> AppResult<Option<String>> {
+fn decrypt_opt(
+    key: &EncryptionKey,
+    ct: Option<&str>,
+    nonce: Option<&str>,
+) -> AppResult<Option<String>> {
     match (ct, nonce) {
         (Some(c), Some(n)) if !c.is_empty() => Ok(Some(crypto::decrypt(key, n, c)?)),
         _ => Ok(None),
@@ -52,7 +72,10 @@ fn decrypt_opt(key: &EncryptionKey, ct: Option<&str>, nonce: Option<&str>) -> Ap
 }
 
 /// Encrypts an optional plaintext field. Returns `(ciphertext, nonce)` or `(None, None)`.
-fn encrypt_opt(key: &EncryptionKey, value: Option<&str>) -> AppResult<(Option<String>, Option<String>)> {
+fn encrypt_opt(
+    key: &EncryptionKey,
+    value: Option<&str>,
+) -> AppResult<(Option<String>, Option<String>)> {
     match value {
         Some(v) if !v.is_empty() => {
             let (nonce, ct) = crypto::encrypt(key, v)?;
@@ -109,14 +132,23 @@ pub async fn create_client(
     let (email_nonce, email_ct) = crypto::encrypt(enc_key, &email)?;
     let email_hash = crypto::hash_email(&email, email_hash_salt)?;
 
-    db::users::create(pool, &id, &name, &email_ct, &email_nonce, &email_hash, &hash, "client")
-        .await
-        .map_err(|e| match e {
-            AppError::Internal(ref msg) if msg.contains("UNIQUE") => {
-                AppError::Conflict(format!("email '{email}' is already registered"))
-            }
-            other => other,
-        })?;
+    db::users::create(
+        pool,
+        &id,
+        &name,
+        &email_ct,
+        &email_nonce,
+        &email_hash,
+        &hash,
+        "client",
+    )
+    .await
+    .map_err(|e| match e {
+        AppError::Internal(ref msg) if msg.contains("UNIQUE") => {
+            AppError::Conflict(format!("email '{email}' is already registered"))
+        }
+        other => other,
+    })?;
 
     if let Some(p) = profile {
         let has_any = p.address_line1.is_some()
@@ -163,7 +195,10 @@ pub async fn create_client(
 
 pub async fn list_clients(pool: &SqlitePool, enc_key: &EncryptionKey) -> AppResult<Vec<User>> {
     let raw_users = db::users::find_all_clients(pool).await?;
-    raw_users.into_iter().map(|u| decrypt_user(u, enc_key)).collect()
+    raw_users
+        .into_iter()
+        .map(|u| decrypt_user(u, enc_key))
+        .collect()
 }
 
 pub async fn delete_client_sessions(pool: &SqlitePool, client_id: &str) -> AppResult<u64> {
@@ -364,15 +399,40 @@ pub async fn update_client_profile(
         let hash = crypto::hash_email(new_email, email_hash_salt)?;
         (ct, nonce, hash)
     } else {
-        (raw.email.clone(), raw.email_nonce.clone(), raw.email_hash.clone())
+        (
+            raw.email.clone(),
+            raw.email_nonce.clone(),
+            raw.email_hash.clone(),
+        )
     };
 
     // For each optional field: if new value provided, re-encrypt it; else keep existing ciphertext.
-    let (addr1_ct, addr1_nonce)  = keep_or_reencrypt(enc_key, &input.address_line1, &raw.address_line1, &raw.address_line1_nonce)?;
-    let (addr2_ct, addr2_nonce)  = keep_or_reencrypt(enc_key, &input.address_line2, &raw.address_line2, &raw.address_line2_nonce)?;
-    let (pin_ct, pin_nonce)      = keep_or_reencrypt(enc_key, &input.pin_number, &raw.pin_number, &raw.pin_number_nonce)?;
-    let (cp_ct, cp_nonce)        = keep_or_reencrypt(enc_key, &input.contact_person, &raw.contact_person, &raw.contact_person_nonce)?;
-    let (phone_ct, phone_nonce)  = keep_or_reencrypt(enc_key, &input.phone, &raw.phone, &raw.phone_nonce)?;
+    let (addr1_ct, addr1_nonce) = keep_or_reencrypt(
+        enc_key,
+        &input.address_line1,
+        &raw.address_line1,
+        &raw.address_line1_nonce,
+    )?;
+    let (addr2_ct, addr2_nonce) = keep_or_reencrypt(
+        enc_key,
+        &input.address_line2,
+        &raw.address_line2,
+        &raw.address_line2_nonce,
+    )?;
+    let (pin_ct, pin_nonce) = keep_or_reencrypt(
+        enc_key,
+        &input.pin_number,
+        &raw.pin_number,
+        &raw.pin_number_nonce,
+    )?;
+    let (cp_ct, cp_nonce) = keep_or_reencrypt(
+        enc_key,
+        &input.contact_person,
+        &raw.contact_person,
+        &raw.contact_person_nonce,
+    )?;
+    let (phone_ct, phone_nonce) =
+        keep_or_reencrypt(enc_key, &input.phone, &raw.phone, &raw.phone_nonce)?;
 
     db::users::update_profile(
         pool,
@@ -508,7 +568,12 @@ mod tests {
 
         assert!(new_ct.is_some());
         assert!(new_nonce.is_some());
-        let plaintext = crypto::decrypt(&key, new_nonce.as_deref().unwrap(), new_ct.as_deref().unwrap()).unwrap();
+        let plaintext = crypto::decrypt(
+            &key,
+            new_nonce.as_deref().unwrap(),
+            new_ct.as_deref().unwrap(),
+        )
+        .unwrap();
         assert_eq!(plaintext, "new@example.com");
     }
 

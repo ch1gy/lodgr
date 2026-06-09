@@ -1,4 +1,3 @@
-use std::process::Stdio;
 use axum::{
     extract::{Path, Query, State},
     http::{header, StatusCode},
@@ -6,9 +5,10 @@ use axum::{
     Json,
 };
 use chrono::NaiveDate;
-use tokio::io::AsyncWriteExt;
 use serde::Deserialize;
 use sqlx::SqlitePool;
+use std::process::Stdio;
+use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
 use crate::{
@@ -552,8 +552,14 @@ pub async fn update(
                 .as_deref()
                 .unwrap_or(&inv.billed_to_addr2),
             billed_to_pin: body.billed_to_pin.as_deref().unwrap_or(&inv.billed_to_pin),
-            billed_to_email: body.billed_to_email.as_deref().unwrap_or(&inv.billed_to_email),
-            billed_to_phone: body.billed_to_phone.as_deref().unwrap_or(&inv.billed_to_phone),
+            billed_to_email: body
+                .billed_to_email
+                .as_deref()
+                .unwrap_or(&inv.billed_to_email),
+            billed_to_phone: body
+                .billed_to_phone
+                .as_deref()
+                .unwrap_or(&inv.billed_to_phone),
             items_json: &items_json,
             notes_json: &notes_json,
             editor_note: body.editor_note.as_deref().unwrap_or(&inv.editor_note),
@@ -629,7 +635,9 @@ pub async fn pdf_download(
 
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr);
-        return Err(crate::error::AppError::Internal(format!("pdf-worker: {err}")));
+        return Err(crate::error::AppError::Internal(format!(
+            "pdf-worker: {err}"
+        )));
     }
 
     let filename = format!("invoice-{number}.pdf");

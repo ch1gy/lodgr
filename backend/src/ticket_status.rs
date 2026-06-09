@@ -80,57 +80,96 @@ mod tests {
 
     #[test]
     fn open_to_acknowledged() {
-        assert_eq!(transition("open", TransitionAction::Acknowledge).unwrap().as_str(), "acknowledged");
+        assert_eq!(
+            transition("open", TransitionAction::Acknowledge)
+                .unwrap()
+                .as_str(),
+            "acknowledged"
+        );
     }
 
     #[test]
     fn open_to_pending() {
-        assert_eq!(transition("open", TransitionAction::Pend).unwrap().as_str(), "pending");
+        assert_eq!(
+            transition("open", TransitionAction::Pend).unwrap().as_str(),
+            "pending"
+        );
     }
 
     #[test]
     fn pending_to_acknowledged() {
-        assert_eq!(transition("pending", TransitionAction::Acknowledge).unwrap().as_str(), "acknowledged");
+        assert_eq!(
+            transition("pending", TransitionAction::Acknowledge)
+                .unwrap()
+                .as_str(),
+            "acknowledged"
+        );
     }
 
     #[test]
     fn acknowledged_to_closed() {
-        assert_eq!(transition("acknowledged", TransitionAction::Close).unwrap().as_str(), "closed");
+        assert_eq!(
+            transition("acknowledged", TransitionAction::Close)
+                .unwrap()
+                .as_str(),
+            "closed"
+        );
     }
 
     #[test]
     fn open_to_closed_rejected() {
-        assert!(matches!(transition("open", TransitionAction::Close), Err(AppError::InvalidTransition { .. })));
+        assert!(matches!(
+            transition("open", TransitionAction::Close),
+            Err(AppError::InvalidTransition { .. })
+        ));
     }
 
     #[test]
     fn pending_to_closed_rejected() {
-        assert!(matches!(transition("pending", TransitionAction::Close), Err(AppError::InvalidTransition { .. })));
+        assert!(matches!(
+            transition("pending", TransitionAction::Close),
+            Err(AppError::InvalidTransition { .. })
+        ));
     }
 
     #[test]
     fn pending_to_pend_rejected() {
-        assert!(matches!(transition("pending", TransitionAction::Pend), Err(AppError::InvalidTransition { .. })));
+        assert!(matches!(
+            transition("pending", TransitionAction::Pend),
+            Err(AppError::InvalidTransition { .. })
+        ));
     }
 
     #[test]
     fn acknowledged_to_open_rejected() {
-        assert!(matches!(transition("acknowledged", TransitionAction::Pend), Err(AppError::InvalidTransition { .. })));
+        assert!(matches!(
+            transition("acknowledged", TransitionAction::Pend),
+            Err(AppError::InvalidTransition { .. })
+        ));
     }
 
     #[test]
     fn closed_to_acknowledge_rejected() {
-        assert!(matches!(transition("closed", TransitionAction::Acknowledge), Err(AppError::InvalidTransition { .. })));
+        assert!(matches!(
+            transition("closed", TransitionAction::Acknowledge),
+            Err(AppError::InvalidTransition { .. })
+        ));
     }
 
     #[test]
     fn closed_to_pend_rejected() {
-        assert!(matches!(transition("closed", TransitionAction::Pend), Err(AppError::InvalidTransition { .. })));
+        assert!(matches!(
+            transition("closed", TransitionAction::Pend),
+            Err(AppError::InvalidTransition { .. })
+        ));
     }
 
     #[test]
     fn closed_to_close_rejected() {
-        assert!(matches!(transition("closed", TransitionAction::Close), Err(AppError::InvalidTransition { .. })));
+        assert!(matches!(
+            transition("closed", TransitionAction::Close),
+            Err(AppError::InvalidTransition { .. })
+        ));
     }
 
     #[test]

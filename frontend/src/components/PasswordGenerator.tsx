@@ -114,14 +114,18 @@ function generatePassphrase(
   capitalize: boolean,
   appendNum: boolean,
 ): string {
-  const arr = new Uint32Array(wordCount + 1);
+  const arr = new Uint32Array(wordCount + 2);
   crypto.getRandomValues(arr);
   const words = Array.from({ length: wordCount }, (_, i) => {
     const w = WORDLIST[arr[i] % WORDLIST.length];
     return capitalize ? w[0].toUpperCase() + w.slice(1) : w;
   });
-  const num = appendNum ? sep + String(arr[wordCount] % 100).padStart(2, '0') : '';
-  return words.join(sep) + num;
+  if (appendNum) {
+    const num = String(arr[wordCount] % 100).padStart(2, '0');
+    const pos = arr[wordCount + 1] % (wordCount + 1);
+    words.splice(pos, 0, num);
+  }
+  return words.join(sep);
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────

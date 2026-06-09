@@ -4,6 +4,83 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — test suite: fix broken tests + add T1–T5, F1–F2
+
+### Backend — existing tests fixed (broken after Phase 10 encryption refactor)
+
+The Phase 10 PII-at-rest work changed the signatures of `admin::create_client`,
+`admin::update_client_profile`, and `auth::login` (all now require `enc_key` and
+`email_hash_salt`), updated `db::users::create` to store ciphertext + nonce +
+blind-index hash, and added `email_hash_salt` to `Config`. None of the existing
+integration tests were updated alongside those changes, so the entire suite was
+failing to compile. Fixed in this pass:
+
+- **`tests/common/mod.rs`** — added `email_hash_salt` to `test_config()`; updated
+  `create_test_client` and `create_test_desk` to encrypt the email field and store
+  the Argon2id blind-index hash using the test key/salt.
+- **`tests/auth.rs`** — threaded `enc_key` through all `auth::login` call sites.
+- **`tests/admin.rs`** — updated `create_client` and `update_client_profile` calls
+  with `enc_key` and `email_hash_salt`; added missing `phone` field to all
+  `UpdateClientProfileInput` initialisers.
+- **`tests/lockout.rs`** — added `enc_key` to `auth::login` calls; fixed
+  `WHERE email = ?` → `WHERE id = ?` (email column now stores ciphertext,
+  not plaintext — matching by plaintext would silently match zero rows).
+- **`tests/validation.rs`** — updated the three `create_client` call sites.
+
+### Backend — new tests (T1–T5)
+
+#### T1 — `keep_or_reencrypt` unit tests (5 tests, inline in `services/admin.rs`)
+Directly tests the helper extracted during the C3 audit fix:
+- Re-encrypts when `new_val` is `Some`; result decrypts correctly.
+- New ciphertext differs from old (AES-GCM random nonce ensures this).
+- Passes existing `(ct, nonce)` through unchanged when `new_val` is `None`.
+- Returns `(None, None)` when both `new_val` and existing are `None`.
+- Empty string clears the field (`encrypt_opt` short-circuits on `""`).
+
+#### T2 — Partial profile update preserves all untouched PII fields (1 test, `tests/admin.rs`)
+Creates a client with a full PII profile (address, pin, contact, phone), then
+updates only `name`. Asserts every other field decrypts to its original value.
+Guards against regressions in `keep_or_reencrypt` usage in `update_client_profile`.
+
+#### T3 — Email update rotates blind index (1 test, `tests/admin.rs`)
+Updates a client's email, then verifies the old Argon2id hash no longer finds
+the user via `find_by_email_hash` and the new hash does. Ensures login lookup
+stays consistent with stored email after an email change.
+
+#### T4 — Ticket status state machine (12 tests, inline in `ticket_status.rs`)
+Exhaustive transition table covering every valid and invalid path:
+- Valid: `open→acknowledged`, `open→pending`, `pending→acknowledged`, `acknowledged→closed`.
+- Invalid: all other combinations (`open→close`, `pending→close`, `closed→*`,
+  `acknowledged→pend`, `pending→pend`).
+- Unknown status string returns an error.
+
+#### T5 — Invoice CRUD (7 tests, `tests/invoices.rs`)
+- Create defaults to `"draft"` status.
+- All fields round-trip through `find_by_id`, including `billed_to_email` and `billed_to_phone`.
+- `list` returns all invoices; `list_for_client` filters by client.
+- `update` changes `status` and `number`.
+- `delete` removes the row; subsequent `find_by_id` returns `None`.
+- `next_seq` starts at 1 and increments with each invoice.
+
+### Frontend — Vitest setup + new tests (F1–F2)
+
+Added Vitest to `devDependencies`; wired `npm test` script and `test.environment`
+config in `vite.config.ts`.
+
+#### F1 — `extractApiError` (5 tests, `src/utils/format.test.ts`)
+- Returns `response.data.error` when present.
+- Falls back to custom fallback when `data.error` is missing.
+- Falls back when there is no `response` at all (e.g. `Error('Network Error')`).
+- Uses the default `'Something went wrong'` fallback when none supplied.
+- Handles `null` and `undefined` without throwing.
+
+#### F2 — `safeDecode` (5 tests, `src/auth/AuthContext.test.ts`)
+- Returns `null` for `null`, empty string, and malformed tokens.
+- Decodes a desk full-session token and exposes `sub`, `role`, `session_type`.
+- Decodes a scoped client token and exposes `ticket_scope` and `jti`.
+
+---
+
 ## [Unreleased] — code-audit cleanup (B1, L1, L2, I1–I3, C1–C5, S1–S4)
 
 ### Bug fixes

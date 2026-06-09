@@ -482,6 +482,89 @@ pub(crate) async fn cascade_delete_user_data(
     Ok(())
 }
 
+// ── T1 — keep_or_reencrypt unit tests ────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn test_key() -> EncryptionKey {
+        Arc::new([42u8; 32])
+    }
+
+    #[test]
+    fn reencrypt_when_new_val_some_produces_decryptable_ciphertext() {
+        let key = test_key();
+        let (existing_ct, existing_nonce) = crypto::encrypt(&key, "old@example.com").unwrap();
+
+        let (new_ct, new_nonce) = keep_or_reencrypt(
+            &key,
+            &Some("new@example.com".to_owned()),
+            &Some(existing_ct),
+            &Some(existing_nonce),
+        )
+        .unwrap();
+
+        assert!(new_ct.is_some());
+        assert!(new_nonce.is_some());
+        let plaintext = crypto::decrypt(&key, new_nonce.as_deref().unwrap(), new_ct.as_deref().unwrap()).unwrap();
+        assert_eq!(plaintext, "new@example.com");
+    }
+
+    #[test]
+    fn reencrypt_when_new_val_some_changes_ciphertext() {
+        let key = test_key();
+        let (existing_ct, existing_nonce) = crypto::encrypt(&key, "old@example.com").unwrap();
+        let existing_ct_copy = existing_ct.clone();
+
+        let (new_ct, _) = keep_or_reencrypt(
+            &key,
+            &Some("new@example.com".to_owned()),
+            &Some(existing_ct),
+            &Some(existing_nonce),
+        )
+        .unwrap();
+
+        // Different plaintext must produce different ciphertext.
+        assert_ne!(new_ct.as_deref(), Some(existing_ct_copy.as_str()));
+    }
+
+    #[test]
+    fn keep_when_new_val_none_returns_existing_unchanged() {
+        let key = test_key();
+        let ct = Some("existing_ct_hex".to_owned());
+        let nonce = Some("existing_nonce_hex".to_owned());
+
+        let (result_ct, result_nonce) = keep_or_reencrypt(&key, &None, &ct, &nonce).unwrap();
+
+        assert_eq!(result_ct, ct);
+        assert_eq!(result_nonce, nonce);
+    }
+
+    #[test]
+    fn keep_when_new_val_none_and_existing_none_returns_none() {
+        let key = test_key();
+        let (result_ct, result_nonce) = keep_or_reencrypt(&key, &None, &None, &None).unwrap();
+        assert_eq!(result_ct, None);
+        assert_eq!(result_nonce, None);
+    }
+
+    #[test]
+    fn reencrypt_empty_string_clears_field() {
+        let key = test_key();
+        let ct = Some("existing_ct".to_owned());
+        let nonce = Some("existing_nonce".to_owned());
+
+        // Setting to "" is treated as clearing the field by encrypt_opt.
+        let (result_ct, result_nonce) =
+            keep_or_reencrypt(&key, &Some(String::new()), &ct, &nonce).unwrap();
+
+        assert_eq!(result_ct, None, "empty string must clear the field");
+        assert_eq!(result_nonce, None, "empty string must clear the nonce");
+    }
+}
+
 /// Basic RFC-5321 email validation without external crates.
 fn validate_email(email: &str) -> AppResult<()> {
     if email != email.trim() {

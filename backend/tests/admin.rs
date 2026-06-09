@@ -15,9 +15,13 @@ use backend::{
 #[tokio::test]
 async fn create_client_succeeds() {
     let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let config = common::test_config();
 
     let user = admin::create_client(
         &pool,
+        &enc_key,
+        &config.email_hash_salt,
         "Alice Test".into(),
         "alice@example.com".into(),
         "SecurePass123!".into(),
@@ -34,9 +38,13 @@ async fn create_client_succeeds() {
 #[tokio::test]
 async fn create_client_fails_with_duplicate_email() {
     let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let config = common::test_config();
 
     admin::create_client(
         &pool,
+        &enc_key,
+        &config.email_hash_salt,
         "First".into(),
         "dup@example.com".into(),
         "Pass111111!".into(),
@@ -47,6 +55,8 @@ async fn create_client_fails_with_duplicate_email() {
 
     let r = admin::create_client(
         &pool,
+        &enc_key,
+        &config.email_hash_salt,
         "Second".into(),
         "dup@example.com".into(),
         "Pass222222!".into(),
@@ -63,9 +73,13 @@ async fn create_client_fails_with_duplicate_email() {
 #[tokio::test]
 async fn create_client_fails_with_invalid_email() {
     let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let config = common::test_config();
 
     let r = admin::create_client(
         &pool,
+        &enc_key,
+        &config.email_hash_salt,
         "Test".into(),
         "notanemail".into(),
         "ValidPass123!".into(),
@@ -163,10 +177,14 @@ async fn hard_delete_succeeds_after_export_created() {
 #[tokio::test]
 async fn update_client_profile_name_change_succeeds() {
     let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let config = common::test_config();
     let (client_id, _, _) = common::create_test_client(&pool).await;
 
     let updated = admin::update_client_profile(
         &pool,
+        &enc_key,
+        &config.email_hash_salt,
         &client_id,
         UpdateClientProfileInput {
             name: Some("New Name".into()),
@@ -175,6 +193,7 @@ async fn update_client_profile_name_change_succeeds() {
             address_line2: None,
             pin_number: None,
             contact_person: None,
+            phone: None,
         },
     )
     .await
@@ -186,11 +205,15 @@ async fn update_client_profile_name_change_succeeds() {
 #[tokio::test]
 async fn update_client_profile_email_to_duplicate_fails() {
     let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let config = common::test_config();
     let (client_a, _, _) = common::create_test_client(&pool).await;
     let (client_b, email_b, _) = common::create_test_client(&pool).await;
 
     let r = admin::update_client_profile(
         &pool,
+        &enc_key,
+        &config.email_hash_salt,
         &client_a,
         UpdateClientProfileInput {
             name: None,
@@ -199,6 +222,7 @@ async fn update_client_profile_email_to_duplicate_fails() {
             address_line2: None,
             pin_number: None,
             contact_person: None,
+            phone: None,
         },
     )
     .await;
@@ -209,6 +233,98 @@ async fn update_client_profile_email_to_duplicate_fails() {
     );
 
     let _ = client_b; // suppress unused warning
+}
+
+// ── T2 — partial update must preserve all untouched PII fields ────────────────
+
+#[tokio::test]
+async fn update_profile_touching_only_name_preserves_pii_fields() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let config = common::test_config();
+
+    let client = admin::create_client(
+        &pool,
+        &enc_key,
+        &config.email_hash_salt,
+        "Alice".into(),
+        "alice-pii@test.example".into(),
+        "SecurePass123!".into(),
+        Some(admin::NewClientProfile {
+            address_line1: Some("123 Main St".into()),
+            address_line2: Some("Apt 4".into()),
+            pin_number: Some("SECRET-PIN".into()),
+            contact_person: Some("Bob".into()),
+            phone: Some("+1-555-0100".into()),
+        }),
+    )
+    .await
+    .unwrap();
+
+    let updated = admin::update_client_profile(
+        &pool,
+        &enc_key,
+        &config.email_hash_salt,
+        &client.id,
+        UpdateClientProfileInput {
+            name: Some("Alice Updated".into()),
+            email: None,
+            address_line1: None,
+            address_line2: None,
+            pin_number: None,
+            contact_person: None,
+            phone: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(updated.name, "Alice Updated");
+    assert_eq!(updated.address_line1.as_deref(), Some("123 Main St"), "address_line1 must be preserved");
+    assert_eq!(updated.address_line2.as_deref(), Some("Apt 4"), "address_line2 must be preserved");
+    assert_eq!(updated.pin_number.as_deref(), Some("SECRET-PIN"), "pin_number must be preserved");
+    assert_eq!(updated.contact_person.as_deref(), Some("Bob"), "contact_person must be preserved");
+    assert_eq!(updated.phone.as_deref(), Some("+1-555-0100"), "phone must be preserved");
+}
+
+// ── T3 — email update rotates blind index ─────────────────────────────────────
+
+#[tokio::test]
+async fn email_update_rotates_blind_index_and_old_hash_no_longer_finds_user() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let config = common::test_config();
+    let (client_id, old_email, _) = common::create_test_client(&pool).await;
+    let new_email = format!("updated-{}", old_email);
+
+    let old_hash = backend::crypto::hash_email(&old_email, &config.email_hash_salt).unwrap();
+
+    admin::update_client_profile(
+        &pool,
+        &enc_key,
+        &config.email_hash_salt,
+        &client_id,
+        UpdateClientProfileInput {
+            name: None,
+            email: Some(new_email.clone()),
+            address_line1: None,
+            address_line2: None,
+            pin_number: None,
+            contact_person: None,
+            phone: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    // Old hash must no longer find the user.
+    let by_old = db::users::find_by_email_hash(&pool, &old_hash).await.unwrap();
+    assert!(by_old.is_none(), "old email hash must not find user after email update");
+
+    // New hash must find the user.
+    let new_hash = backend::crypto::hash_email(&new_email, &config.email_hash_salt).unwrap();
+    let by_new = db::users::find_by_email_hash(&pool, &new_hash).await.unwrap();
+    assert!(by_new.is_some(), "new email hash must find user after email update");
 }
 
 // ── Export content ────────────────────────────────────────────────────────────

@@ -34,7 +34,7 @@ async fn permanent_lockout_auto_creates_urgent_security_log_ticket() {
         .unwrap();
 
     // 9th wrong attempt → permanent lock → auto-ticket.
-    let _ = auth::login(&pool, &config, None, &email, "BadPass1234!", peer_ip()).await;
+    let _ = auth::login(&pool, &config, &common::test_enc_key(), None, &email, "BadPass1234!", peer_ip()).await;
 
     let (count,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM tickets
@@ -78,7 +78,7 @@ async fn lockout_ticket_not_duplicated_within_24h() {
         .execute(&pool)
         .await
         .unwrap();
-    let _ = auth::login(&pool, &config, None, &email, "BadPass1234!", peer_ip()).await;
+    let _ = auth::login(&pool, &config, &common::test_enc_key(), None, &email, "BadPass1234!", peer_ip()).await;
 
     // Simulate admin recovery (unlock without full reset — same scenario the desk
     // would do via the unlock endpoint, which clears the lockout but the guard
@@ -90,7 +90,7 @@ async fn lockout_ticket_not_duplicated_within_24h() {
         .unwrap();
 
     // Second lockout within 24 h — must NOT create a duplicate.
-    let _ = auth::login(&pool, &config, None, &email, "BadPass1234!", peer_ip()).await;
+    let _ = auth::login(&pool, &config, &common::test_enc_key(), None, &email, "BadPass1234!", peer_ip()).await;
 
     let (count,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM tickets
@@ -154,16 +154,16 @@ async fn magic_link_exchange_resets_lockout() {
 async fn desk_permanent_lockout_does_not_create_ticket() {
     let (pool, _dir) = common::setup_test_db().await;
     let config = common::test_config();
-    let (_, desk_email, _) = common::create_test_desk(&pool).await;
+    let (desk_id, desk_email, _) = common::create_test_desk(&pool).await;
 
-    sqlx::query("UPDATE users SET failed_attempts = 8, locked_until = NULL WHERE email = ?")
-        .bind(&desk_email)
+    sqlx::query("UPDATE users SET failed_attempts = 8, locked_until = NULL WHERE id = ?")
+        .bind(&desk_id)
         .execute(&pool)
         .await
         .unwrap();
 
     // 9th wrong attempt — desk account hits permanent lockout.
-    let _ = auth::login(&pool, &config, None, &desk_email, "BadPass1234!", peer_ip()).await;
+    let _ = auth::login(&pool, &config, &common::test_enc_key(), None, &desk_email, "BadPass1234!", peer_ip()).await;
 
     let (count,): (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM tickets WHERE ticket_type = 'security_log'")

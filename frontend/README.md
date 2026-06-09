@@ -20,6 +20,19 @@ The Vite dev server proxies `/auth`, `/tickets`, `/admin`, `/reports` to `http:/
 
 In production, the backend's `ServeDir` serves the built frontend at `/`, so the same paths work without a proxy.
 
+## Testing
+
+```bash
+npm test          # run once (CI)
+npm run test      # same
+```
+
+Powered by [Vitest](https://vitest.dev/). Test files live next to the code they test (`*.test.ts` / `*.test.tsx`).
+
+Current coverage:
+- `src/utils/format.test.ts` — `extractApiError` (5 cases)
+- `src/auth/AuthContext.test.ts` — `safeDecode` (5 cases)
+
 ## File layout
 
 ```
@@ -28,42 +41,72 @@ frontend/
 ├── package.json
 ├── tsconfig.json
 ├── tsconfig.node.json
-├── vite.config.ts          proxy config — read this if API calls 404
+├── vite.config.ts          proxy config + Vitest test config
 └── src/
     ├── main.tsx            apply theme then mount React
     ├── App.tsx             provider stack + route table
     │
     ├── api/
-    │   ├── client.ts       axios instance + auto-refresh interceptor
-    │   ├── auth.ts         login / logout / magic / change-password
-    │   ├── tickets.ts      tickets + thread + notes + magic-link
-    │   └── types.ts        TypeScript shapes mirrored from the handoff
+    │   ├── client.ts       axios instance + auto-refresh interceptor + tokenStore
+    │   ├── auth.ts         login / logout / magic / change-password / me
+    │   ├── admin.ts        client CRUD, invoices, desk profile, export
+    │   ├── tickets.ts      tickets + thread + notes + transitions
+    │   └── types.ts        TypeScript shapes mirrored from backend DTOs
     │
     ├── auth/
-    │   └── AuthContext.tsx access-token state, silent refresh on boot,
-    │                       JWT decode → { isDesk, isScoped }
+    │   ├── AuthContext.tsx access-token state, silent refresh on boot,
+    │   │                   JWT decode → { isDesk, isScoped, profile }
+    │   └── AuthContext.test.ts
     │
     ├── theme/
-    │   └── ThemeContext.tsx light/dark + system preference + View
-    │                        Transitions circular reveal
+    │   ├── ThemeContext.tsx  light/dark + system preference + View
+    │   │                     Transitions circular reveal
+    │   └── MorphContext.tsx  glassmorphism / depth toggle
     │
     ├── components/
-    │   ├── Masthead.tsx        editorial top bar w/ theme toggle
-    │   ├── ProtectedRoute.tsx  route gate, optional deskOnly
-    │   ├── StatusPill.tsx      status indicator (open pulses)
-    │   └── PriorityBars.tsx    1-4 vertical bars, color shifts
+    │   ├── Masthead.tsx          editorial top bar w/ theme toggle
+    │   ├── ProtectedRoute.tsx    route gate, optional deskOnly
+    │   ├── StatusPill.tsx        status indicator (open pulses)
+    │   ├── PriorityBars.tsx      1–4 vertical bars, colour shifts
+    │   ├── ConfirmModal.tsx      generic confirmation dialog
+    │   ├── CreateTicketModal.tsx new-ticket form
+    │   ├── EditPropsPanel.tsx    ticket property editor (extracted from TicketDetailPage)
+    │   ├── ReadOnlyProps.tsx     read-only ticket sidebar (extracted from TicketDetailPage)
+    │   ├── CommandPalette.tsx    ⌘K command palette
+    │   ├── MagicLinkModal.tsx    magic link generator for desk
+    │   ├── DraggableRow.tsx      drag-to-reorder row primitive
+    │   ├── Dropdown.tsx          generic dropdown
+    │   ├── Segmented.tsx         segmented control
+    │   ├── CountUp.tsx           animated number counter
+    │   ├── SlaOdometer.tsx       SLA countdown odometer
+    │   ├── PasswordGenerator.tsx random password helper
+    │   ├── ErrorBoundary.tsx     React error boundary wrapper
+    │   ├── BottomTabBar.tsx      mobile tab navigation
+    │   └── Toast.tsx             toast notification stack
     │
     ├── pages/
-    │   ├── LoginPage.tsx        password + magic-link tabs, lockout countdown
-    │   ├── MagicLandingPage.tsx /auth/magic?token=… exchange
-    │   ├── TicketListPage.tsx   editorial queue, 30s polling
-    │   └── TicketDetailPage.tsx article + thread + composer + rails
+    │   ├── LoginPage.tsx         password + magic-link tabs, lockout countdown
+    │   ├── MagicLandingPage.tsx  /auth/magic?token=… exchange + routing
+    │   ├── TicketListPage.tsx    editorial queue, ⌘K, bulk triage
+    │   ├── TicketDetailPage.tsx  article + thread + composer + rails
+    │   ├── ClientsPage.tsx       client list, create/edit/delete/export
+    │   ├── InvoicesPage.tsx      invoice CRUD, PDF preview/download
+    │   ├── ReportsPage.tsx       CSV report generation
+    │   └── SettingsPage.tsx      desk profile + password change
     │
-    └── styles/
-        ├── tokens.css      design tokens, atoms, theme toggle, motion
-        ├── login.css       sign-in page
-        ├── list.css        queue page
-        └── detail.css      single ticket page
+    ├── hooks/
+    │   ├── useFlip.ts            FLIP animation hook
+    │   ├── useMountTransition.ts mount/unmount transition helper
+    │   ├── useMounted.ts         safe isMounted guard
+    │   └── useReveal.ts          scroll-triggered reveal
+    │
+    ├── utils/
+    │   ├── format.ts             extractApiError, timeAgo, daysUntil,
+    │   │                         fmtDateTime, downloadBlob, TICKET_TYPE_LABEL
+    │   └── format.test.ts
+    │
+    └── sfx/
+        └── sfx.ts               synthesised UI sound effects
 ```
 
 ## Design system at a glance
@@ -98,15 +141,9 @@ Theme toggle uses the View Transitions API where available (Chrome 111+, Safari 
 
 - **Internal-note tab + sidebar section + transitions + magic-link generator** for clients.
 - **Queue rail** for scoped sessions (they only see one ticket anyway).
-- **Clients / Reports** masthead links for clients.
+- **Clients / Invoices / Reports / Settings** masthead links for clients.
 
 The server enforces all of this; the client just avoids rendering dead controls.
-
-## Known gaps (from the handoff)
-
-1. **No attachment download route** — thread messages render an attachment pill but no download. Wait for the backend.
-2. **No SSE / WebSocket** — pages poll every 30s (`refetchInterval` on the relevant queries).
-3. **No client-side password change** — magic link is the recovery path. The "Forgot password" link on the login page switches to the magic-link tab.
 
 ## Building for prod
 

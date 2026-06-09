@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use std::sync::Arc;
 
-use backend::{config::Config, crypto::EncryptionKey, db, services::auth::hash_password};
+use backend::{config::Config, crypto, crypto::EncryptionKey, db, services::auth::hash_password};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
     SqlitePool,
@@ -48,6 +48,8 @@ pub fn test_config() -> Config {
         rate_limit_report_rps: 0.2,
         rate_limit_report_burst: 3,
         desk_email: "desk@local".into(),
+        // 64 hex chars = 32 bytes of 0xaa — valid Argon2id salt for tests.
+        email_hash_salt: Zeroizing::new("a".repeat(64)),
     }
 }
 
@@ -56,25 +58,37 @@ pub fn test_enc_key() -> EncryptionKey {
     Arc::new([42u8; 32])
 }
 
-/// Create a client user and return (id, email, raw_password).
+/// Create a client user with encrypted PII and return (id, plaintext_email, raw_password).
 pub async fn create_test_client(pool: &SqlitePool) -> (String, String, String) {
     let id = Uuid::new_v4().to_string();
     let email = format!("client-{}@test.example", &id[..8]);
     let password = "TestPassword123!".to_owned();
     let hash = hash_password(&password).unwrap();
-    db::users::create(pool, &id, "Test Client", &email, &hash, "client")
+
+    let enc_key = test_enc_key();
+    let config = test_config();
+    let (email_nonce, email_ct) = crypto::encrypt(&enc_key, &email).unwrap();
+    let email_hash = crypto::hash_email(&email, &config.email_hash_salt).unwrap();
+
+    db::users::create(pool, &id, "Test Client", &email_ct, &email_nonce, &email_hash, &hash, "client")
         .await
         .unwrap();
     (id, email, password)
 }
 
-/// Create a desk user and return (id, email, raw_password).
+/// Create a desk user with encrypted PII and return (id, plaintext_email, raw_password).
 pub async fn create_test_desk(pool: &SqlitePool) -> (String, String, String) {
     let id = Uuid::new_v4().to_string();
     let email = format!("desk-{}@test.example", &id[..8]);
     let password = "DeskPassword456!".to_owned();
     let hash = hash_password(&password).unwrap();
-    db::users::create(pool, &id, "Test Desk", &email, &hash, "desk")
+
+    let enc_key = test_enc_key();
+    let config = test_config();
+    let (email_nonce, email_ct) = crypto::encrypt(&enc_key, &email).unwrap();
+    let email_hash = crypto::hash_email(&email, &config.email_hash_salt).unwrap();
+
+    db::users::create(pool, &id, "Test Desk", &email_ct, &email_nonce, &email_hash, &hash, "desk")
         .await
         .unwrap();
     (id, email, password)

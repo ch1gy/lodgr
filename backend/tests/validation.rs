@@ -44,8 +44,12 @@ fn strong_password_accepted() {
 #[tokio::test]
 async fn email_missing_at_rejected() {
     let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let config = common::test_config();
     let r = backend::services::admin::create_client(
         &pool,
+        &enc_key,
+        &config.email_hash_salt,
         "Test".into(),
         "notanemail".into(),
         "ValidPass123!".into(),
@@ -58,8 +62,12 @@ async fn email_missing_at_rejected() {
 #[tokio::test]
 async fn email_missing_domain_rejected() {
     let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let config = common::test_config();
     let r = backend::services::admin::create_client(
         &pool,
+        &enc_key,
+        &config.email_hash_salt,
         "Test".into(),
         "user@".into(),
         "ValidPass123!".into(),
@@ -72,8 +80,12 @@ async fn email_missing_domain_rejected() {
 #[tokio::test]
 async fn email_leading_dot_in_domain_rejected() {
     let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let config = common::test_config();
     let r = backend::services::admin::create_client(
         &pool,
+        &enc_key,
+        &config.email_hash_salt,
         "Test".into(),
         "user@.example.com".into(),
         "ValidPass123!".into(),

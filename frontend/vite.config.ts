@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
 // Vite proxy — the backend uses SameSite=Strict cookies and no CORS headers,
@@ -10,6 +10,9 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    environment: 'node',
+  },
   server: {
     proxy: {
       '/auth': 'http://localhost:3000',

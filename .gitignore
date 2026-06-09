@@ -15,3 +15,6 @@ node_modules/
 frontend/dist/
 frontend/.env
 frontend/.env.local
+
+# Internal working documents
+design.md

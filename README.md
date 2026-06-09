@@ -3,9 +3,9 @@
 A self-hosted support ticket system for a single desk agent managing a set of clients.
 Editorial-style React frontend (Vite + TypeScript) backed by a Rust API (Axum + SQLite).
 
-Features JWT authentication, AES-256-GCM message encryption, structured audit logging,
-account lockout, and has been reviewed against the OWASP Top 10; open findings are
-tracked in PLANNED.md.
+Features JWT authentication, field-level AES-256-GCM encryption on all PII, structured
+audit logging, account lockout, and has been reviewed against the OWASP Top 10; open
+findings are tracked in PLANNED.md.
 
 ---
 
@@ -612,7 +612,76 @@ Applied on account creation and password change:
 
 ---
 
+## Privacy by Design
+
+Privacy protection was a design constraint from the start, not a retrofit. The
+architectural decisions below reflect that:
+
+**Field-level encryption on all PII.** Every user-identifiable field (email,
+name, address, phone, PIN, contact person) is encrypted with AES-256-GCM before
+being written to the database. A full database dump is unreadable without the
+application key — disk-level encryption alone would not achieve this.
+
+**Argon2id blind-index for email lookup.** The server needs to look users up by
+email at login time without storing plaintext. Rather than a fast hash (SHA-256),
+which is rainbow-table-attackable, an Argon2id-derived hash is stored alongside
+the ciphertext. The hash is useless to an attacker without the salt even if the
+database is compromised.
+
+**No plaintext tokens stored anywhere.** Refresh tokens and magic link tokens are
+stored as SHA-256 hashes only. A database breach yields 64-character hex strings
+that cannot be reversed to usable credentials. The raw token lives only in the
+browser's HttpOnly cookie.
+
+**Notification emails contain no ticket content.** Email bodies carry only the
+recipient name, a subject line, and a link. No message thread content is ever
+transmitted via email — reducing exposure to email provider logging and interception.
+
+**Minimal retention, automated cleanup.** Export files are deleted immediately on
+download (RAII guard — survives panics) and hourly for anything not yet downloaded.
+Soft-deleted accounts are permanently purged after 30 days by a background task.
+Session tokens and magic links are cleaned daily.
+
+**What was deliberately left out.** No analytics, no tracking pixels, no
+third-party JavaScript, no logging of raw email addresses or token values. The
+audit log records event types and UUIDs — not content.
+
+A deployer-facing privacy notice for end users is in [docs/PRIVACY-NOTICE.md](docs/PRIVACY-NOTICE.md).
+Breach response guidance is in [docs/INCIDENT-RESPONSE.md](docs/INCIDENT-RESPONSE.md).
+
+---
+
+## Security Posture
+
+Reviewed against the OWASP Top 10, ASVS v5.0, and API Security Top 10 2023
+across three passes. Current open findings are in PLANNED.md.
+
+**What's strong**
+- AES-256-GCM with per-entry nonces on all PII, message bodies, and internal notes
+- Argon2id explicit params (64 MiB / 3 iter / 4-thread) for passwords; (64 MiB / 3 iter / 1-thread) for key derivation
+- SHA-256 refresh token + magic link token storage — DB breach doesn't yield usable tokens
+- Refresh token rotation with replay detection (replay = all sessions wiped immediately)
+- Per-account lockout: 5 failures → exponential backoff → permanent lock → auto-ticket
+- Scoped magic link sessions; `DeskUser` extractor rejects scoped tokens at the middleware layer
+- Magic link `jti` revocation — outstanding tokens can be killed via the revoke-sessions endpoint
+- JWT validation pins HS256; requires `sub` and `exp` claims
+- Full security header stack: CSP, HSTS, X-Frame-Options, Referrer-Policy, Permissions-Policy, nosniff
+- Parameterised SQL throughout — no injection surface
+- Structured audit logging on every auth and admin event; token values never logged
+- Input validation: enums, lengths, date format, email format, 101-entry common-password blocklist, Unicode char count, file extension allowlist
+- Hard delete fully cascading in a single transaction
+- Export: RAII drop guard, download-and-delete, 60 s rate limit, hourly stale-file cleanup
+- File downloads: auth-gated, path-traversal-safe, `Content-Type: application/octet-stream`
+- `ENCRYPTION_PASSPHRASE`, `jwt_secret`, `smtp_password` zeroed in memory on drop (`Zeroizing`)
+- Background tasks supervised with exponential-backoff restart
+
+**Still open**
+- `fs::read` loads entire attachment into memory; no download rate limit (M4)
+- No CORS middleware for non-same-origin deploys (M7)
+
+---
+
 ## Planned Features
 
-See [PLANNED.md](PLANNED.md) for upcoming features including client password
-self-service, auto-ticket on account lockout, and multi-desk support.
+See [PLANNED.md](PLANNED.md) for upcoming features including Tauri desktop
+wrapper, multi-desk support, and the remaining security hardening items.

@@ -588,16 +588,18 @@ async fn insert_invoice(
          (id, client_id, number, status, currency, terms, issued_date, due_date,
           project_type, project_location, billed_to_name, billed_to_role,
           billed_to_addr1, billed_to_addr2, billed_to_pin, billed_to_email, billed_to_phone,
-          items, notes, editor_note, recurring, created_at)
+          items, notes, editor_note, recurring, recur_interval, next_recur_date, created_at)
          VALUES (?, ?, ?, ?, 'KES', 'Net 14', '2026-01-01', '2026-01-15',
-                 '', '', 'Test Client', '', '', '', '', '', '',
-                 '[]', '[]', '', ?, ?)",
+                 '', '', 'Test Client', 'Test Contact', '', '', '', '', '',
+                 '[]', '[]', '', ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(client_id)
-    .bind(format!("INV-{}", &id[..4]))
+    .bind(format!("INV-{id}"))
     .bind(status)
     .bind(recurring as i64)
+    .bind(if recurring { Some("monthly") } else { None::<&str> })
+    .bind(if recurring { Some("2026-01-01") } else { None::<&str> })
     .bind(&now)
     .execute(pool)
     .await
@@ -627,7 +629,8 @@ async fn hard_delete_removes_draft_invoice_retains_sent() {
     let (client_id, email, _) = common::create_test_client(&pool).await;
 
     let draft_id = insert_invoice(&pool, &client_id, "draft", false).await;
-    let sent_id = insert_invoice(&pool, &client_id, "sent", false).await;
+    // recurring = true so the UPDATE … SET recurring = 0 path is actually exercised.
+    let sent_id = insert_invoice(&pool, &client_id, "sent", true).await;
 
     admin::do_export(&pool, &enc_key, &client_id).await.unwrap();
     admin::hard_delete_client(
@@ -650,18 +653,18 @@ async fn hard_delete_removes_draft_invoice_retains_sent() {
         .unwrap();
     assert_eq!(draft_count, 0, "draft invoice must be deleted with client");
 
-    // Sent invoice must survive with client_id NULL and recurring disabled.
-    let row: (Option<String>, i64) =
-        sqlx::query_as("SELECT client_id, recurring FROM invoices WHERE id = ?")
-            .bind(&sent_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert!(
-        row.0.is_none(),
-        "sent invoice client_id must be NULL after deletion"
-    );
+    // Sent invoice must survive with client_id NULL and all recurrence fields cleared.
+    let row: (Option<String>, i64, Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT client_id, recurring, recur_interval, next_recur_date FROM invoices WHERE id = ?",
+    )
+    .bind(&sent_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(row.0.is_none(), "sent invoice client_id must be NULL after deletion");
     assert_eq!(row.1, 0, "sent invoice recurring must be disabled");
+    assert!(row.2.is_none(), "recur_interval must be NULL after disabling recurrence");
+    assert!(row.3.is_none(), "next_recur_date must be NULL after disabling recurrence");
 }
 
 #[tokio::test]
@@ -724,10 +727,11 @@ async fn export_contains_invoices() {
     let raw = tokio::fs::read_to_string(&output.file_path).await.unwrap();
     let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
 
-    assert_eq!(
-        json["invoices"].as_array().map(|a| a.len()).unwrap_or(0),
-        2,
-        "export must include all invoices for the client"
+    let invoices = json["invoices"].as_array().unwrap();
+    assert_eq!(invoices.len(), 2, "export must include all invoices for the client");
+    assert!(
+        invoices.iter().all(|inv| inv["billed_to_role"].as_str() == Some("Test Contact")),
+        "export must include billed_to_role for every invoice"
     );
 
     tokio::fs::remove_dir_all(format!("exports/{client_id}"))

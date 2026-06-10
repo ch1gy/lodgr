@@ -4,6 +4,172 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — CI hardening + b37511f follow-ups
+
+### Backend — test correctness
+
+#### Fix vacuous recurrence-disable assertion (`backend/tests/admin.rs`)
+`hard_delete_removes_draft_invoice_retains_sent` previously inserted the sent
+invoice with `recurring = false`, so the `UPDATE invoices SET recurring = 0 …`
+in `cascade_delete_user_data` was never actually exercised — the assertion passed
+trivially. Fixed:
+- `insert_invoice` now accepts `recurring: bool`; when `true`, also sets
+  `recur_interval = 'monthly'` and `next_recur_date = '2026-01-01'` to satisfy
+  the table's CHECK constraint (`recurring = 0 OR (recur_interval IS NOT NULL AND
+  next_recur_date IS NOT NULL)`).
+- The sent invoice is now inserted with `recurring = true`.
+- After hard-delete the test asserts `recurring = 0`, `recur_interval IS NULL`,
+  and `next_recur_date IS NULL` — all three columns must be cleared, not just the flag.
+- Invoice numbers changed from `format!("INV-{}", &id[..4])` (4-hex flake risk on
+  UNIQUE collisions across two invoices in the same test) to `format!("INV-{id}")`
+  (full UUID, collision-free).
+- `billed_to_role` in the helper changed from `''` to `'Test Contact'` to enable a
+  meaningful round-trip assertion.
+
+#### ExportInvoice missing personal-data fields (`backend/src/services/export.rs`)
+`ExportInvoice` omitted six fields that are part of the billing profile and
+therefore required in a data-subject access export:
+- `billed_to_role` — maps to the contact person's job role; personal data
+- `kra_number: Option<String>` — tax registration number
+- `editor_note` — desk note attached to the invoice
+- `terms` — payment terms (e.g. "Net 30")
+- `project_type` / `project_location` — scope and location of the engagement
+
+All six added to `ExportInvoice` and populated in the `export_client` mapping.
+`export_contains_invoices` extended to assert `billed_to_role` round-trips through
+the export serialization.
+
+### CI — coverage and reliability
+
+#### Frontend job added (`.github/workflows/ci.yml`)
+Zero frontend CI existed before this change. New job `frontend` runs on
+`ubuntu-latest` with Node 20 and `npm ci` caching:
+- `npm run lint` — ESLint
+- `npm test` — Vitest suite
+- `npm run build` — `tsc -b && vite build`, catching TypeScript type errors that
+  Vitest alone would not surface
+
+#### `cargo clippy --all-targets` (`.github/workflows/ci.yml`)
+Changed from `cargo clippy -- -D warnings` to `cargo clippy --all-targets -- -D warnings`
+so that the ~2,500-line integration test tree (`backend/tests/`) is included in
+linting. Previously the test code was never linted.
+
+#### `cargo test --locked` (`.github/workflows/ci.yml`)
+Added `--locked` to `cargo test` (and `cargo build` in the Windows job) to
+ensure the lock file is respected and prevents silent dependency drift.
+
+#### Prebuilt `cargo-audit` via `taiki-e/install-action` (`.github/workflows/ci.yml`)
+Replaced `cargo install cargo-audit --quiet` (compiles from source on every run,
+~2 min) with `taiki-e/install-action@v2` (downloads a prebuilt binary, ~5 s).
+The `--ignore RUSTSEC-2023-0071` flag and its documented rationale are unchanged.
+
+#### Weekly audit schedule (`.github/workflows/ci.yml`)
+Added `schedule: cron: '0 6 * * 1'` (Monday 06:00 UTC) so new RUSTSEC advisories
+are caught without requiring a code push.
+
+#### Concurrency, timeouts, Swatinem cache, Windows build job (`.github/workflows/ci.yml`)
+- `concurrency: group: ci-${{ github.ref }}, cancel-in-progress: true` — redundant
+  runs on rapid pushes are cancelled rather than queued.
+- `timeout-minutes: 30` on every job — no job can hang indefinitely.
+- `actions/cache@v4` manual block replaced with `Swatinem/rust-cache@v2` which
+  also handles `~/.cargo/bin` and target directory fingerprinting correctly.
+- New `build-windows` job: `cargo build --locked` on `windows-latest` catches
+  Windows-specific compile errors without running the test suite (known-broken on
+  Windows due to SQLite temp-file path issues).
+
+### Docs
+
+#### README "Soft Delete & Recovery" updated (`README.md`)
+The cascade list in item 4 now accurately names all tables touched by a hard
+delete: sub-clients (deleted), draft invoices (deleted), issued invoices (retained
+as orphaned bookkeeping records with recurrence disabled and statutory retention),
+tickets, thread entries, notes, sessions, magic links, JWT revocations, and auth
+events.
+
+---
+
+## [Unreleased] — BUG-2/N-3/N-4: invoice retention on client hard-delete
+
+### Backend — schema
+
+#### Migration `003_invoice_retention.sql` (`backend/migrations/003_invoice_retention.sql`)
+Rebuilds the `invoices` table to change `client_id` from `NOT NULL REFERENCES
+users(id) ON DELETE CASCADE` to `REFERENCES users(id) ON DELETE SET NULL` (nullable).
+SQLite does not support `ALTER TABLE … ALTER COLUMN` or changing FK actions in-place;
+the migration uses the standard rebuild pattern: `CREATE invoices_new`, `INSERT …
+SELECT *`, `DROP invoices`, `RENAME invoices_new`, recreate indexes. All existing
+invoices are preserved unchanged.
+
+### Backend — cascade logic
+
+#### BUG-2: draft invoices deleted; issued invoices orphaned on hard-delete (`backend/src/services/admin.rs`)
+`cascade_delete_user_data` now executes three additional statements before the
+ticket/session deletes:
+1. `DELETE FROM invoices WHERE client_id = ? AND status = 'draft'` — draft invoices
+   die with the client (no statutory retention obligation; not yet issued).
+2. `UPDATE invoices SET recurring = 0, recur_interval = NULL, next_recur_date = NULL
+   WHERE client_id = ?` — disables recurrence on all issued invoices so the
+   background task cannot spawn new invoices for a deleted client.
+3. `DELETE FROM sub_clients WHERE client_id = ?` — sub-clients are always deleted
+   with the client (ticket FKs to sub_clients are `ON DELETE SET NULL`).
+
+Issued invoices (status `sent` or `paid`) are left in the table with `client_id`
+set to NULL by the FK's `ON DELETE SET NULL` action when the user row is deleted,
+satisfying the 10-year CH / 5-year KE statutory bookkeeping retention requirement.
+
+#### N-3: `Invoice.client_id` made nullable throughout the codebase
+Changed `String` → `Option<String>` in `models::Invoice`, `dto::InvoiceResponse`,
+`db::invoices::create` return, `db::invoices::list_due_for_recurrence` (added `AND
+client_id IS NOT NULL` guard), `tasks::recurring_invoices` (added null-client guard
+with tracing warning before spawning a new invoice), and `frontend/src/api/types.ts`
+(`string` → `string | null`). `InvoicesPage.tsx` displays orphaned invoices as
+`"<billed_to_name> (former client)"` when `client_id` is null.
+
+### Backend — invoice numbering
+
+#### BUG-4: `next_seq` uses `MAX` not `COUNT` (`backend/src/db/invoices.rs`)
+`COUNT(*) + 1` collides when invoices are deleted (e.g. delete INV-0003 → next is
+0003 again, violating UNIQUE). Replaced with:
+```sql
+SELECT MAX(CAST(SUBSTR(number, 5) AS INTEGER)) FROM invoices WHERE number LIKE 'INV-%'
+```
+`CAST` stops at the first non-digit, so recurring-clone numbers like
+`INV-0042-auto-xxx` correctly yield 42. Returns 1 when the table is empty
+(`MAX` of empty set is NULL; `unwrap_or(0) + 1`).
+
+### Backend — data export
+
+#### N-4: export now includes invoices (`backend/src/services/export.rs`)
+`ExportDocument` gained an `invoices: Vec<ExportInvoice>` field. `ExportInvoice`
+carries all billing fields (number, status, currency, terms, dates, project info,
+all `billed_to_*` fields, `kra_number`, `editor_note`, items JSON, notes JSON).
+Required for FADP/KE DPA data-portability compliance: an access-export request must
+include all data held about the subject, including invoices.
+
+### Backend — privacy notice
+
+#### `docs/PRIVACY-NOTICE.md` updated
+Added billing profile and invoices rows to the "What data we hold" table. Removed
+the false "We do not store: phone numbers, physical addresses…" statement (those
+fields are stored in billing profiles). Added draft/issued invoice rows to the
+retention table with legal basis. Updated Access, Erasure, and Portability rights
+sections to mention invoices explicitly.
+
+### Tests
+
+#### 4 new tests, 2 existing tests fixed
+- **`hard_delete_removes_draft_invoice_retains_sent`** — verifies draft is deleted,
+  sent survives with `client_id = NULL` and `recurring = 0`
+- **`hard_delete_with_sub_clients_succeeds`** — verifies sub-clients and their
+  FK-chained tickets are handled without constraint errors
+- **`export_contains_invoices`** — verifies both invoices appear in the export JSON
+- **`orphan_check_extended_with_invoices_and_sub_clients`** — extends the existing
+  orphan-check test to cover the new cascade entries
+- **`tests/invoices.rs`** — two `assert_eq!(fetched.client_id, client_id)` calls
+  updated to `Some(client_id)` after `client_id` became `Option<String>`
+
+---
+
 ## [Unreleased] — test suite: fix broken tests + add T1–T5, F1–F2
 
 ### Backend — existing tests fixed (broken after Phase 10 encryption refactor)

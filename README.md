@@ -599,7 +599,12 @@ Hard deletion:
 1. Requires at least one prior export (`POST /admin/clients/:id/export`)
 2. Requires the exact confirmation string `permanently delete <email>`
 3. Creates a final export automatically before deleting
-4. Cascades to all tickets, thread entries, notes, sessions, and magic links in a single transaction — no orphaned rows
+4. In a single transaction:
+   - **Sub-clients** — deleted
+   - **Draft invoices** — deleted
+   - **Issued invoices** (sent/paid) — retained as orphaned bookkeeping records (`client_id = NULL`) with recurrence disabled; statutory retention 10 years (Swiss CO Art. 958f) / 5 years (Kenya TPA)
+   - **Tickets, thread entries, internal notes, sessions, magic links, JWT revocations, auth events** — deleted
+   - No orphaned rows anywhere
 
 ---
 

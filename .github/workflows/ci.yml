@@ -5,11 +5,18 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  schedule:
+    - cron: '0 6 * * 1'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
     name: Build & Audit
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -19,30 +26,66 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - name: Cache cargo registry and build artifacts
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
 
       - name: cargo fmt --check
         run: cargo fmt --check
 
       - name: cargo clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: cargo test
-        run: cargo test
+        run: cargo test --locked
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
 
       - name: cargo audit
         run: |
-          cargo install cargo-audit --quiet
           # RUSTSEC-2023-0071: Marvin Attack on the `rsa` crate — no-risk for this
           # project. `rsa` is a transitive dependency of sqlx-mysql (via
           # sqlx-macros-core) even though this project uses only SQLite. The affected
           # code path is never reachable. Documented in CHANGELOG.md.
           cargo audit --ignore RUSTSEC-2023-0071
+
+  frontend:
+    name: Frontend — lint, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  build-windows:
+    name: Build (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo build
+        run: cargo build --locked

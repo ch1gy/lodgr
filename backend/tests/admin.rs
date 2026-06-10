@@ -598,8 +598,16 @@ async fn insert_invoice(
     .bind(format!("INV-{id}"))
     .bind(status)
     .bind(recurring as i64)
-    .bind(if recurring { Some("monthly") } else { None::<&str> })
-    .bind(if recurring { Some("2026-01-01") } else { None::<&str> })
+    .bind(if recurring {
+        Some("monthly")
+    } else {
+        None::<&str>
+    })
+    .bind(if recurring {
+        Some("2026-01-01")
+    } else {
+        None::<&str>
+    })
     .bind(&now)
     .execute(pool)
     .await
@@ -661,10 +669,19 @@ async fn hard_delete_removes_draft_invoice_retains_sent() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert!(row.0.is_none(), "sent invoice client_id must be NULL after deletion");
+    assert!(
+        row.0.is_none(),
+        "sent invoice client_id must be NULL after deletion"
+    );
     assert_eq!(row.1, 0, "sent invoice recurring must be disabled");
-    assert!(row.2.is_none(), "recur_interval must be NULL after disabling recurrence");
-    assert!(row.3.is_none(), "next_recur_date must be NULL after disabling recurrence");
+    assert!(
+        row.2.is_none(),
+        "recur_interval must be NULL after disabling recurrence"
+    );
+    assert!(
+        row.3.is_none(),
+        "next_recur_date must be NULL after disabling recurrence"
+    );
 }
 
 #[tokio::test]
@@ -728,9 +745,15 @@ async fn export_contains_invoices() {
     let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
 
     let invoices = json["invoices"].as_array().unwrap();
-    assert_eq!(invoices.len(), 2, "export must include all invoices for the client");
+    assert_eq!(
+        invoices.len(),
+        2,
+        "export must include all invoices for the client"
+    );
     assert!(
-        invoices.iter().all(|inv| inv["billed_to_role"].as_str() == Some("Test Contact")),
+        invoices
+            .iter()
+            .all(|inv| inv["billed_to_role"].as_str() == Some("Test Contact")),
         "export must include billed_to_role for every invoice"
     );
 

@@ -16,6 +16,7 @@ export interface JwtPayload {
   role?: 'desk' | 'client';
   session_type: SessionType;
   ticket_scope: string | null;
+  jti?: string | null;
   exp: number;
   iat: number;
 }

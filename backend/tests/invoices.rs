@@ -67,7 +67,7 @@ async fn create_invoice_persists_all_fields() {
     assert_eq!(fetched.billed_to_email, "billing@acme.example");
     assert_eq!(fetched.billed_to_phone, "+254-700-000000");
     assert_eq!(fetched.editor_note, "Thank you for your business.");
-    assert_eq!(fetched.client_id, client_id);
+    assert_eq!(fetched.client_id, Some(client_id));
 }
 
 // ── List ──────────────────────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ async fn list_for_client_filters_by_client() {
         .await
         .unwrap();
     assert_eq!(for_a.len(), 1);
-    assert_eq!(for_a[0].client_id, client_a);
+    assert_eq!(for_a[0].client_id, Some(client_a));
 }
 
 // ── Update ────────────────────────────────────────────────────────────────────

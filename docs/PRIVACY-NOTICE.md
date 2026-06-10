@@ -33,9 +33,11 @@ When your account is created and while you use the system, Lodgr stores:
 | **File attachments** | Documents you upload as part of a support request |
 | **Session information** | A token stored in your browser to keep you logged in. Only a SHA-256 hash is stored on the server — the raw token is never written to any persistent storage |
 | **Login event data** | Timestamps and source IP addresses for successful and failed login attempts, retained in server log files for security monitoring |
+| **Billing profile** (contact person, postal address, tax/VAT/PIN number, phone number) | To prepare and address invoices issued to you |
+| **Invoices** (billing name, address, tax/PIN number, email, phone, line items, amounts, dates) | Statutory bookkeeping records required by applicable law |
 
-We do **not** store: phone numbers, physical addresses, dates of birth, payment
-information, or any other data beyond what is listed above.
+We do **not** store: dates of birth, payment card or bank credentials, or any data
+beyond what is listed above.
 
 ---
 
@@ -45,6 +47,8 @@ information, or any other data beyond what is listed above.
 |---|---|
 | Your account and all associated data | Retained until you request deletion. After a deletion request the account enters a 30-day recovery window, then is permanently deleted automatically |
 | Message threads and attachments | Deleted together with your account |
+| **Draft invoices** | Deleted together with your account |
+| **Issued invoices** (status: sent or paid) | Retained for the statutory bookkeeping period — **10 years** (Swiss Code of Obligations, Art. 958f) / **5 years** (Kenya Tax Procedures Act) — even after account deletion, on the legal basis of statutory record-keeping obligations. Retained invoices are no longer linked to a login account and can no longer be accessed through this system by any party except the desk operator for bookkeeping purposes |
 | Session tokens | Expired sessions cleaned automatically; all sessions revoked if suspicious activity is detected |
 | Server log files | Retained for 30 days, then automatically deleted by log rotation |
 | Data export files | Deleted from the server within 24 hours of generation or immediately upon download |
@@ -87,7 +91,8 @@ contact the desk operator at the address above.
 
 **Access** — You may request a copy of all data Lodgr holds about you. The desk
 operator will generate an export (a JSON file) containing your profile, all your
-tickets, and all message thread content in decrypted form.
+tickets, all message thread content in decrypted form, and all invoices issued to you.
+
 
 **Rectification** — If your name or email address is incorrect, you may ask the
 desk operator to correct it. The desk can update your profile directly.
@@ -95,10 +100,13 @@ desk operator to correct it. The desk can update your profile directly.
 **Erasure** — You may request that your account and all associated data be permanently
 deleted. The desk operator will initiate deletion; a 30-day recovery window applies
 before data is permanently removed. Immediate deletion can be requested explicitly.
+Note: issued invoices (sent or paid) are retained for the statutory bookkeeping period
+described in the retention table above even after account deletion — this is a legal
+obligation, not discretion. Draft invoices are deleted with your account.
 
 **Portability** — You may request a machine-readable export of your data. Lodgr
-exports data as a structured JSON file containing your full profile and complete
-ticket history.
+exports data as a structured JSON file containing your full profile, complete ticket
+history, and all invoices issued to you.
 
 **Objection** — If you have concerns about how your data is processed, contact the
 desk operator. If you are not satisfied with their response, you may contact the

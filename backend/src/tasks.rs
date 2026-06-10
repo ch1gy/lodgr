@@ -104,6 +104,16 @@ pub async fn recurring_invoices(pool: SqlitePool) {
                         continue;
                     };
 
+                    // Belt-and-braces: list_due_for_recurrence already excludes NULL-client
+                    // templates, but guard here too so a direct DB edit can't cause a panic.
+                    let Some(ref client_id) = t.client_id else {
+                        tracing::warn!(
+                            "recurring invoice: template {} has no client_id — skipping",
+                            t.id
+                        );
+                        continue;
+                    };
+
                     let new_id = Uuid::new_v4().to_string();
                     // Include a short UUID segment so the number is unique per auto-generation,
                     // preventing UNIQUE constraint collisions on restart or template reuse.
@@ -120,7 +130,7 @@ pub async fn recurring_invoices(pool: SqlitePool) {
                             &pool,
                             db::invoices::NewInvoice {
                                 id: &new_id,
-                                client_id: &t.client_id,
+                                client_id,
                                 number: &number,
                                 currency: &t.currency,
                                 terms: &t.terms,

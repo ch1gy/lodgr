@@ -183,7 +183,8 @@ impl Claims {
 #[allow(dead_code)]
 pub struct Invoice {
     pub id: String,
-    pub client_id: String,
+    /// NULL for issued invoices whose client was hard-deleted (retained for bookkeeping).
+    pub client_id: Option<String>,
     pub number: String,
     pub status: String,
     pub currency: String,

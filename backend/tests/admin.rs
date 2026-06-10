@@ -572,3 +572,241 @@ async fn hard_delete_leaves_no_orphaned_rows_in_any_child_table() {
         "user must not exist after hard delete"
     );
 }
+
+// ── Invoice + sub_client cascade tests ───────────────────────────────────────
+
+async fn insert_invoice(
+    pool: &sqlx::SqlitePool,
+    client_id: &str,
+    status: &str,
+    recurring: bool,
+) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO invoices
+         (id, client_id, number, status, currency, terms, issued_date, due_date,
+          project_type, project_location, billed_to_name, billed_to_role,
+          billed_to_addr1, billed_to_addr2, billed_to_pin, billed_to_email, billed_to_phone,
+          items, notes, editor_note, recurring, created_at)
+         VALUES (?, ?, ?, ?, 'KES', 'Net 14', '2026-01-01', '2026-01-15',
+                 '', '', 'Test Client', '', '', '', '', '', '',
+                 '[]', '[]', '', ?, ?)",
+    )
+    .bind(&id)
+    .bind(client_id)
+    .bind(format!("INV-{}", &id[..4]))
+    .bind(status)
+    .bind(recurring as i64)
+    .bind(&now)
+    .execute(pool)
+    .await
+    .unwrap();
+    id
+}
+
+async fn insert_sub_client(pool: &sqlx::SqlitePool, client_id: &str) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO sub_clients (id, client_id, name, created_at) VALUES (?, ?, 'Sub', ?)",
+    )
+    .bind(&id)
+    .bind(client_id)
+    .bind(&now)
+    .execute(pool)
+    .await
+    .unwrap();
+    id
+}
+
+#[tokio::test]
+async fn hard_delete_removes_draft_invoice_retains_sent() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (client_id, email, _) = common::create_test_client(&pool).await;
+
+    let draft_id = insert_invoice(&pool, &client_id, "draft", false).await;
+    let sent_id = insert_invoice(&pool, &client_id, "sent", false).await;
+
+    admin::do_export(&pool, &enc_key, &client_id).await.unwrap();
+    admin::hard_delete_client(
+        &pool,
+        &enc_key,
+        &client_id,
+        &format!("permanently delete {email}"),
+    )
+    .await
+    .unwrap();
+    tokio::fs::remove_dir_all(format!("exports/{client_id}"))
+        .await
+        .ok();
+
+    // Draft must be gone.
+    let draft_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM invoices WHERE id = ?")
+        .bind(&draft_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(draft_count, 0, "draft invoice must be deleted with client");
+
+    // Sent invoice must survive with client_id NULL and recurring disabled.
+    let row: (Option<String>, i64) =
+        sqlx::query_as("SELECT client_id, recurring FROM invoices WHERE id = ?")
+            .bind(&sent_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(
+        row.0.is_none(),
+        "sent invoice client_id must be NULL after deletion"
+    );
+    assert_eq!(row.1, 0, "sent invoice recurring must be disabled");
+}
+
+#[tokio::test]
+async fn hard_delete_with_sub_clients_succeeds() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (client_id, email, _) = common::create_test_client(&pool).await;
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+
+    let sub_id = insert_sub_client(&pool, &client_id).await;
+
+    // Ticket tagged with the sub-client — cascade must handle the FK chain.
+    let ticket_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO tickets
+         (id, title, description, status, created_by, client_id, sub_client_id, created_at,
+          priority, ticket_type, recurring)
+         VALUES (?, 'Sub test', 'desc', 'open', ?, ?, ?, ?, 'medium', 'standard', 0)",
+    )
+    .bind(&ticket_id)
+    .bind(&desk_id)
+    .bind(&client_id)
+    .bind(&sub_id)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    admin::do_export(&pool, &enc_key, &client_id).await.unwrap();
+    admin::hard_delete_client(
+        &pool,
+        &enc_key,
+        &client_id,
+        &format!("permanently delete {email}"),
+    )
+    .await
+    .unwrap();
+    tokio::fs::remove_dir_all(format!("exports/{client_id}"))
+        .await
+        .ok();
+
+    let sub_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sub_clients WHERE id = ?")
+        .bind(&sub_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(sub_count, 0, "sub_clients must be deleted with client");
+}
+
+#[tokio::test]
+async fn export_contains_invoices() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+
+    insert_invoice(&pool, &client_id, "sent", false).await;
+    insert_invoice(&pool, &client_id, "draft", false).await;
+
+    let output = admin::do_export(&pool, &enc_key, &client_id).await.unwrap();
+    let raw = tokio::fs::read_to_string(&output.file_path).await.unwrap();
+    let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
+
+    assert_eq!(
+        json["invoices"].as_array().map(|a| a.len()).unwrap_or(0),
+        2,
+        "export must include all invoices for the client"
+    );
+
+    tokio::fs::remove_dir_all(format!("exports/{client_id}"))
+        .await
+        .ok();
+}
+
+#[tokio::test]
+async fn orphan_check_extended_with_invoices_and_sub_clients() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (client_id, email, _) = common::create_test_client(&pool).await;
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+
+    // Plant invoice + sub_client so the cascade is exercised.
+    insert_invoice(&pool, &client_id, "draft", false).await;
+    insert_invoice(&pool, &client_id, "sent", false).await;
+    let sub_id = insert_sub_client(&pool, &client_id).await;
+
+    // Ticket tagged with sub-client (FK chain: ticket → sub_client → user).
+    let ticket_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO tickets
+         (id, title, description, status, created_by, client_id, sub_client_id, created_at,
+          priority, ticket_type, recurring)
+         VALUES (?, 'Orphan ext', 'desc', 'open', ?, ?, ?, ?, 'medium', 'standard', 0)",
+    )
+    .bind(&ticket_id)
+    .bind(&desk_id)
+    .bind(&client_id)
+    .bind(&sub_id)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    admin::do_export(&pool, &enc_key, &client_id).await.unwrap();
+    admin::hard_delete_client(
+        &pool,
+        &enc_key,
+        &client_id,
+        &format!("permanently delete {email}"),
+    )
+    .await
+    .unwrap();
+    tokio::fs::remove_dir_all(format!("exports/{client_id}"))
+        .await
+        .ok();
+
+    // User is gone.
+    assert!(
+        db::users::find_by_id(&pool, &client_id)
+            .await
+            .unwrap()
+            .is_none(),
+        "user must not exist after hard delete"
+    );
+    // Sub-clients are gone.
+    let sub_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sub_clients WHERE client_id = ?")
+        .bind(&client_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(sub_count, 0, "sub_clients must be gone");
+    // Draft invoices are gone; sent invoices are orphaned (client_id = NULL).
+    let draft_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM invoices WHERE client_id = ? AND status = 'draft'",
+    )
+    .bind(&client_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(draft_count, 0, "draft invoices must be deleted");
+    // The sent invoice survives but is orphaned.
+    let sent_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM invoices WHERE client_id IS NULL AND status = 'sent'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(sent_count, 1, "sent invoice must survive as orphan");
+}

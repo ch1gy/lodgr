@@ -33,6 +33,25 @@ struct ExportEntry {
 }
 
 #[derive(Serialize)]
+struct ExportInvoice {
+    id: String,
+    number: String,
+    status: String,
+    currency: String,
+    issued_date: String,
+    due_date: String,
+    billed_to_name: String,
+    billed_to_addr1: String,
+    billed_to_addr2: String,
+    billed_to_pin: String,
+    billed_to_email: String,
+    billed_to_phone: String,
+    items: serde_json::Value,
+    notes: serde_json::Value,
+    created_at: String,
+}
+
+#[derive(Serialize)]
 struct ExportDocument {
     client_id: String,
     client_name: String,
@@ -40,6 +59,7 @@ struct ExportDocument {
     client_created_at: String,
     exported_at: String,
     tickets: Vec<ExportTicket>,
+    invoices: Vec<ExportInvoice>,
 }
 
 pub struct ExportOutput {
@@ -115,6 +135,28 @@ pub async fn export_client(
         })
     };
 
+    let raw_invoices = db::invoices::list_for_client(pool, client_id).await?;
+    let export_invoices: Vec<ExportInvoice> = raw_invoices
+        .into_iter()
+        .map(|inv| ExportInvoice {
+            id: inv.id,
+            number: inv.number,
+            status: inv.status,
+            currency: inv.currency,
+            issued_date: inv.issued_date,
+            due_date: inv.due_date,
+            billed_to_name: inv.billed_to_name,
+            billed_to_addr1: inv.billed_to_addr1,
+            billed_to_addr2: inv.billed_to_addr2,
+            billed_to_pin: inv.billed_to_pin,
+            billed_to_email: inv.billed_to_email,
+            billed_to_phone: inv.billed_to_phone,
+            items: serde_json::from_str(&inv.items).unwrap_or(serde_json::Value::Array(vec![])),
+            notes: serde_json::from_str(&inv.notes).unwrap_or(serde_json::Value::Array(vec![])),
+            created_at: inv.created_at,
+        })
+        .collect();
+
     let exported_at = chrono::Utc::now().to_rfc3339();
     let doc = ExportDocument {
         client_id: client_id.to_owned(),
@@ -123,6 +165,7 @@ pub async fn export_client(
         client_created_at: user.created_at.clone(),
         exported_at: exported_at.clone(),
         tickets: export_tickets,
+        invoices: export_invoices,
     };
 
     let json = tokio::task::spawn_blocking(move || {

@@ -909,7 +909,11 @@ export function InvoicesPage() {
             <InvoiceRow
               key={inv.id}
               invoice={inv}
-              clientName={clientMap[inv.client_id] ?? inv.client_id.slice(0, 8)}
+              clientName={
+                inv.client_id
+                  ? (clientMap[inv.client_id] ?? inv.client_id.slice(0, 8))
+                  : `${inv.billed_to_name || '—'} (former client)`
+              }
               onStatusChange={(id, status) => statusM.mutate({ id, status })}
               onEdit={(inv) => setEditingInvoice(inv)}
               onDelete={(id) => setConfirmDeleteId(id)}

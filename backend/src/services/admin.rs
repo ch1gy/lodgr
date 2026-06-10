@@ -521,6 +521,26 @@ pub(crate) async fn cascade_delete_user_data(
         .bind(user_id)
         .execute(&mut **tx)
         .await?;
+    // Draft invoices have no accounting significance — delete with the client.
+    sqlx::query("DELETE FROM invoices WHERE client_id = ? AND status = 'draft'")
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+    // Issued invoices are statutory bookkeeping records (10y CH / 5y KE).
+    // Stop any recurrence so no new drafts are generated for a deleted client;
+    // the users DELETE below orphans them via ON DELETE SET NULL.
+    sqlx::query(
+        "UPDATE invoices SET recurring = 0, recur_interval = NULL, next_recur_date = NULL \
+         WHERE client_id = ?",
+    )
+    .bind(user_id)
+    .execute(&mut **tx)
+    .await?;
+    // Sub-clients are labels with no independent retention value.
+    sqlx::query("DELETE FROM sub_clients WHERE client_id = ?")
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
     sqlx::query("DELETE FROM sessions WHERE user_id = ?")
         .bind(user_id)
         .execute(&mut **tx)
@@ -541,6 +561,46 @@ pub(crate) async fn cascade_delete_user_data(
         .bind(user_id)
         .execute(&mut **tx)
         .await?;
+    Ok(())
+}
+
+/// Basic RFC-5321 email validation without external crates.
+fn validate_email(email: &str) -> AppResult<()> {
+    if email != email.trim() {
+        return Err(AppError::BadRequest(
+            "email must not have leading or trailing whitespace".into(),
+        ));
+    }
+    if email.is_empty() {
+        return Err(AppError::BadRequest("email must not be empty".into()));
+    }
+    if email.len() > 254 {
+        return Err(AppError::BadRequest(
+            "email must be at most 254 characters".into(),
+        ));
+    }
+    let at_count = email.chars().filter(|c| *c == '@').count();
+    if at_count != 1 {
+        return Err(AppError::BadRequest(
+            "email must contain exactly one '@' character".into(),
+        ));
+    }
+    let (local, domain) = email.split_once('@').unwrap();
+    if local.is_empty() {
+        return Err(AppError::BadRequest(
+            "email local part (before '@') must not be empty".into(),
+        ));
+    }
+    if domain.is_empty()
+        || !domain.contains('.')
+        || domain.starts_with('.')
+        || domain.ends_with('.')
+    {
+        return Err(AppError::BadRequest(
+            "email domain is invalid (must contain at least one dot, no leading/trailing dots)"
+                .into(),
+        ));
+    }
     Ok(())
 }
 
@@ -630,44 +690,4 @@ mod tests {
         assert_eq!(result_ct, None, "empty string must clear the field");
         assert_eq!(result_nonce, None, "empty string must clear the nonce");
     }
-}
-
-/// Basic RFC-5321 email validation without external crates.
-fn validate_email(email: &str) -> AppResult<()> {
-    if email != email.trim() {
-        return Err(AppError::BadRequest(
-            "email must not have leading or trailing whitespace".into(),
-        ));
-    }
-    if email.is_empty() {
-        return Err(AppError::BadRequest("email must not be empty".into()));
-    }
-    if email.len() > 254 {
-        return Err(AppError::BadRequest(
-            "email must be at most 254 characters".into(),
-        ));
-    }
-    let at_count = email.chars().filter(|c| *c == '@').count();
-    if at_count != 1 {
-        return Err(AppError::BadRequest(
-            "email must contain exactly one '@' character".into(),
-        ));
-    }
-    let (local, domain) = email.split_once('@').unwrap();
-    if local.is_empty() {
-        return Err(AppError::BadRequest(
-            "email local part (before '@') must not be empty".into(),
-        ));
-    }
-    if domain.is_empty()
-        || !domain.contains('.')
-        || domain.starts_with('.')
-        || domain.ends_with('.')
-    {
-        return Err(AppError::BadRequest(
-            "email domain is invalid (must contain at least one dot, no leading/trailing dots)"
-                .into(),
-        ));
-    }
-    Ok(())
 }

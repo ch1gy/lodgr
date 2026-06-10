@@ -101,7 +101,7 @@ pub async fn create(pool: &SqlitePool, n: NewInvoice<'_>) -> AppResult<Invoice> 
 
     Ok(Invoice {
         id: n.id.to_owned(),
-        client_id: n.client_id.to_owned(),
+        client_id: Some(n.client_id.to_owned()),
         number: n.number.to_owned(),
         status: "draft".to_owned(),
         currency: n.currency.to_owned(),
@@ -198,20 +198,28 @@ pub async fn delete(pool: &SqlitePool, id: &str) -> AppResult<()> {
     Ok(())
 }
 
-/// Returns the next invoice sequence number (COUNT(*) + 1).
+/// Returns the next invoice sequence number based on the current maximum.
+/// Uses MAX instead of COUNT so deletions never cause number collisions.
+/// SQLite CAST stops at the first non-digit, so auto-recurring numbers like
+/// "INV-0042-auto-…" correctly yield 42.
 pub async fn next_seq(pool: &SqlitePool) -> AppResult<i64> {
-    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM invoices")
-        .fetch_one(pool)
-        .await?;
-    Ok(count + 1)
+    let (max,): (Option<i64>,) = sqlx::query_as(
+        "SELECT MAX(CAST(SUBSTR(number, 5) AS INTEGER)) FROM invoices WHERE number LIKE 'INV-%'",
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(max.unwrap_or(0) + 1)
 }
 
 /// Returns recurring invoice templates whose next_recur_date <= today.
+/// Excludes orphaned templates (client_id IS NULL) — recurrence was disabled by
+/// cascade_delete_user_data, but belt-and-braces guard in case of direct DB edits.
 pub async fn list_due_for_recurrence(pool: &SqlitePool) -> AppResult<Vec<Invoice>> {
     let today = Utc::now().format("%Y-%m-%d").to_string();
     Ok(sqlx::query_as(&format!(
         "SELECT {COLS} FROM invoices \
-         WHERE recurring = 1 AND next_recur_date IS NOT NULL AND next_recur_date <= ?"
+         WHERE recurring = 1 AND client_id IS NOT NULL \
+         AND next_recur_date IS NOT NULL AND next_recur_date <= ?"
     ))
     .bind(&today)
     .fetch_all(pool)

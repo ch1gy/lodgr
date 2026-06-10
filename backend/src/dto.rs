@@ -303,7 +303,8 @@ pub struct InvoiceNote {
 #[derive(Debug, Serialize)]
 pub struct InvoiceResponse {
     pub id: String,
-    pub client_id: String,
+    /// NULL when the client has been hard-deleted (invoice retained for bookkeeping).
+    pub client_id: Option<String>,
     pub number: String,
     pub status: String,
     pub currency: String,

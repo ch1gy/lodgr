@@ -133,7 +133,8 @@ export interface InvoiceNote {
 
 export interface InvoiceResponse {
   id: string;
-  client_id: string;
+  /** null when the client was hard-deleted; invoice is retained for bookkeeping */
+  client_id: string | null;
   number: string;
   status: InvoiceStatus;
   currency: string;

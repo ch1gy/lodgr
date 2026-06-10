@@ -20,10 +20,6 @@ import '../styles/v2.css';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmtAmount(items: InvoiceItem[]): string {
-  const total = items.reduce((acc, it) => acc + it.qty * it.rate, 0);
-  return total.toLocaleString('en-US');
-}
 
 function fmtDate(s: string): string {
   if (!s) return '—';
@@ -164,7 +160,7 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
   const [billedToEmail, setBilledToEmail] = useState('');
   const [billedToPhone, setBilledToPhone] = useState('');
   const [editorNote, setEditorNote] = useState('');
-  const [kraNumber, setKraNumber] = useState('');
+  const [kraNumber] = useState('');
   const [recurring, setRecurring] = useState(false);
   const [recurInterval, setRecurInterval] = useState<RecurInterval>('monthly');
   const [nextRecurDate, setNextRecurDate] = useState('');

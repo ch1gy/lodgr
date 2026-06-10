@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tickets as ticketsApi } from '../api/tickets';
 import { admin } from '../api/admin';
-import type { Client, SubClient, TicketPriority, TicketType, TicketStatus } from '../api/types';
+import type { Client, SubClient, TicketPriority, TicketType } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 
 import '../styles/v2.css';

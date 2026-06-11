@@ -1,69 +1,31 @@
 /* ────────────────────────────────────────────────────────────────────────────
- * login.css — sign-in page
+ * login.css — sign-in page + magic landing
  *
- * The shape: two columns. Left = editorial "masthead" (logo, big italic pull
- * quote, footer meta). Right = the form, headed by a 4-tick red accent bar
- * (a portfolio motif), with Password / Magic-link tabs and a helper row.
+ * §4.1 canonical treatment (login/Simple Login.html):
+ *   Centered single column, max-width 360px. Wordmark · tagline · rule ·
+ *   fields · full-width button · rule · inline alt-mode switch · footer.
+ *   One faint stroked "L" watermark bottom-right. Theme toggle top-right.
  *
- * Same door for desk and clients — the copy is deliberately neutral.
- *
- * Responsive plan:
- *   ≥ 1024px : two-column split as designed
- *   < 1024px : stack vertically — editorial banner on top, form below
- *   < 540px  : tighter padding, smaller pull quote
+ * Responsive: the centered column works at every size without media queries
+ * beyond minor padding tweaks on phone.
  * ──────────────────────────────────────────────────────────────────────── */
 
+/* ── Page shell ───────────────────────────────────────────────────────── */
 .lg-login {
   width: 100%;
   min-height: 100vh;
   background: var(--cream);
-  display: flex;
-  flex-direction: column;
-}
-
-/* ── Status band — tiny mono strip across the top ─────────────────────── */
-.lg-login__band {
-  height: 36px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 32px;
-  font-family: var(--mono);
-  font-size: 9.5px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--mid);
-  border-bottom: 1px solid var(--rule);
-}
-.lg-login__band b { color: var(--ink); font-weight: 400; }
-.lg-login__band .dot {
-  width: 5px; height: 5px;
-  background: var(--red); border-radius: 50%;
-  display: inline-block;
-  margin-right: 8px;
-  animation: lg-blink 2s ease-in-out infinite;
-}
-
-/* ── Two-column body ──────────────────────────────────────────────────── */
-.lg-login__core { flex: 1; display: flex; min-height: 0; }
-
-/* Left — editorial banner. The giant outlined "L" is a decorative bg-num
-   like the portfolio's project numbers; clipped by overflow:hidden. */
-.lg-login__left {
-  flex: 1.15;
-  padding: 48px 56px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  border-right: 1px solid var(--rule);
+  display: grid;
+  place-items: center;
+  padding: 32px 24px;
   position: relative;
   overflow: hidden;
 }
-.lg-login__bg-num {
-  position: absolute;
-  bottom: -80px;
-  right: -20px;
+
+/* Faint stroked "L" — bottom-right ornament, the only decoration */
+.lg-login__bg-l {
+  position: fixed;
+  bottom: -80px; right: -30px;
   font-family: var(--serif);
   font-style: italic;
   font-size: 380px;
@@ -72,187 +34,118 @@
   -webkit-text-stroke: 1px var(--rule);
   pointer-events: none;
   user-select: none;
-  opacity: 0.55;
+  opacity: 0.45;
+  z-index: 0;
 }
-.lg-login__left-top {
-  display: flex; justify-content: space-between; align-items: flex-start;
-  position: relative; z-index: 2;
+[data-theme="dark"] .lg-login__bg-l { opacity: 0.25; }
+
+/* Theme toggle — fixed top-right corner */
+.lg-login__theme {
+  position: fixed;
+  top: 22px; right: 28px;
+  z-index: 10;
 }
+
+/* ── Centered card ────────────────────────────────────────────────────── */
+.lg-login__card {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 1;
+}
+
+/* Wordmark */
 .lg-login__logo {
   font-family: var(--serif);
   font-style: italic;
-  font-size: 38px;
+  font-size: 42px;
   color: var(--ink);
+  margin-bottom: 8px;
 }
 .lg-login__logo .dot { color: var(--red); }
-.lg-login__meta {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  color: var(--mid);
-  text-transform: uppercase;
-  text-align: right;
-  line-height: 1.7;
-}
-.lg-login__meta b { color: var(--ink); font-weight: 400; }
-.lg-login__pull {
-  position: relative; z-index: 2;
-  font-family: var(--serif);
-  font-style: italic;
-  font-weight: 400;
-  font-size: 84px;
-  line-height: 0.95;
-  color: var(--ink);
-  max-width: 680px;
-}
-.lg-login__pull em { color: var(--red); font-style: italic; }
-.lg-login__pull-small {
-  display: block;
-  font-size: 19px;
-  font-style: normal;
-  font-family: var(--sans);
-  font-weight: 500;
-  color: var(--ink-soft);
-  margin-top: 22px;
-  max-width: 460px;
-  line-height: 1.55;
-  letter-spacing: 0.005em;
-}
-.lg-login__ftr {
-  display: flex; justify-content: space-between; align-items: flex-end;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--mid);
-  position: relative; z-index: 2;
-}
-.lg-login__ftr b { color: var(--ink); font-weight: 400; }
 
-/* Right — the form. */
-.lg-login__right {
-  flex: 1;
-  padding: 48px 64px;
+/* Tagline */
+.lg-login__tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--mid);
+  margin-bottom: 24px;
+}
+
+/* Hairline rule (used twice — above and below the button) */
+.lg-login__rule {
+  height: 1px;
+  background: var(--rule);
+  margin-bottom: 28px;
+}
+
+/* ── Form ─────────────────────────────────────────────────────────────── */
+
+/* Fields wrapper — re-keyed on mode change so React remounts it and the
+   lg-enter animation fires again, giving the 420ms cross-fade/rise feel */
+.lg-login__fields { display: flex; flex-direction: column; }
+
+.lg-login__field { margin-bottom: 24px; }
+
+/* Password label row — label left, "Forgot" right */
+.lg-login__pw-label {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  max-width: 560px;
-  position: relative;
-}
-.lg-login__accent {
-  /* The little red 4-tick bar lifted from the dark-card login variant. */
-  position: absolute;
-  top: 0;
-  left: 64px;
-  width: 64px;
-  height: 3px;
-  background: linear-gradient(90deg, var(--red) 0%, var(--red) 40%, transparent 40%);
-}
-.lg-login__eyebrow {
-  display: flex; align-items: center; gap: 12px;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--red);
-  margin-bottom: 18px;
-  margin-top: 24px;
-}
-.lg-login__eyebrow::after { content: ''; flex: 1; height: 1px; background: var(--rule); }
-.lg-login__h2 {
-  font-family: var(--serif);
-  font-style: italic;
-  font-weight: 400;
-  font-size: 56px;
-  line-height: 0.95;
-  color: var(--ink);
-  margin-bottom: 14px;
-}
-.lg-login__h2 .mid { color: var(--mid); }
-.lg-login__lede {
-  font-family: var(--sans);
-  font-weight: 500;
-  font-size: 16px;
-  color: var(--ink-soft);
-  line-height: 1.6;
-  margin-bottom: 36px;
-  max-width: 380px;
-  letter-spacing: 0.005em;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
 }
 
-/* ── Tab strip — Password / Email me a link ───────────────────────────── */
-.lg-login__tabs {
-  display: flex;
-  margin-bottom: 26px;
-  border-bottom: 1px solid var(--rule);
-}
-.lg-login__tab {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  padding: 10px 0;
-  margin-right: 24px;
-  color: var(--mid);
-  background: none;
-  border: none;
-  border-bottom: 1.5px solid transparent;
-  margin-bottom: -1px;
-  cursor: pointer;
-}
-.lg-login__tab.is-active { color: var(--ink); border-bottom-color: var(--ink); }
-
-/* ── Autofill — kill the browser's yellow/blue background ─────────────────
- * Browsers ignore background-color on autofilled inputs. The inset box-shadow
- * trick floods the input with our colour instead, and the 5000s transition
- * delays the colour phase-in so long it's effectively invisible.              */
-.lg-login__right input:-webkit-autofill,
-.lg-login__right input:-webkit-autofill:hover,
-.lg-login__right input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 1000px var(--cream) inset;
-          box-shadow: 0 0 0 1000px var(--cream) inset;
-  -webkit-text-fill-color: var(--ink);
-  caret-color: var(--ink);
-  transition: background-color 5000s ease-in-out 0s;
-}
-
-.lg-login__field { margin-bottom: 26px; }
+/* Magic mode helper text */
 .lg-login__explainer {
   font-family: var(--sans);
-  font-size: 14px;
   font-weight: 500;
+  font-size: 14px;
   color: var(--ink-soft);
   line-height: 1.6;
   margin-bottom: 24px;
-  margin-top: 4px;
   letter-spacing: 0.003em;
-  max-width: 380px;
 }
 .lg-login__explainer b { color: var(--ink); font-weight: 400; }
 
-.lg-login__actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 14px;
-  margin-bottom: 32px;
-}
+/* Full-width sign-in / send button */
 .lg-login__send {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   font-family: var(--mono);
   font-size: 11px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   background: var(--ink);
   color: var(--cream);
   border: none;
-  padding: 14px 26px;
+  padding: 15px 22px;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
+  margin-bottom: 28px;
+  transition:
+    background  var(--dur-fast) var(--ease-out),
+    transform   var(--dur-fast) var(--ease-spring),
+    box-shadow  var(--dur-fast) var(--ease-out);
 }
-.lg-login__send:disabled { opacity: 0.5; cursor: progress; }
 .lg-login__send .arr { color: var(--red); }
+.lg-login__send:disabled { opacity: 0.5; cursor: progress; }
+.lg-login__send:hover:not(:disabled) {
+  background: #1a1a1a;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(13, 13, 13, 0.12);
+}
+[data-theme="dark"] .lg-login__send { background: var(--ink); color: var(--cream); }
+[data-theme="dark"] .lg-login__send:hover:not(:disabled) {
+  background: rgba(237, 232, 223, 0.92);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+/* Forgot / inline text links */
 .lg-login__forgot {
   font-family: var(--mono);
   font-size: 10px;
@@ -264,26 +157,42 @@
   border-bottom: 1px solid var(--rule);
   padding: 0 0 2px;
   cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
 }
+.lg-login__forgot:hover { color: var(--red); border-bottom-color: var(--red); }
 
-/* Helper row — the peer affordance below the form. */
-.lg-login__helper {
-  padding: 14px 0;
-  border-top: 1px solid var(--rule);
+/* ── Alt mode switch — the inline swap line below the rule ─────────────── */
+.lg-login__alt {
+  padding-top: 18px;
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--mid);
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  text-align: center;
 }
-.lg-login__helper .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--red); flex-shrink: 0; }
-.lg-login__helper b { color: var(--ink); font-weight: 400; }
+.lg-login__alt button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--ink);
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+.lg-login__alt button b {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  font-weight: 400;
+}
+.lg-login__alt button:hover b { color: var(--red); }
 
-.lg-login__legal {
-  margin-top: 28px;
+/* ── Footer ───────────────────────────────────────────────────────────── */
+.lg-login__footer {
+  margin-top: 40px;
   display: flex;
   justify-content: space-between;
   font-family: var(--mono);
@@ -293,7 +202,7 @@
   color: var(--mid);
 }
 
-/* ── Error banner (used for failed logins, lockout, etc) ───────────────── */
+/* ── Error banner ─────────────────────────────────────────────────────── */
 .lg-login__error {
   background: rgba(200, 50, 42, 0.06);
   border-left: 3px solid var(--red);
@@ -317,7 +226,25 @@
   margin-bottom: 4px;
 }
 
+/* ── Autofill — kill browser yellow/blue background ───────────────────── */
+.lg-login__card input:-webkit-autofill,
+.lg-login__card input:-webkit-autofill:hover,
+.lg-login__card input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--cream) inset;
+          box-shadow: 0 0 0 1000px var(--cream) inset;
+  -webkit-text-fill-color: var(--ink);
+  caret-color: var(--ink);
+  transition: background-color 5000s ease-in-out 0s;
+}
+[data-theme="dark"] .lg-login__card input:-webkit-autofill,
+[data-theme="dark"] .lg-login__card input:-webkit-autofill:hover,
+[data-theme="dark"] .lg-login__card input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #15110d inset;
+          box-shadow: 0 0 0 1000px #15110d inset;
+}
+
 /* ── Magic landing — minimal centered card ────────────────────────────── */
+/* Used by MagicLandingPage.tsx (same import) */
 .lg-magic-land {
   min-height: 100vh;
   background: var(--cream);
@@ -376,80 +303,26 @@
 }
 
 /* ── Responsive ───────────────────────────────────────────────────────── */
-@media (max-width: 1024px) {
-  .lg-login__core { flex-direction: column; }
-  .lg-login__left {
-    flex: none;
-    padding: 32px 36px;
-    border-right: none;
-    border-bottom: 1px solid var(--rule);
-  }
-  .lg-login__bg-num { font-size: 280px; bottom: -50px; }
-  .lg-login__pull { font-size: 56px; max-width: none; }
-  .lg-login__right { flex: none; max-width: none; padding: 36px 36px 32px; }
-  .lg-login__accent { left: 36px; }
-  .lg-login__h2 { font-size: 42px; }
-  .lg-login__ftr { margin-top: 32px; }
-}
-
-/* ── Phone (< 540px) ─────────────────────────────────────────────────────── */
 @media (max-width: 540px) {
-  .lg-login__left { padding: 22px 20px; }
-  .lg-login__bg-num { font-size: 180px; bottom: -30px; }
-  .lg-login__pull { font-size: 38px; }
-  .lg-login__pull-small { font-size: 14px; margin-top: 12px; }
-  .lg-login__ftr { display: none; } /* too cramped — just the form matters */
-
-  .lg-login__right { padding: 24px 20px 28px; }
-  .lg-login__accent { left: 20px; }
-  .lg-login__h2 { font-size: 34px; }
-  .lg-login__lede { font-size: 14px; margin-bottom: 24px; }
-  .lg-login__actions { flex-direction: column; align-items: stretch; gap: 14px; margin-bottom: 20px; }
-  .lg-login__send { justify-content: center; }
-  .lg-login__forgot { align-self: flex-start; }
+  .lg-login { padding: 20px 16px; }
+  .lg-login__logo { font-size: 34px; }
+  .lg-login__footer { display: none; }
+  .lg-login__theme { top: 16px; right: 18px; }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
- * Motion polish (Apple-style)
+ * Motion polish
  * ───────────────────────────────────────────────────────────────────────── */
 
-/* Editorial pull fades up; form-side panel fades up with a small delay so
-   the user reads left-to-right naturally. */
-.lg-login__left  { animation: lg-enter-fade var(--dur-slow) var(--ease-out) both; }
-.lg-login__right { animation: lg-enter-fade var(--dur-slow) var(--ease-out) 120ms both; }
+/* The card itself fades up on first paint. Children stagger via lg-enter. */
+.lg-login__card { animation: lg-enter-fade var(--dur-slow) var(--ease-out) both; }
 
-/* The status band fades down from the top. */
-.lg-login__band { animation: lg-band-down var(--dur-base) var(--ease-out) both; }
-@keyframes lg-band-down { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+/* Magic landing card springs in */
+.lg-magic-land__card { animation: lg-enter-pop var(--dur-slow) var(--ease-spring) both; }
 
-/* Tabs — softer underline shift */
-.lg-login__tab { transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out); }
-
-/* Primary send button lifts on hover, presses in on active. */
-.lg-login__send:hover:not(:disabled) {
-  background: #1a1a1a;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(13, 13, 13, 0.12);
-}
-[data-theme="dark"] .lg-login__send { background: var(--ink); color: var(--cream); }
-[data-theme="dark"] .lg-login__send:hover:not(:disabled) {
-  background: rgba(237, 232, 223, 0.92);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
-}
-
-/* Forgot/Use-password — subtle red on hover */
-.lg-login__forgot:hover { color: var(--red); border-bottom-color: var(--red); }
-
-/* Error banner slide-in */
+/* Error banner slides in from above */
 .lg-login__error { animation: lg-error-in var(--dur-base) var(--ease-out) both; }
 @keyframes lg-error-in {
   from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0);    }
+  to   { opacity: 1; transform: translateY(0); }
 }
-
-/* Magic landing — wordmark gently scales in */
-.lg-magic-land__card { animation: lg-enter-pop var(--dur-slow) var(--ease-spring) both; }
-
-/* Dark-mode tweaks: the bg-num outline gets dimmer so it doesn't bloom. */
-[data-theme="dark"] .lg-login__bg-num { opacity: 0.35; }
-

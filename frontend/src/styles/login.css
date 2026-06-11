@@ -314,8 +314,8 @@
  * Motion polish
  * ───────────────────────────────────────────────────────────────────────── */
 
-/* The card itself fades up on first paint. Children stagger via lg-enter. */
-.lg-login__card { animation: lg-enter-fade var(--dur-slow) var(--ease-out) both; }
+/* Children stagger in via lg-enter (--i 0–7); the card itself has no
+   animation so children don't double-animate inside a fading wrapper. */
 
 /* Magic landing card springs in */
 .lg-magic-land__card { animation: lg-enter-pop var(--dur-slow) var(--ease-spring) both; }

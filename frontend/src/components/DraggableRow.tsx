@@ -13,7 +13,6 @@ import { tickets as ticketsApi } from '../api/tickets';
 import { useToast } from './Toast';
 import { sfx } from '../utils/sfx';
 
-const THRESHOLD = 130;
 const RESISTANCE = 0.2;
 
 interface Props {
@@ -25,9 +24,14 @@ interface Props {
 export function DraggableRow({ id, status, children }: Props) {
   const wrapRef     = useRef<HTMLDivElement>(null);
   const startX      = useRef(0);
+  const startY      = useRef(0);
   const curDx       = useRef(0);
   const dragging    = useRef(false);
   const didDrag     = useRef(false);
+  // axis lock: null = undecided, 'h' = horizontal swipe, 'v' = vertical scroll
+  const axisLock    = useRef<'h' | 'v' | null>(null);
+  // threshold = 33% of row width measured at pointer-down (§10.3)
+  const threshold   = useRef(130);
   const closeTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { show } = useToast();
@@ -59,23 +63,35 @@ export function DraggableRow({ id, status, children }: Props) {
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     startX.current = e.clientX;
+    startY.current = e.clientY;
     curDx.current = 0;
     dragging.current = true;
     didDrag.current = false;
+    axisLock.current = null;
+    threshold.current = (wrapRef.current?.offsetWidth ?? 400) * 0.33;
     (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
   }, []);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragging.current) return;
     const dx = e.clientX - startX.current;
+    const dy = e.clientY - startY.current;
+
+    // Decide axis on first significant movement (§10.3 axis lock)
+    if (axisLock.current === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+      axisLock.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+    }
+
+    // Vertical scroll wins — don't translate the row
+    if (axisLock.current === 'v') return;
+
     if (Math.abs(dx) > 4) didDrag.current = true;
     curDx.current = dx;
 
     const sign = dx > 0 ? 1 : -1;
     const abs = Math.abs(dx);
-    const effective = abs > THRESHOLD
-      ? THRESHOLD + (abs - THRESHOLD) * RESISTANCE
-      : abs;
+    const thr = threshold.current;
+    const effective = abs > thr ? thr + (abs - thr) * RESISTANCE : abs;
     setTranslate(sign * effective, false);
   }, [setTranslate]);
 
@@ -84,14 +100,16 @@ export function DraggableRow({ id, status, children }: Props) {
     dragging.current = false;
     const dx = curDx.current;
 
-    if (dx > THRESHOLD && status === 'open') {
+    const thr = threshold.current;
+    if (dx > thr && status === 'open') {
       // Acknowledge — spring back, fire mutation, toast
       setTranslate(0, true);
       ackMut.mutate();
       sfx.ack();
+      navigator.vibrate?.(8);
       show('Acknowledged ✓');
 
-    } else if (dx < -THRESHOLD && status !== 'closed') {
+    } else if (dx < -thr && status !== 'closed') {
       // Resolve — fling left, delay API call so Undo can cancel it
       const el = wrapRef.current;
       if (el) {
@@ -110,6 +128,7 @@ export function DraggableRow({ id, status, children }: Props) {
       };
 
       sfx.file();
+      navigator.vibrate?.([16, 50, 16]);
       show('Ticket resolved', { undo });
 
       // Fire the API call just before the toast auto-dismisses

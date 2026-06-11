@@ -954,6 +954,12 @@
   z-index: 9999; display: flex; flex-direction: column; gap: 10px;
   align-items: center; pointer-events: none;
 }
+/* On mobile the sticky tab bar is ~52px tall; lift toasts above it + safe area */
+@media (max-width: 540px) {
+  .lg-toast-shelf {
+    bottom: max(80px, calc(60px + env(safe-area-inset-bottom, 0px)));
+  }
+}
 .lg-toast {
   background: var(--ink); color: var(--cream);
   font-family: var(--mono); font-size: 10px; letter-spacing: .14em;

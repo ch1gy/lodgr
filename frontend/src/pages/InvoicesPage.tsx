@@ -195,7 +195,7 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
     setBilledToAddr2(c.address_line2 ?? '');
     setBilledToPin(c.pin_number ?? '');
     setBilledToEmail(c.email ?? '');
-    setBilledToPhone('');
+    setBilledToPhone(c.phone ?? '');
   }
 
   function addItem() { setItems((p) => [...p, { name: '', qty: 1, rate: 0 }]); }

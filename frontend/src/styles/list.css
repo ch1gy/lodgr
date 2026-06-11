@@ -46,7 +46,7 @@
   font-family: var(--serif);
   font-style: italic;
   font-weight: 400;
-  font-size: 72px;
+  font-size: clamp(40px, 11vw, 76px);
   line-height: 0.9;
   color: var(--ink);
 }
@@ -340,7 +340,6 @@
 
 @media (max-width: 1024px) {
   .lg-list__head { padding: 28px 28px 20px; }
-  .lg-list__title { font-size: 56px; }
   .lg-list__filt { padding: 10px 28px; }
   .lg-list__sort { display: none; } /* sort collapses on tablet — use filter tabs */
   /* Drop status, keep SLA */
@@ -352,9 +351,8 @@
 
 /* ── Mobile cards (≤ 540px) — from design spec: list-responsive.jsx ────── */
 @media (max-width: 540px) {
-  /* Compact head — eyebrow + smaller title */
+  /* Compact head — clamp() handles title scaling, just adjust padding */
   .lg-list__head { padding: 18px 18px 14px; gap: 12px; }
-  .lg-list__title { font-size: 36px; }
   .lg-list__kpi   { font-size: 22px; }
   .lg-list__kpi-lbl { font-size: 8px; }
 
@@ -388,7 +386,8 @@
 
   /* FAB — floating "+" for new ticket (rendered by TicketListPage) */
   .lg-fab {
-    position: fixed; right: 20px; bottom: 80px; /* above tab bar */
+    position: fixed; right: max(20px, env(safe-area-inset-right, 0px));
+    bottom: max(80px, calc(60px + env(safe-area-inset-bottom, 0px)));
     width: 56px; height: 56px;
     background: var(--ink); color: var(--cream);
     font-family: var(--serif); font-style: italic; font-size: 28px;
@@ -413,17 +412,21 @@
 .lg-row         { animation: lg-enter-fade var(--dur-slow) var(--ease-out) both;
                   animation-delay: calc(var(--i, 0) * 40ms + 120ms); }
 
-/* Hover treatment — a faint background and a 2px nudge right + chevron shift.
- * color-mix uses var(--ink) so it's theme-aware: dark ink on cream in light mode,
- * light ink on near-black in dark mode. No separate [data-theme="dark"] override. */
+/* Hover treatment — gated to fine pointers (§10.4).
+ * Touch devices never trigger :hover so we'd get no visual feedback anyway,
+ * but gating explicitly also prevents the 300ms hover ghost on tap that some
+ * mobile browsers fire. */
 .lg-row { transition: background-color var(--dur-fast) var(--ease-out),
                        transform        var(--dur-base) var(--ease-spring); }
-.lg-row:hover {
-  background: color-mix(in oklab, var(--ink) 4%, transparent);
-  transform: translateX(2px);
-}
 .lg-row__chevron { transition: transform var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
-.lg-row:hover .lg-row__chevron { transform: translateX(4px); color: var(--ink); }
+
+@media (hover: hover) and (pointer: fine) {
+  .lg-row:hover {
+    background: color-mix(in oklab, var(--ink) 4%, transparent);
+    transform: translateX(2px);
+  }
+  .lg-row:hover .lg-row__chevron { transform: translateX(4px); color: var(--ink); }
+}
 
 /* Filter tabs — the active underline animates between widths. */
 .lg-list__filt-tab { transition: color var(--dur-fast) var(--ease-out); }

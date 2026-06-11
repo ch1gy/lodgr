@@ -139,6 +139,7 @@ function ClientRow({ client, onAction, disabled = false }: RowProps) {
   const qc         = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [profile, setProfile]   = useState({
+    name:           client.name,
     contact_person: client.contact_person ?? '',
     pin_number:     client.pin_number     ?? '',
     address_line1:  client.address_line1  ?? '',
@@ -164,11 +165,12 @@ function ClientRow({ client, onAction, disabled = false }: RowProps) {
     setSaving(true);
     try {
       await admin.updateClient(client.id, {
-        contact_person: profile.contact_person || undefined,
-        pin_number:     profile.pin_number     || undefined,
-        address_line1:  profile.address_line1  || undefined,
-        address_line2:  profile.address_line2  || undefined,
-        phone:          profile.phone          || undefined,
+        name:           profile.name.trim()           || undefined,
+        contact_person: profile.contact_person.trim() || undefined,
+        pin_number:     profile.pin_number.trim()     || undefined,
+        address_line1:  profile.address_line1.trim()  || undefined,
+        address_line2:  profile.address_line2.trim()  || undefined,
+        phone:          profile.phone.trim()          || undefined,
       });
       void qc.invalidateQueries({ queryKey: ['clients'] });
     } finally {
@@ -250,6 +252,11 @@ function ClientRow({ client, onAction, disabled = false }: RowProps) {
               <div>
                 <div className="lg-cl-expand__section-label">Billing profile</div>
                 <div className="lg-cl-expand__profile-grid">
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <div className="lg-cl-expand__field-label">Company name</div>
+                    <input className="lg-cl-expand__inp" value={profile.name} placeholder="e.g. Bahari Property Co."
+                      onChange={(e) => setProfile((p) => ({ ...p, name: e.target.value }))} />
+                  </div>
                   <div>
                     <div className="lg-cl-expand__field-label">Contact person</div>
                     <input className="lg-cl-expand__inp" value={profile.contact_person} placeholder="e.g. Jane Doe"

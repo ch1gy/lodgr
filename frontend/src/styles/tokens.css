@@ -371,9 +371,14 @@ a { color: inherit; }
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     border-top: 1px solid var(--rule);
-    background: var(--cream);
+    /* Frosted glass — editorial cream tinted, not opaque */
+    background: color-mix(in oklab, var(--cream) 88%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     flex-shrink: 0;
     position: sticky; bottom: 0; z-index: 100;
+    /* Safe area: home indicator on iPhone X+ */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   /* client role only gets 2 tabs — let them fill evenly */
   .lg-tabbar:has(.lg-tabbar__t:only-of-type),
@@ -386,8 +391,12 @@ a { color: inherit; }
     text-transform: uppercase; color: var(--mid);
     text-align: center; text-decoration: none;
     display: flex; flex-direction: column; align-items: center; gap: 4px;
-    transition: color var(--dur-fast) var(--ease-out);
+    transition: color var(--dur-fast) var(--ease-out),
+                transform var(--dur-xfast) var(--ease-spring);
+    /* Minimum 44×44px tap target (§10.4) */
+    min-height: 44px;
   }
+  .lg-tabbar__t:active { transform: scale(0.9); }
   .lg-tabbar__ic {
     width: 18px; height: 18px;
     border: 1px solid var(--rule);

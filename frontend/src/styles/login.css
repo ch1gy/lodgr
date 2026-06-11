@@ -227,20 +227,24 @@
 }
 
 /* ── Autofill — kill browser yellow/blue background ───────────────────── */
+/* Hardcoded hex because Chrome Android doesn't cascade CSS custom
+   properties through [data-theme] ancestor selectors inside :-webkit-autofill. */
 .lg-login__card input:-webkit-autofill,
 .lg-login__card input:-webkit-autofill:hover,
 .lg-login__card input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 1000px var(--cream) inset;
-          box-shadow: 0 0 0 1000px var(--cream) inset;
-  -webkit-text-fill-color: var(--ink);
-  caret-color: var(--ink);
+  -webkit-box-shadow: 0 0 0 1000px #f2ede4 inset;
+          box-shadow: 0 0 0 1000px #f2ede4 inset;
+  -webkit-text-fill-color: #0d0d0d;
+  caret-color: #0d0d0d;
   transition: background-color 5000s ease-in-out 0s;
 }
-[data-theme="dark"] .lg-login__card input:-webkit-autofill,
-[data-theme="dark"] .lg-login__card input:-webkit-autofill:hover,
-[data-theme="dark"] .lg-login__card input:-webkit-autofill:focus {
+html[data-theme="dark"] .lg-login__card input:-webkit-autofill,
+html[data-theme="dark"] .lg-login__card input:-webkit-autofill:hover,
+html[data-theme="dark"] .lg-login__card input:-webkit-autofill:focus {
   -webkit-box-shadow: 0 0 0 1000px #15110d inset;
           box-shadow: 0 0 0 1000px #15110d inset;
+  -webkit-text-fill-color: #ede8df;
+  caret-color: #ede8df;
 }
 
 /* ── Magic landing — minimal centered card ────────────────────────────── */

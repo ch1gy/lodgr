@@ -263,6 +263,8 @@ a { color: inherit; }
 
 /* ── Form atoms ──────────────────────────────────────────────────────────── */
 .lg-input {
+  appearance: none;
+  -webkit-appearance: none;
   font-family: var(--sans);
   font-size: 16px;
   font-weight: 500;
@@ -276,6 +278,7 @@ a { color: inherit; }
 }
 .lg-input::placeholder { color: var(--mid); font-style: italic; }
 .lg-input-label {
+  display: block;
   font-family: var(--mono);
   font-size: 9px;
   letter-spacing: 0.18em;

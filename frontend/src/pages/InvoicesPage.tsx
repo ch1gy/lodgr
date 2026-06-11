@@ -920,7 +920,7 @@ export function InvoicesPage() {
         </div>
       </div>
 
-      <BottomTabBar active="invoices" />
+      <BottomTabBar active="tickets" />
 
       {createOpen && (
         <CreateInvoiceModal

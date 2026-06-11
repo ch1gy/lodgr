@@ -187,8 +187,8 @@
   pointer-events: none;
   z-index: 0;
 }
-.lg-drag-rail--ack { left: 0; background: var(--green); color: var(--cream); }
-.lg-drag-rail--res { right: 0; background: var(--red);   color: var(--cream); }
+.lg-drag-rail--ack { left: 0; right: 0; justify-content: flex-start; background: linear-gradient(90deg, var(--green), color-mix(in oklab, var(--green) 30%, transparent)); color: var(--cream); }
+.lg-drag-rail--res { left: 0; right: 0; justify-content: flex-end;   background: linear-gradient(270deg, var(--ink), color-mix(in oklab, var(--ink) 30%, transparent)); color: var(--cream); }
 
 /* New-arrived rows get a brief amber highlight that fades */
 .lg-row.is-new { animation: lg-row-new 2.4s var(--ease-out) forwards; }
@@ -367,20 +367,63 @@
   /* Hide the "+ New ticket" button — FAB handles it on mobile */
   .lg-list__filt-new { display: none; }
 
-  /* Card rows: num | title-block | sla+chevron */
+  /* ── Draft A stacked card (mobile/Mobile Motion.html) ──────────────── */
+  /* Grid areas: top (av · nm · sla) / title / bottom (status · cat) */
   .lg-row {
     display: grid;
-    grid-template-columns: 36px 1fr auto;
-    gap: 0 12px;
-    padding: 14px 18px;
-    align-items: start;
+    grid-template-areas:
+      "av nm sla"
+      "ttl ttl ttl"
+      "st  st  cat";
+    grid-template-columns: 26px 1fr auto;
+    grid-template-rows: auto auto auto;
+    padding: 18px 20px;
+    gap: 0;
+    align-items: center;
+    min-height: 72px;
   }
-  .lg-row__num    { font-size: 20px; padding-top: 2px; }
-  .lg-row__title  { font-size: 17px; white-space: normal; } /* allow wrapping on mobile */
-  .lg-row__client { display: none; }
-  .lg-row > .lg-status { display: none; }
-  /* SLA chip — compact on mobile */
-  .sla-od { font-size: 9px; padding: 2px 5px; }
+
+  /* Dissolve wrappers — children become direct grid items */
+  .lg-row__client    { display: contents; }
+  .lg-row__title-blk { display: contents; }
+
+  /* Top row */
+  .lg-row__av {
+    grid-area: av;
+    width: 26px; height: 26px; font-size: 8px;
+    align-self: start; margin-top: 2px;
+  }
+  .lg-row__client-nm {
+    grid-area: nm;
+    font-size: 9px; letter-spacing: 0.08em;
+    padding-left: 9px;
+    align-self: start; margin-top: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .lg-row__sla   { grid-area: sla; justify-self: end; align-self: start; margin-top: 2px; }
+
+  /* Title row */
+  .lg-row__title {
+    grid-area: ttl;
+    font-size: 21px; line-height: 1.16; white-space: normal;
+    padding: 10px 0 14px;
+  }
+
+  /* Bottom row */
+  .lg-row > .lg-status { grid-area: st;  display: inline-flex; align-self: center; }
+  .lg-row__cat {
+    grid-area: cat;
+    font-size: 8.5px; text-align: right; align-self: center; margin-bottom: 0;
+  }
+
+  /* Hidden on mobile cards */
+  .lg-row__num    { display: none; }
+  .lg-row__meta   { display: none; }
+  .lg-row__chevron { display: none; }
+  .lg-row__sel    { display: none; }
+
+  /* SLA pill — full size on cards (not the 9px compact used at 1024px) */
+  .sla-od { font-size: 13px; padding: 5px 9px; }
 
   .lg-list__state { padding: 48px 18px; }
 

@@ -1,16 +1,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// BottomTabBar.tsx — Mobile-only bottom navigation tab bar.
+// BottomTabBar.tsx — Mobile-only bottom navigation tab bar (≤ 540px).
 //
-// Shown only on screens ≤ 540px via CSS (display:none on desktop).
-// The design spec (Lodgr/screens/list-responsive.jsx) defines a 4-tab bar
-// with small serif icons and mono labels: Tickets / Clients / Reports / Settings.
+// 4 tabs per design.md §10.6: Queue / Reports / Clients / Settings.
+// Invoices is intentionally absent — desk-only secondary screen, reached
+// from the masthead or links, not the primary mobile nav.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 
 interface Props {
-  active: 'tickets' | 'clients' | 'invoices' | 'reports' | 'settings';
+  active: 'tickets' | 'clients' | 'reports' | 'settings';
 }
 
 export function BottomTabBar({ active }: Props) {
@@ -19,25 +19,19 @@ export function BottomTabBar({ active }: Props) {
   return (
     <nav className="lg-tabbar" aria-label="Main navigation">
       <Link to="/tickets" className={`lg-tabbar__t${active === 'tickets' ? ' active' : ''}`}>
-        <span className="lg-tabbar__ic">T</span>
-        <span>Tickets</span>
+        <span className="lg-tabbar__ic">≡</span>
+        <span>Queue</span>
       </Link>
       {isDesk && (
-        <Link to="/clients" className={`lg-tabbar__t${active === 'clients' ? ' active' : ''}`}>
-          <span className="lg-tabbar__ic">C</span>
-          <span>Clients</span>
-        </Link>
-      )}
-      {isDesk && (
-        <Link to="/invoices" className={`lg-tabbar__t${active === 'invoices' ? ' active' : ''}`}>
-          <span className="lg-tabbar__ic">£</span>
-          <span>Invoices</span>
-        </Link>
-      )}
-      {isDesk && (
         <Link to="/reports" className={`lg-tabbar__t${active === 'reports' ? ' active' : ''}`}>
-          <span className="lg-tabbar__ic">R</span>
+          <span className="lg-tabbar__ic">↗</span>
           <span>Reports</span>
+        </Link>
+      )}
+      {isDesk && (
+        <Link to="/clients" className={`lg-tabbar__t${active === 'clients' ? ' active' : ''}`}>
+          <span className="lg-tabbar__ic">◎</span>
+          <span>Clients</span>
         </Link>
       )}
       <Link to="/settings" className={`lg-tabbar__t${active === 'settings' ? ' active' : ''}`}>

@@ -505,7 +505,7 @@ export function TicketListPage() {
                   </div>
                 </div>
                 <StatusPill status={t.status} />
-                <span style={isMorph ? vt('sig-clock') : undefined}>
+                <span className="lg-row__sla" style={isMorph ? vt('sig-clock') : undefined}>
                   <SlaOdometer
                     dueDate={t.due_date}
                     estimatedCompletion={t.estimated_completion}

@@ -69,7 +69,8 @@ export function DraggableRow({ id, status, children }: Props) {
     didDrag.current = false;
     axisLock.current = null;
     threshold.current = (wrapRef.current?.offsetWidth ?? 400) * 0.33;
-    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+    // iOS can throw InvalidStateError if the browser already claimed the gesture
+    try { (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId); } catch (_) {}
   }, []);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
@@ -77,8 +78,8 @@ export function DraggableRow({ id, status, children }: Props) {
     const dx = e.clientX - startX.current;
     const dy = e.clientY - startY.current;
 
-    // Decide axis on first significant movement (§10.3 axis lock)
-    if (axisLock.current === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+    // Decide axis on first significant movement — 6px matches mm-app.jsx reference
+    if (axisLock.current === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
       axisLock.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
     }
 
@@ -162,7 +163,7 @@ export function DraggableRow({ id, status, children }: Props) {
     >
       <div className="lg-drag-rail lg-drag-rail--ack" aria-hidden>✓ Acknowledge</div>
       <div className="lg-drag-rail lg-drag-rail--res" aria-hidden>× Resolve</div>
-      <div ref={wrapRef} style={{ position: 'relative', zIndex: 1 }}>
+      <div ref={wrapRef} style={{ position: 'relative', zIndex: 1, background: 'var(--cream)' }}>
         {children}
       </div>
     </div>

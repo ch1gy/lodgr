@@ -983,3 +983,35 @@
 .lg-page--back     { transform: translateX(-40px); opacity: 0; }
 .lg-page--entered  { transform: none; opacity: 1; }
 .lg-page--exiting  { transform: translateX(-40px); opacity: 0; }
+
+/* ── 540px (phone) overrides — settings, reports, invoices, pw generator ── */
+@media (max-width: 540px) {
+
+  /* Settings */
+  .lg-set__body { padding: 24px 18px 28px; }
+  .lg-set__h2   { font-size: clamp(28px, 10vw, 40px); margin-bottom: 8px; }
+  .lg-set__dek  { font-size: 14px; margin-bottom: 24px; }
+  .lg-set__split { gap: 28px; }
+
+  /* Reports */
+  .lg-rp__left  { padding: 24px 18px; overflow: visible; }
+  .lg-rp__right { padding: 24px 18px 28px; }
+  .lg-rp__h1    { font-size: clamp(36px, 12vw, 56px); margin-bottom: 14px; }
+  .lg-rp__dek   { font-size: 14px; margin-bottom: 24px; }
+  .lg-rp__bgnum { display: none; }
+  .lg-rp__months { grid-template-columns: repeat(3, 1fr); }
+  .lg-rp__recent .it { grid-template-columns: 80px 1fr; }
+  .lg-rp__recent .it .who { display: none; }
+
+  /* Password generator */
+  .lg-pw         { padding: 20px 16px 18px; }
+  .lg-pw__out    { flex-direction: column; align-items: stretch; gap: 12px; }
+  .lg-pw__copy   { flex-direction: row; justify-content: flex-start; flex-wrap: wrap; gap: 10px 16px; }
+  .lg-pw__opts   { grid-template-columns: 1fr; }
+
+  /* Client expand profile grid */
+  .lg-cl-expand__profile-grid { grid-template-columns: 1fr; }
+
+  /* Invoices — wrap table in horizontal scroll (desk-only page) */
+  .lg-inv-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}

@@ -865,7 +865,8 @@ export function InvoicesPage() {
           </button>
         </div>
 
-        {/* ── Column headers ───────────────────────────────────────────────── */}
+        {/* ── Column headers + rows (scroll on mobile) ─────────────────────── */}
+        <div className="lg-inv-table-wrap">
         <div style={{
           display: 'grid',
           gridTemplateColumns: '28px 1fr 120px 120px 110px 110px auto',
@@ -918,6 +919,7 @@ export function InvoicesPage() {
             />
           ))}
         </div>
+        </div>{/* end .lg-inv-table-wrap */}
       </div>
 
       <BottomTabBar active="tickets" />

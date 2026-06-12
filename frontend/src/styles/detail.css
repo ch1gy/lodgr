@@ -450,6 +450,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.12em;
@@ -457,7 +458,9 @@
   color: var(--ink);
   cursor: pointer;
   background: transparent;
+  width: 100%;
 }
+.lg-props__act > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lg-props__act:disabled { opacity: 0.4; cursor: not-allowed; }
 .lg-props__act.is-primary { background: var(--ink); color: var(--cream); border-color: var(--ink); }
 .lg-props__act.is-danger { color: var(--red); border-color: var(--red); }
@@ -468,6 +471,7 @@
   text-transform: none;
   letter-spacing: 0;
   font-size: 13px;
+  flex-shrink: 0;
 }
 .lg-props__act.is-primary .arr { color: rgba(242, 237, 228, 0.6); }
 .lg-props__kv { display: flex; flex-direction: column; gap: 10px; }

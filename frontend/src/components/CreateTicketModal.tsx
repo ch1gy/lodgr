@@ -245,7 +245,7 @@ export function CreateTicketModal({ onClose }: Props) {
 
         {/* ── Header ──────────────────────────────────────────────── */}
         <div className="lg-mdl__top">
-          <span className="lg-mdl__eye">— Section 02 — Open a new ticket</span>
+          <span className="lg-mdl__eye">— Open a ticket</span>
           <span className="lg-mdl__no"><i>Lodgr</i><span className="dot">.</span></span>
           <button type="button" className="lg-mdl__x" onClick={onClose}>Close ✕</button>
         </div>
@@ -256,7 +256,7 @@ export function CreateTicketModal({ onClose }: Props) {
             sheetRef.current?.style.setProperty('--sheet-h', '94vh');
         }}>
           <div className="lg-mdl__body">
-            <div className="lg-mdl__h1">A fresh entry <em>for the desk.</em></div>
+            <div className="lg-mdl__h1">A fresh <em className="m-only">entry.</em><span className="d-only">entry <em>for the desk.</em></span></div>
             <div className="lg-mdl__dek">
               Tickets are filed by the desk on behalf of a client, or by the client directly.
               Once submitted, it lands in the queue immediately.
@@ -265,7 +265,7 @@ export function CreateTicketModal({ onClose }: Props) {
 
             <div className="lg-f-grid">
               <div className="lg-f full">
-                <div className="lg-f__lbl"><span>Title</span><span className="req">Required</span></div>
+                <div className="lg-f__lbl"><span>Title</span><span className="req lg-f__req">Required</span></div>
                 <input
                   className="lg-f__inp"
                   placeholder="e.g. Outlook calendar invites not syncing to iPhones"
@@ -278,7 +278,7 @@ export function CreateTicketModal({ onClose }: Props) {
               </div>
 
               <div className="lg-f full">
-                <div className="lg-f__lbl"><span>Description</span><span className="req">Required</span></div>
+                <div className="lg-f__lbl"><span>Description</span><span className="req lg-f__req">Required</span></div>
                 <textarea
                   className="lg-f__ta"
                   placeholder="What's happening? The more detail, the faster the desk can act."
@@ -288,13 +288,13 @@ export function CreateTicketModal({ onClose }: Props) {
                   maxLength={50000}
                   required
                 />
-                <span className={`lg-f__char-count${description.length > 45000 ? ' warn' : ''}${description.length >= 50000 ? ' over' : ''}`}>
+                <span className={`lg-f__char-count${description.length > 45000 ? ' warn' : ''}${description.length >= 50000 ? ' over' : ''}${description.length <= 45000 ? ' m-hide' : ''}`}>
                   {description.length.toLocaleString()} / 50,000
                 </span>
               </div>
 
               <div className="lg-f full">
-                <div className="lg-f__lbl"><span>Attachment</span><span className="opt">Optional</span></div>
+                <div className="lg-f__lbl"><span>Attachment</span><span className="opt lg-f__opt">Optional</span></div>
                 <label htmlFor={fileInputId} className="lg-f__file-drop" data-active={!!attachment}>
                   <input
                     id={fileInputId}
@@ -323,7 +323,7 @@ export function CreateTicketModal({ onClose }: Props) {
                 <div ref={clientDropRef} className="lg-f full">
                   <div className="lg-f__lbl">
                     <span>Client</span>
-                    <span className="req">Required</span>
+                    <span className="req lg-f__req">Required</span>
                   </div>
                   {/* Wrap input + dropdown together so top:100% anchors to the input bottom. */}
                   <div style={{ position: 'relative' }}>
@@ -387,7 +387,7 @@ export function CreateTicketModal({ onClose }: Props) {
                 <div className="lg-f full" style={{ opacity: subClientsQ.isLoading ? 0.5 : 1 }}>
                   <div className="lg-f__lbl">
                     <span>End client</span>
-                    <span className="opt">Optional</span>
+                    <span className="opt lg-f__opt">Optional</span>
                   </div>
                   {subClients.length > 0 ? (
                     <>
@@ -518,7 +518,7 @@ export function CreateTicketModal({ onClose }: Props) {
               </div>
 
               <div className="lg-f">
-                <div className="lg-f__lbl"><span>Category</span><span className="opt">Optional</span></div>
+                <div className="lg-f__lbl"><span>Category</span><span className="opt lg-f__opt">Optional</span></div>
                 <input
                   className="lg-f__inp"
                   placeholder="e.g. Mail & Calendar"
@@ -533,19 +533,19 @@ export function CreateTicketModal({ onClose }: Props) {
 
             <div className="recurring-row">
               <div className="lg-f">
-                <div className="lg-f__lbl"><span>Due date</span><span className="opt">Optional</span></div>
+                <div className="lg-f__lbl"><span>Due date</span><span className="opt lg-f__opt">Optional</span></div>
                 <input
                   className="lg-f__inp mono"
                   type="date"
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
                 />
-                <span className="lg-f__hint">Leave blank for no deadline</span>
+                <span className="lg-f__hint" style={{ fontFamily: 'var(--sans)', fontSize: 12.5, textTransform: 'none', letterSpacing: 0, color: 'var(--mid)' }}>Leave blank for no deadline</span>
               </div>
 
               <div className="lg-f" style={{ paddingTop: 4 }}>
-                <div className="lg-f__lbl"><span>Recurrence</span><span className="opt">Optional</span></div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 24, paddingTop: 8 }}>
+                <div className="lg-f__lbl"><span>Recurrence</span><span className="opt lg-f__opt">Optional</span></div>
+                <div className="lg-f-recur">
                   <button
                     type="button"
                     className={`lg-ck${recurring ? ' on' : ''}`}
@@ -554,18 +554,18 @@ export function CreateTicketModal({ onClose }: Props) {
                     <span className="lg-ck__b">{recurring ? '✓' : ''}</span>
                     <span className="lg-ck__l">Recurring</span>
                   </button>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, opacity: recurring ? 1 : 0.35 }}>
-                    <span className="lg-f__lbl" style={{ margin: 0 }}>Every</span>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, opacity: recurring ? 1 : 0.35 }}>
+                    <span style={{ fontFamily: 'var(--sans)', fontSize: 13, color: 'var(--mid)' }}>every</span>
                     <input
                       className="lg-f__inp mono"
                       value={interval}
                       onChange={(e) => setInterval(e.target.value)}
                       disabled={!recurring}
-                      style={{ width: 56, textAlign: 'center' }}
+                      style={{ width: 44, textAlign: 'center' }}
                       min={1}
                       type="number"
                     />
-                    <span className="lg-f__lbl" style={{ margin: 0 }}>days</span>
+                    <span style={{ fontFamily: 'var(--sans)', fontSize: 13, color: 'var(--mid)' }}>days</span>
                   </div>
                 </div>
               </div>
@@ -600,7 +600,7 @@ export function CreateTicketModal({ onClose }: Props) {
               className={`lg-bt lg-bt--solid${createM.isPending ? ' is-loading' : ''}`}
               disabled={createM.isPending || !title.trim() || !description.trim() || (isDesk && !selectedClient)}
             >
-              <span className="lbl">Open ticket</span>
+              <span className="lbl">File ticket</span>
               <span className="arr">↗</span>
               <span className="spin" aria-hidden />
             </button>

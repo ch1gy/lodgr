@@ -147,16 +147,7 @@ export function Masthead({ active = 'tickets' }: Props) {
         <button className="lg-drawer__scrim" aria-label="Close menu" tabIndex={menuOpen ? 0 : -1} onClick={() => setMenuOpen(false)} />
         <nav className="lg-drawer__panel" aria-label="Main navigation">
           <div className="lg-drawer__top">
-            <span className="lg-drawer__wm"><i>Lodgr</i><span className="dot">.</span></span>
-            <button className="lg-drawer__x" aria-label="Close menu" onClick={() => setMenuOpen(false)}>✕</button>
-          </div>
-
-          <div className="lg-drawer__who">
-            <span className="av">{initials}</span>
-            <span className="meta">
-              <b>{displayName || 'Signed in'}</b>
-              <span>{isDesk ? 'Desk' : 'Client'}{email ? ` · ${email}` : ''}</span>
-            </span>
+            <button className="lg-drawer__x" aria-label="Close menu" onClick={() => setMenuOpen(false)}>←</button>
           </div>
 
           <div className="lg-drawer__links">
@@ -170,7 +161,6 @@ export function Masthead({ active = 'tickets' }: Props) {
               >
                 <span className="n">{String(i + 1).padStart(2, '0')}</span>
                 {n.label}
-                <span className="ar">→</span>
               </Link>
             ))}
           </div>
@@ -182,9 +172,7 @@ export function Masthead({ active = 'tickets' }: Props) {
               aria-pressed={theme === 'dark'}
               onClick={(e) => toggle({ x: e.clientX, y: e.clientY })}
             >
-              <span className={'seg light' + (theme !== 'dark' ? ' on' : '')}>LGT</span>
-              <span className="slash" aria-hidden>/</span>
-              <span className={'seg dark' + (theme === 'dark' ? ' on' : '')}>DRK</span>
+              {theme === 'dark' ? 'Darkroom — on' : 'Darkroom — off'}
             </button>
             <button
               type="button"
@@ -193,6 +181,10 @@ export function Masthead({ active = 'tickets' }: Props) {
             >
               Sign out
             </button>
+            <div className="lg-drawer__who">
+              <span>{email || (isDesk ? 'Desk' : 'Client')}</span>
+              <span className="status">● online</span>
+            </div>
           </div>
         </nav>
       </div>

@@ -20,6 +20,7 @@ import { flushSync } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tickets as ticketsApi } from '../api/tickets';
+import { admin } from '../api/admin';
 import type { TicketResponse, TicketStatus } from '../api/types';
 import { Masthead } from '../components/Masthead';
 import { BottomTabBar } from '../components/BottomTabBar';
@@ -62,8 +63,10 @@ const PRIORITY_ORDER: Record<string, number> = {
   urgent: 0, high: 1, medium: 2, low: 3,
 };
 
-function clientInitials(id: string): string {
-  return id.replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase() || '??';
+function clientInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return name.replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase() || '??';
 }
 
 function sortTickets(list: TicketResponse[], key: SortKey): TicketResponse[] {
@@ -172,6 +175,18 @@ export function TicketListPage() {
     refetchOnWindowFocus: false,
   });
 
+  const clientsQ = useQuery({
+    queryKey: ['clients'],
+    queryFn: () => admin.listClients(),
+    staleTime: 5 * 60_000,
+  });
+
+  const clientMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const c of clientsQ.data ?? []) m[c.id] = c.name;
+    return m;
+  }, [clientsQ.data]);
+
   const all: TicketResponse[] = useMemo(
     () => query.data?.tickets ?? [],
     [query.data?.tickets]
@@ -260,6 +275,7 @@ export function TicketListPage() {
   const sub = isDesk
     ? `${counts.open + counts.acknowledged} open conversations · ${urgentCount} flagged urgent`
     : `${counts.open + counts.acknowledged} open · ${counts.closed} closed`;
+  const dayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (
@@ -270,13 +286,21 @@ export function TicketListPage() {
         {/* ── Headline strip ─────────────────────────────────────────── */}
         <div className="lg-list__head">
           <div>
+            {isDesk && (
+              <div className="lg-list__eyebrow">
+                {dayLabel} · Issue <CountUp value={counts.all} pad={3} />
+              </div>
+            )}
             <h1 className="lg-list__title press">
               {headline}
               <span className="lg-list__title-count">
                 / <CountUp value={counts.all} pad={3} />
               </span>
             </h1>
-            <div className="lg-list__sub">{sub}</div>
+            <div className="lg-list__sub lg-list__sub--desk">{sub}</div>
+            {isDesk && (
+              <div className="lg-list__swipe-hint">Swipe a card to triage · tap to open.</div>
+            )}
           </div>
           {isDesk && (
             <div className="lg-list__head-meta">
@@ -293,17 +317,23 @@ export function TicketListPage() {
         {/* ── Filter + sort bar ──────────────────────────────────────── */}
         <div className="lg-list__filt">
           <div className="lg-list__filt-group">
-            {(['all', 'open', 'acknowledged', 'pending', 'closed'] as Filter[]).map((f) => (
-              <button
-                key={f}
-                type="button"
-                className={'lg-list__filt-tab' + (filter === f ? ' is-active' : '')}
-                onClick={() => { setFilter(f); setPage(1); }}
-              >
-                {f === 'all' ? 'All' : f[0].toUpperCase() + f.slice(1)}{' '}
-                <b>{f === 'all' ? counts.all : counts[f as TicketStatus]}</b>
-              </button>
-            ))}
+            {(['all', 'open', 'acknowledged', 'pending', 'closed'] as Filter[]).map((f) => {
+              const label = f === 'all' ? 'All' : f === 'acknowledged' ? 'Ack' : f[0].toUpperCase() + f.slice(1);
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  className={
+                    'lg-list__filt-tab' +
+                    (filter === f ? ' is-active' : '') +
+                    (f === 'closed' ? ' lg-list__filt-tab--desk' : '')
+                  }
+                  onClick={() => { setFilter(f); setPage(1); }}
+                >
+                  {label} <b>{f === 'all' ? counts.all : counts[f as TicketStatus]}</b>
+                </button>
+              );
+            })}
           </div>
           <div className="lg-list__filt-spacer" />
 
@@ -478,9 +508,9 @@ export function TicketListPage() {
                     className="lg-row__av"
                     style={isMorph ? vt('sig-avatar') : undefined}
                   >
-                    {clientInitials(t.client_id)}
+                    {clientInitials(clientMap[t.client_id] ?? t.client_id)}
                   </span>
-                  <span className="lg-row__client-nm">{t.client_id.slice(0, 8)}</span>
+                  <span className="lg-row__client-nm">{clientMap[t.client_id] ?? t.client_id.slice(0, 8)}</span>
                 </div>
                 <div className="lg-row__title-blk">
                   <div className="lg-row__cat">

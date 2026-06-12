@@ -59,6 +59,11 @@
   vertical-align: top;
   margin-left: 12px;
 }
+.lg-list__eyebrow {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--red);
+  margin-bottom: 10px;
+}
 .lg-list__sub {
   font-family: var(--sans);
   font-weight: 500;
@@ -67,6 +72,11 @@
   color: var(--ink-soft);
   margin-top: 8px;
   letter-spacing: 0.003em;
+}
+.lg-list__swipe-hint {
+  font-family: var(--sans); font-weight: 500; font-style: italic;
+  font-size: 13px; color: var(--mid); margin-top: 10px;
+  display: none;
 }
 .lg-list__head-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .lg-list__kpi {
@@ -353,8 +363,10 @@
 @media (max-width: 540px) {
   /* Compact head — clamp() handles title scaling, just adjust padding */
   .lg-list__head { padding: 18px 18px 14px; gap: 12px; }
-  .lg-list__kpi   { font-size: 22px; }
-  .lg-list__kpi-lbl { font-size: 8px; }
+  /* Hide desk-only KPI block; show swipe hint + sub text instead */
+  .lg-list__head-meta   { display: none; }
+  .lg-list__sub--desk   { display: none; }
+  .lg-list__swipe-hint  { display: block; }
 
   /* Filter bar: horizontally scrollable, no overflow wrap, hide extras */
   .lg-list__filt {
@@ -362,10 +374,11 @@
     -webkit-overflow-scrolling: touch;
   }
   .lg-list__filt::-webkit-scrollbar { display: none; }
-  .lg-list__filt-meta   { display: none; }
-  .lg-list__filt-search { display: none; }
-  /* Hide the "+ New ticket" button — FAB handles it on mobile */
-  .lg-list__filt-new { display: none; }
+  .lg-list__filt-meta         { display: none; }
+  .lg-list__filt-search       { display: none; }
+  .lg-list__filt-new          { display: none; }
+  /* Closed tickets are desk-only context — hide from mobile filter bar */
+  .lg-list__filt-tab--desk    { display: none; }
 
   /* ── Draft A stacked card (mobile/Mobile Motion.html) ──────────────── */
   /* Grid areas: top (av · nm · sla) / title / bottom (status · cat) */

@@ -362,41 +362,97 @@ a { color: inherit; }
   .lg-mast-logo { font-size: 22px; }
 }
 
-/* ── Bottom tab bar — mobile navigation (design spec: list-responsive.jsx) ─ */
-.lg-tabbar {
-  display: none; /* hidden on desktop */
+/* ── Bottom tab bar — RETIRED. Mobile nav now lives in the hamburger drawer
+ *    (see .lg-mast-burger + .lg-drawer below). Kept as display:none so any
+ *    page still rendering <BottomTabBar> collapses harmlessly. ──────────── */
+.lg-tabbar { display: none !important; }
+
+/* ── Hamburger button — mobile only (sits in the masthead's left slot) ──── */
+.lg-mast-burger { display: none; }
+@media (max-width: 768px) {
+  .lg-mast-burger {
+    display: inline-flex; flex-direction: column; justify-content: center; gap: 4px;
+    width: 40px; height: 40px; margin-left: -8px;
+    background: none; border: none; cursor: pointer; padding: 0;
+  }
+  .lg-mast-burger i {
+    display: block; width: 20px; height: 1.5px; background: var(--ink);
+    transition: transform var(--dur-base) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+  }
+  .lg-mast-burger:active i { background: var(--red); }
 }
-@media (max-width: 540px) {
-  .lg-tabbar {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    border-top: 1px solid var(--rule);
-    background: var(--cream);
-    flex-shrink: 0;
-    position: sticky; bottom: 0; z-index: 100;
+
+/* ── Mobile drawer ──────────────────────────────────────────────────────── */
+.lg-drawer { display: none; }
+@media (max-width: 768px) {
+  .lg-drawer {
+    display: block; position: fixed; inset: 0; z-index: 300;
+    pointer-events: none;
   }
-  /* client role only gets 2 tabs — let them fill evenly */
-  .lg-tabbar:has(.lg-tabbar__t:only-of-type),
-  .lg-tabbar:has(.lg-tabbar__t:nth-child(2):last-child) {
-    grid-template-columns: repeat(2, 1fr);
+  .lg-drawer__scrim {
+    position: absolute; inset: 0; border: none; cursor: pointer;
+    background: rgba(13, 13, 13, 0.46); backdrop-filter: blur(2px);
+    opacity: 0; transition: opacity var(--dur-base) var(--ease-out);
   }
-  .lg-tabbar__t {
-    padding: 12px 0 14px;
-    font-family: var(--mono); font-size: 8.5px; letter-spacing: .14em;
-    text-transform: uppercase; color: var(--mid);
-    text-align: center; text-decoration: none;
-    display: flex; flex-direction: column; align-items: center; gap: 4px;
-    transition: color var(--dur-fast) var(--ease-out);
+  .lg-drawer__panel {
+    position: absolute; top: 0; left: 0; bottom: 0;
+    width: min(82vw, 340px);
+    background: var(--cream); border-right: 1px solid var(--ink);
+    display: flex; flex-direction: column;
+    padding: calc(env(safe-area-inset-top) + 22px) 26px calc(env(safe-area-inset-bottom) + 24px);
+    transform: translateX(-100%);
+    transition: transform var(--dur-slow) var(--ease-spring);
+    box-shadow: 18px 0 50px -20px rgba(0, 0, 0, 0.5);
   }
-  .lg-tabbar__ic {
-    width: 18px; height: 18px;
-    border: 1px solid var(--rule);
-    display: grid; place-items: center;
-    font-family: var(--serif); font-style: italic; font-size: 12px;
-    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  .lg-drawer__panel::before {
+    content: ''; position: absolute; left: 0; top: 0; width: 76px; height: 3px; background: var(--red);
   }
-  .lg-tabbar__t.active { color: var(--ink); }
-  .lg-tabbar__t.active .lg-tabbar__ic { background: var(--ink); color: var(--cream); border-color: var(--ink); }
+  .lg-drawer.is-open { pointer-events: auto; }
+  .lg-drawer.is-open .lg-drawer__scrim { opacity: 1; }
+  .lg-drawer.is-open .lg-drawer__panel { transform: translateX(0); }
+
+  .lg-drawer__top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px; }
+  .lg-drawer__wm { font-family: var(--serif); font-style: italic; font-size: 30px; color: var(--ink); }
+  .lg-drawer__wm .dot { color: var(--red); }
+  .lg-drawer__x { background: none; border: none; cursor: pointer; font-family: var(--mono); font-size: 14px; color: var(--mid); padding: 6px; }
+  .lg-drawer__x:active { color: var(--red); }
+
+  .lg-drawer__who { display: flex; align-items: center; gap: 12px; padding-bottom: 22px; margin-bottom: 8px; border-bottom: 1px solid var(--rule); }
+  .lg-drawer__who .av { width: 38px; height: 38px; flex-shrink: 0; background: var(--ink); color: var(--cream); display: grid; place-items: center; font-family: var(--mono); font-size: 12px; }
+  .lg-drawer__who .meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .lg-drawer__who .meta b { font-family: var(--sans); font-weight: 600; font-size: 14px; color: var(--ink); }
+  .lg-drawer__who .meta span { font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .lg-drawer__links { display: flex; flex-direction: column; padding: 12px 0; flex: 1; }
+  .lg-drawer__link {
+    display: flex; align-items: baseline; gap: 14px;
+    font-family: var(--serif); font-style: italic; font-size: 30px; line-height: 1;
+    color: var(--ink); text-decoration: none; padding: 15px 0;
+    border-bottom: 1px solid var(--rule);
+    opacity: 0; transform: translateX(-12px);
+  }
+  .lg-drawer.is-open .lg-drawer__link {
+    animation: lg-drawer-in var(--dur-base) var(--ease-out) forwards;
+    animation-delay: calc(var(--di, 0) * 45ms + 120ms);
+  }
+  @keyframes lg-drawer-in { to { opacity: 1; transform: none; } }
+  .lg-drawer__link .n { font-family: var(--mono); font-style: normal; font-size: 10px; letter-spacing: 0.12em; color: var(--mid); }
+  .lg-drawer__link .ar { margin-left: auto; font-family: var(--mono); font-style: normal; font-size: 16px; color: var(--rule); transition: transform var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out); }
+  .lg-drawer__link.active { color: var(--red); }
+  .lg-drawer__link.active .n { color: var(--red); }
+  .lg-drawer__link.active .ar { color: var(--red); transform: translateX(4px); }
+
+  .lg-drawer__foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 20px; border-top: 2px solid var(--ink); }
+  .lg-drawer__theme { display: inline-flex; align-items: center; gap: 7px; background: none; border: 1px solid var(--rule); padding: 9px 13px; cursor: pointer; }
+  .lg-drawer__theme .seg { font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; color: var(--mid); }
+  .lg-drawer__theme .seg.on { color: var(--ink); }
+  .lg-drawer__theme .slash { color: var(--rule); font-family: var(--mono); font-size: 9px; }
+  .lg-drawer__signout { background: none; border: none; cursor: pointer; font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mid); }
+  .lg-drawer__signout:active { color: var(--red); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-drawer__panel, .lg-drawer__scrim, .lg-drawer__link { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────

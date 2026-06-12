@@ -23,7 +23,6 @@ import { tickets as ticketsApi } from '../api/tickets';
 import { admin } from '../api/admin';
 import type { TicketResponse, TicketStatus } from '../api/types';
 import { Masthead } from '../components/Masthead';
-import { BottomTabBar } from '../components/BottomTabBar';
 import { StatusPill } from '../components/StatusPill';
 import { CreateTicketModal } from '../components/CreateTicketModal';
 import { Segmented } from '../components/Segmented';
@@ -602,8 +601,6 @@ export function TicketListPage() {
           >✕ Deselect</button>
         </div>
       )}
-
-      <BottomTabBar active="tickets" />
 
       {createOpen && <CreateTicketModal onClose={() => setCreateOpen(false)} />}
     </div>

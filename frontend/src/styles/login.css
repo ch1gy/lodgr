@@ -1,332 +1,122 @@
 /* ────────────────────────────────────────────────────────────────────────────
- * login.css — sign-in page + magic landing
- *
- * §4.1 canonical treatment (login/Simple Login.html):
- *   Centered single column, max-width 360px. Wordmark · tagline · rule ·
- *   fields · full-width button · rule · inline alt-mode switch · footer.
- *   One faint stroked "L" watermark bottom-right. Theme toggle top-right.
- *
- * Responsive: the centered column works at every size without media queries
- * beyond minor padding tweaks on phone.
+ * login.css — sign-in (SIMPLE, centered). Logo + credentials, nothing else.
+ * Ported 1:1 from the approved prototype `login/Simple Login.html`.
+ * Password ⇄ magic-link is one inline switch. Light/dark via [data-theme].
+ * (The old two-column editorial login was retired — see design.md §4.1.)
  * ──────────────────────────────────────────────────────────────────────── */
 
-/* ── Page shell ───────────────────────────────────────────────────────── */
 .lg-login {
-  width: 100%;
+  position: relative;
   min-height: 100vh;
   background: var(--cream);
-  display: grid;
-  place-items: center;
-  padding: 32px 24px;
-  position: relative;
-  overflow: hidden;
-}
-
-/* Faint stroked "L" — bottom-right ornament, the only decoration */
-.lg-login__bg-l {
-  position: fixed;
-  bottom: -80px; right: -30px;
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 380px;
-  line-height: 1;
-  color: transparent;
-  -webkit-text-stroke: 1px var(--rule);
-  pointer-events: none;
-  user-select: none;
-  opacity: 0.45;
-  z-index: 0;
-}
-[data-theme="dark"] .lg-login__bg-l { opacity: 0.25; }
-
-/* Theme toggle — fixed top-right corner */
-.lg-login__theme {
-  position: fixed;
-  top: 22px; right: 28px;
-  z-index: 10;
-}
-
-/* ── Centered card ────────────────────────────────────────────────────── */
-.lg-login__card {
-  width: 100%;
-  max-width: 360px;
+  color: var(--ink);
   display: flex;
   flex-direction: column;
-  position: relative;
-  z-index: 1;
-}
-
-/* Wordmark */
-.lg-login__logo {
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 42px;
-  color: var(--ink);
-  margin-bottom: 8px;
-}
-.lg-login__logo .dot { color: var(--red); }
-
-/* Tagline */
-.lg-login__tag {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--mid);
-  margin-bottom: 24px;
-}
-
-/* Hairline rule (used twice — above and below the button) */
-.lg-login__rule {
-  height: 1px;
-  background: var(--rule);
-  margin-bottom: 28px;
-}
-
-/* ── Form ─────────────────────────────────────────────────────────────── */
-
-/* Fields wrapper — re-keyed on mode change so React remounts it and the
-   lg-enter animation fires again, giving the 420ms cross-fade/rise feel */
-.lg-login__fields { display: flex; flex-direction: column; }
-
-.lg-login__field { margin-bottom: 24px; }
-
-/* Password label row — label left, "Forgot" right */
-.lg-login__pw-label {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 6px;
-}
-
-/* Magic mode helper text */
-.lg-login__explainer {
-  font-family: var(--sans);
-  font-weight: 500;
-  font-size: 14px;
-  color: var(--ink-soft);
-  line-height: 1.6;
-  margin-bottom: 24px;
-  letter-spacing: 0.003em;
-}
-.lg-login__explainer b { color: var(--ink); font-weight: 400; }
-
-/* Full-width sign-in / send button */
-.lg-login__send {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  background: var(--ink);
-  color: var(--cream);
-  border: none;
-  padding: 15px 22px;
-  cursor: pointer;
-  margin-bottom: 28px;
-  transition:
-    background  var(--dur-fast) var(--ease-out),
-    transform   var(--dur-fast) var(--ease-spring),
-    box-shadow  var(--dur-fast) var(--ease-out);
-}
-.lg-login__send .arr { color: var(--red); }
-.lg-login__send:disabled { opacity: 0.5; cursor: progress; }
-.lg-login__send:hover:not(:disabled) {
-  background: #1a1a1a;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(13, 13, 13, 0.12);
-}
-[data-theme="dark"] .lg-login__send { background: var(--ink); color: var(--cream); }
-[data-theme="dark"] .lg-login__send:hover:not(:disabled) {
-  background: rgba(237, 232, 223, 0.92);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  justify-content: center;
+  padding: 40px 24px;
+  overflow: hidden;
+  transition: background 600ms cubic-bezier(0.16, 1, 0.3, 1), color 600ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Forgot / inline text links */
-.lg-login__forgot {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--mid);
-  background: none;
-  border: none;
-  border-bottom: 1px solid var(--rule);
-  padding: 0 0 2px;
-  cursor: pointer;
-  transition: color var(--dur-fast) var(--ease-out),
-              border-color var(--dur-fast) var(--ease-out);
+/* one faint editorial watermark, very low-key */
+.lg-login__watermark {
+  position: absolute; right: -4vw; bottom: -10vh; z-index: 0;
+  font-family: var(--serif); font-style: italic; font-size: 52vh; line-height: 1;
+  color: transparent; -webkit-text-stroke: 1px var(--rule); opacity: 0.4;
+  pointer-events: none; user-select: none;
 }
-.lg-login__forgot:hover { color: var(--red); border-bottom-color: var(--red); }
+[data-theme="dark"] .lg-login__watermark { opacity: 0.3; }
 
-/* ── Alt mode switch — the inline swap line below the rule ─────────────── */
-.lg-login__alt {
-  padding-top: 18px;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--mid);
-  text-align: center;
-}
-.lg-login__alt button {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  font: inherit;
-  color: var(--ink);
-  text-transform: inherit;
-  letter-spacing: inherit;
-}
-.lg-login__alt button b {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  text-decoration-thickness: 1px;
-  font-weight: 400;
-}
-.lg-login__alt button:hover b { color: var(--red); }
+.lg-login__card { position: relative; z-index: 2; width: 100%; max-width: 360px; }
 
-/* ── Footer ───────────────────────────────────────────────────────────── */
-.lg-login__footer {
-  margin-top: 40px;
-  display: flex;
-  justify-content: space-between;
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--mid);
-}
+/* wordmark */
+.lg-login__brand { text-align: center; margin-bottom: 6px; }
+.lg-login__wm { font-family: var(--serif); font-style: italic; font-size: 46px; line-height: 1; color: var(--ink); }
+.lg-login__wm .dot { color: var(--red); }
+.lg-login__sub { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--mid); margin-top: 12px; }
 
-/* ── Error banner ─────────────────────────────────────────────────────── */
+.lg-login__rule { height: 1px; background: var(--rule); margin: 34px 0 30px; }
+
+/* fields */
+.lg-login__field { position: relative; margin-bottom: 22px; }
+.lg-login__lab { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--mid); margin-bottom: 9px; }
+.lg-login__forgot { color: var(--mid); background: none; border: none; border-bottom: 1px solid var(--rule); padding: 0 0 1px; cursor: pointer; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; transition: color 200ms, border-color 200ms; }
+.lg-login__forgot:hover { color: var(--red); border-color: var(--red); }
+.lg-login__inp {
+  width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--rule);
+  font-family: var(--sans); font-weight: 500; font-size: 18px; color: var(--ink);
+  padding: 6px 0 10px; outline: none; transition: border-color 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.lg-login__inp::placeholder { color: var(--mid); }
+.lg-login__inp:focus { border-bottom-color: var(--ink); }
+.lg-login__underline { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: var(--red); transition: width 360ms cubic-bezier(0.16, 1, 0.3, 1); }
+.lg-login__inp:focus ~ .lg-login__underline { width: 100%; }
+
+/* sign-in */
+.lg-login__signin {
+  width: 100%; margin-top: 8px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  background: var(--ink); color: var(--cream); border: none; cursor: pointer;
+  padding: 16px; display: inline-flex; align-items: center; justify-content: center; gap: 12px;
+  transition: transform 180ms cubic-bezier(0.3, 1.4, 0.5, 1), opacity 200ms;
+}
+.lg-login__signin .arr { color: var(--red); transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1); display: inline-block; }
+.lg-login__signin:hover:not(:disabled) .arr { transform: translateX(5px); }
+.lg-login__signin:active:not(:disabled) { transform: scale(0.985); }
+.lg-login__signin:disabled { opacity: 0.5; cursor: progress; }
+
+.lg-login__helper { font-family: var(--sans); font-weight: 500; font-size: 14px; color: var(--ink-soft); line-height: 1.6; margin: 6px 0 22px; }
+.lg-login__helper b { color: var(--ink); }
+
+/* magic-link toggle */
+.lg-login__alt { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--rule); text-align: center; font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mid); }
+.lg-login__alt em { font-style: normal; color: var(--ink); background: none; border: none; border-bottom: 1px solid var(--ink); padding: 0 0 1px; margin: 0 4px; cursor: pointer; font: inherit; letter-spacing: inherit; text-transform: inherit; transition: color 200ms, border-color 200ms; }
+.lg-login__alt em:hover { color: var(--red); border-color: var(--red); }
+
+.lg-login__foot { position: absolute; bottom: 22px; left: 0; right: 0; z-index: 2; display: flex; justify-content: space-between; padding: 0 28px; font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mid); }
+.lg-login__foot b { color: var(--ink-soft); font-weight: 400; }
+
+/* theme toggle */
+.lg-login__theme { position: absolute; top: 22px; right: 24px; z-index: 5; width: 46px; height: 26px; border-radius: 20px; border: 1px solid var(--rule); background: transparent; cursor: pointer; padding: 0; transition: border-color 300ms; }
+.lg-login__theme:hover { border-color: var(--ink); }
+.lg-login__theme .knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--ink); transition: transform 420ms cubic-bezier(0.34, 1.4, 0.5, 1); }
+[data-theme="dark"] .lg-login__theme .knob { transform: translateX(20px); }
+
+/* error banner */
 .lg-login__error {
-  background: rgba(200, 50, 42, 0.06);
-  border-left: 3px solid var(--red);
-  padding: 12px 14px;
-  margin-bottom: 24px;
-  font-family: var(--sans);
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ink);
-  letter-spacing: 0.003em;
-  line-height: 1.5;
+  background: rgba(200, 50, 42, 0.07); border-left: 3px solid var(--red);
+  padding: 12px 14px; margin-bottom: 22px;
+  font-family: var(--sans); font-size: 14px; font-weight: 500; color: var(--ink); line-height: 1.5;
+  animation: lg-error-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.lg-login__error b {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--red);
-  font-weight: 400;
-  display: block;
-  margin-bottom: 4px;
-}
+.lg-login__error b { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--red); font-weight: 400; display: block; margin-bottom: 4px; }
+@keyframes lg-error-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 
-/* ── Autofill — kill browser yellow/blue background ───────────────────── */
-/* Hardcoded hex because Chrome Android doesn't cascade CSS custom
-   properties through [data-theme] ancestor selectors inside :-webkit-autofill. */
-.lg-login__card input:-webkit-autofill,
-.lg-login__card input:-webkit-autofill:hover,
-.lg-login__card input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 1000px #f2ede4 inset;
-          box-shadow: 0 0 0 1000px #f2ede4 inset;
-  -webkit-text-fill-color: #0d0d0d;
-  caret-color: #0d0d0d;
-  transition: background-color 5000s ease-in-out 0s;
-}
-html[data-theme="dark"] .lg-login__card input:-webkit-autofill,
-html[data-theme="dark"] .lg-login__card input:-webkit-autofill:hover,
-html[data-theme="dark"] .lg-login__card input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 1000px #15110d inset;
-          box-shadow: 0 0 0 1000px #15110d inset;
-  -webkit-text-fill-color: #ede8df;
-  caret-color: #ede8df;
-}
+/* entrance stagger */
+.lg-login__card > * { opacity: 0; transform: translateY(10px); animation: lg-rise 620ms cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.lg-login__card > *:nth-child(1) { animation-delay: 60ms; }
+.lg-login__card > *:nth-child(2) { animation-delay: 130ms; }
+.lg-login__card > *:nth-child(3) { animation-delay: 190ms; }
+.lg-login__card > *:nth-child(4) { animation-delay: 250ms; }
+@keyframes lg-rise { to { opacity: 1; transform: none; } }
+.lg-login__swap { animation: lg-swapin 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes lg-swapin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-/* ── Magic landing — minimal centered card ────────────────────────────── */
-/* Used by MagicLandingPage.tsx (same import) */
-.lg-magic-land {
-  min-height: 100vh;
-  background: var(--cream);
-  display: grid;
-  place-items: center;
-  padding: 24px;
-}
-.lg-magic-land__card {
-  max-width: 480px;
-  width: 100%;
-  text-align: center;
-}
-.lg-magic-land__logo {
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 42px;
-  color: var(--ink);
-  margin-bottom: 6px;
-}
-.lg-magic-land__logo .dot { color: var(--red); }
-.lg-magic-land__sub {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: var(--mid);
-  margin-bottom: 32px;
-}
-.lg-magic-land__h1 {
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 36px;
-  line-height: 1.05;
-  color: var(--ink);
-  margin-bottom: 14px;
-}
-.lg-magic-land__h1 em { color: var(--red); }
-.lg-magic-land__lede {
-  font-family: var(--sans);
-  font-weight: 500;
-  font-size: 16px;
-  line-height: 1.55;
-  color: var(--ink-soft);
-  letter-spacing: 0.003em;
-  margin-bottom: 24px;
-}
-.lg-magic-land__back {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--mid);
-  border-bottom: 1px solid var(--rule);
-  padding-bottom: 2px;
-  text-decoration: none;
-}
-
-/* ── Responsive ───────────────────────────────────────────────────────── */
 @media (max-width: 540px) {
-  .lg-login { padding: 20px 16px; }
-  .lg-login__logo { font-size: 34px; }
-  .lg-login__footer { display: none; }
-  .lg-login__theme { top: 16px; right: 18px; }
+  .lg-login__wm { font-size: 40px; }
+  .lg-login__foot { font-size: 8px; padding: 0 18px; }
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
- * Motion polish
- * ───────────────────────────────────────────────────────────────────────── */
+/* ── Magic landing — minimal centered card (used by MagicLandingPage) ──── */
+.lg-magic-land { min-height: 100vh; background: var(--cream); display: grid; place-items: center; padding: 24px; }
+.lg-magic-land__card { max-width: 480px; width: 100%; text-align: center; animation: lg-rise 620ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.lg-magic-land__logo { font-family: var(--serif); font-style: italic; font-size: 42px; color: var(--ink); margin-bottom: 6px; }
+.lg-magic-land__logo .dot { color: var(--red); }
+.lg-magic-land__sub { font-family: var(--mono); font-size: 10px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--mid); margin-bottom: 32px; }
+.lg-magic-land__h1 { font-family: var(--serif); font-style: italic; font-size: 36px; line-height: 1.05; color: var(--ink); margin-bottom: 14px; }
+.lg-magic-land__h1 em { color: var(--red); }
+.lg-magic-land__lede { font-family: var(--sans); font-weight: 500; font-size: 16px; line-height: 1.55; color: var(--ink-soft); margin-bottom: 24px; }
+.lg-magic-land__back { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mid); border-bottom: 1px solid var(--rule); padding-bottom: 2px; text-decoration: none; }
 
-/* Children stagger in via lg-enter (--i 0–7); the card itself has no
-   animation so children don't double-animate inside a fading wrapper. */
-
-/* Magic landing card springs in */
-.lg-magic-land__card { animation: lg-enter-pop var(--dur-slow) var(--ease-spring) both; }
-
-/* Error banner slides in from above */
-.lg-login__error { animation: lg-error-in var(--dur-base) var(--ease-out) both; }
-@keyframes lg-error-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
+@media (prefers-reduced-motion: reduce) { .lg-login *, .lg-login *::before, .lg-login *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; } }

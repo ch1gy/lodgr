@@ -10,7 +10,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Masthead } from '../components/Masthead';
-import { BottomTabBar } from '../components/BottomTabBar';
 import { admin } from '../api/admin';
 import { api } from '../api/client';
 import { downloadBlob, extractApiError } from '../utils/format';
@@ -258,7 +257,6 @@ export function ReportsPage() {
           </div>
         </div>
       </div>
-      <BottomTabBar active="reports" />
     </div>
   );
 }

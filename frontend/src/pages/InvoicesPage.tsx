@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Masthead } from '../components/Masthead';
-import { BottomTabBar } from '../components/BottomTabBar';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { admin } from '../api/admin';
 import { api } from '../api/client';
@@ -921,8 +920,6 @@ export function InvoicesPage() {
         </div>
         </div>{/* end .lg-inv-table-wrap */}
       </div>
-
-      <BottomTabBar active="tickets" />
 
       {createOpen && (
         <CreateInvoiceModal

@@ -23,41 +23,22 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tickets as ticketsApi } from '../api/tickets';
-import { api } from '../api/client';
-import { downloadBlob } from '../utils/format';
-import { ConfirmModal } from '../components/ConfirmModal';
-import type { ConfirmOptions } from '../components/ConfirmModal';
 import type {
   InternalNote,
-  PatchTicketPayload,
   TicketResponse,
   TicketWithThread,
   ThreadEntry,
 } from '../api/types';
 import { Masthead } from '../components/Masthead';
-import { BottomTabBar } from '../components/BottomTabBar';
-import { MagicLinkModal } from '../components/MagicLinkModal';
 import { StatusPill } from '../components/StatusPill';
 import { PriorityBars } from '../components/PriorityBars';
-import { SlaOdometer } from '../components/SlaOdometer';
-import { EditPropsPanel } from '../components/EditPropsPanel';
-import { ReadOnlyProps } from '../components/ReadOnlyProps';
 import { useAuth } from '../auth/AuthContext';
-import { timeAgo, daysUntil, fmtDateTime, TICKET_TYPE_LABEL, extractApiError } from '../utils/format';
 import '../styles/detail.css';
-import '../styles/v2.css';
-
-const vt = (name: string): React.CSSProperties =>
-  ({ viewTransitionName: name } as unknown as React.CSSProperties);
 
 type ComposerTab = 'reply' | 'note';
-
-/** Which desk transitions are legal from the ticket's current status. */
-type TransitionAbility = { ack: boolean; pend: boolean; close: boolean };
 
 // ── localStorage keys for rail collapse state ────────────────────────────
 const LS_QUEUE = 'lodgr.detail.queueCollapsed';
@@ -70,6 +51,34 @@ function writeBool(key: string, v: boolean) {
   try { localStorage.setItem(key, v ? '1' : '0'); } catch { /* private mode etc */ }
 }
 
+// ── Small format helpers ─────────────────────────────────────────────────
+function fmtDateTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString('en-GB', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+function timeAgo(iso: string): string {
+  const ms = Date.now() - +new Date(iso);
+  const m = Math.floor(ms / 60_000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+}
+function daysUntil(date: string | null): number | null {
+  if (!date) return null;
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const d = new Date(date + 'T00:00:00');
+  return Math.round((+d - +t) / 86_400_000);
+}
 
 export function TicketDetailPage() {
   const { id = '' } = useParams<{ id: string }>();
@@ -85,27 +94,6 @@ export function TicketDetailPage() {
 
   // Mobile sheet (separate from desktop collapse; only used < 1024px).
   const [sheetOpen, setSheetOpen] = useState(false);
-
-  // Magic-link modal state (replaces the old alert()).
-  const [magicLinkUrl, setMagicLinkUrl] = useState<string | null>(null);
-
-  // Edit-properties mode — shared by desktop rail and mobile sheet.
-  const [editingProps, setEditingProps] = useState(false);
-
-  // Custom confirm modal (replaces window.confirm).
-  const [confirmOpts, setConfirmOpts] = useState<(ConfirmOptions & { onConfirm: () => void }) | null>(null);
-
-  function showConfirm(opts: ConfirmOptions, onConfirm: () => void) {
-    setConfirmOpts({ ...opts, onConfirm });
-  }
-
-  // Warn on reload/tab-close if editing is unsaved.
-  useEffect(() => {
-    if (!editingProps) return;
-    const handle = (e: BeforeUnloadEvent) => { e.preventDefault(); };
-    window.addEventListener('beforeunload', handle);
-    return () => window.removeEventListener('beforeunload', handle);
-  }, [editingProps]);
 
   // ── Queries ──────────────────────────────────────────────────────────
   const ticketQ = useQuery({
@@ -165,24 +153,9 @@ export function TicketDetailPage() {
   const magicM = useMutation({
     mutationFn: () => ticketsApi.magicLinkFor(id),
     onSuccess: (data) => {
-      setMagicLinkUrl(data.url);
-    },
-  });
-
-  const patchM = useMutation({
-    mutationFn: (payload: PatchTicketPayload) => ticketsApi.patch(id, payload),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['ticket', id] });
-      void qc.invalidateQueries({ queryKey: ['tickets', 1, 50] });
-      setEditingProps(false);
-    },
-  });
-
-  const deleteM = useMutation({
-    mutationFn: () => ticketsApi.delete(id),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['tickets', 1, 50] });
-      nav('/tickets');
+      // Copy URL to clipboard for desk convenience.
+      try { void navigator.clipboard?.writeText(data.url); } catch { /* fine */ }
+      alert(`Magic link copied to clipboard:\n${data.url}`);
     },
   });
 
@@ -196,18 +169,14 @@ export function TicketDetailPage() {
     e.preventDefault();
     const body = composerBody.trim();
     if (!body) return;
-    try {
-      if (composerTab === 'reply') {
-        await replyM.mutateAsync({ body, file: pendingFile ?? undefined });
-      } else {
-        await noteM.mutateAsync(body);
-      }
-      setComposerBody('');
-      setPendingFile(null);
-      if (fileRef.current) fileRef.current.value = '';
-    } catch {
-      // replyM.error / noteM.error surfaces the error inline; no action needed here.
+    if (composerTab === 'reply') {
+      await replyM.mutateAsync({ body, file: pendingFile ?? undefined });
+    } else {
+      await noteM.mutateAsync(body);
     }
+    setComposerBody('');
+    setPendingFile(null);
+    if (fileRef.current) fileRef.current.value = '';
   }
 
   // ── Derived ──────────────────────────────────────────────────────────
@@ -215,23 +184,16 @@ export function TicketDetailPage() {
   const thread: ThreadEntry[] = ticket?.thread ?? [];
   const notes: InternalNote[] = notesQ.data ?? [];
 
-  // Which transitions are legal from the current status?
-  // open → ack → closed  |  open → pending → ack → closed
-  const can = useMemo<TransitionAbility>(() => {
+  // What transitions are legal from the current status? Mirrors the diagram
+  // in the handoff:  open → ack → closed   |   open → pending → ack → closed
+  const can = useMemo(() => {
     const s = ticket?.status;
     return {
-      ack:   s === 'open' || s === 'pending',
-      pend:  s === 'open' || s === 'acknowledged',
+      ack: s === 'open' || s === 'pending',     // pend can be re-ack'd
+      pend: s === 'open' || s === 'acknowledged',
       close: s === 'acknowledged',
     };
   }, [ticket?.status]);
-
-  const queueUrgentCount = useMemo(
-    () => (queueQ.data?.tickets ?? []).filter(
-      (t) => t.priority === 'urgent' && t.status !== 'closed'
-    ).length,
-    [queueQ.data?.tickets]
-  );
 
   const due = daysUntil(ticket?.due_date ?? null);
   const dueLbl = due === null ? '—' : due < 0 ? `${Math.abs(due)}d overdue` : due === 0 ? 'today' : `${due}d`;
@@ -339,14 +301,14 @@ export function TicketDetailPage() {
             {/* Vertical strip shown only when collapsed. */}
             <div className="lg-queue__collapsed">
               <span className="badge">
-                <span className="red">{String(queueUrgentCount).padStart(2, '0')}</span>
+                <span className="red">{String(queueQ.data?.tickets.filter((t) => t.priority === 'urgent' && t.status !== 'closed').length ?? 0).padStart(2, '0')}</span>
                 /{queueQ.data?.total ?? 0}
               </span>
               <span className="vrt">Queue · expand</span>
             </div>
 
             {/* Item list. */}
-            {(queueQ.data?.tickets ?? []).map((t: TicketResponse) => {
+            {(queueQ.data?.tickets ?? []).slice(0, 12).map((t: TicketResponse) => {
               const cls =
                 'lg-queue__item' + (t.id === ticket.id ? ' is-active' : '');
               const dotCls = t.status === 'open' ? 'open' : t.status === 'acknowledged' ? 'ack' : '';
@@ -374,12 +336,7 @@ export function TicketDetailPage() {
         <article className="lg-article">
           <div className="lg-article__above">
             <div className="lg-article__above-l">
-              {ticket.category ?? TICKET_TYPE_LABEL[ticket.ticket_type]}
-              {ticket.sub_client_name && (
-                <span style={{ marginLeft: 10, color: 'var(--red)' }}>
-                  › {ticket.sub_client_name}
-                </span>
-              )}
+              {ticket.category ?? ticket.ticket_type.replace('_', ' ')}
             </div>
             <div className="lg-article__above-r">
               <b>{ticket.id}</b>
@@ -388,15 +345,13 @@ export function TicketDetailPage() {
             </div>
           </div>
 
-          <h1 className="lg-article__h1" style={vt('sig-headline')}>{ticket.title}</h1>
+          <h1 className="lg-article__h1">{ticket.title}</h1>
           {ticket.description && (
-            <div className="lg-article__md">
-              <ReactMarkdown>{ticket.description}</ReactMarkdown>
-            </div>
+            <p className="lg-article__dek">{ticket.description}</p>
           )}
 
           <div className="lg-article__byline">
-            <span className="lg-article__byline-av" style={vt('sig-avatar')}>
+            <span className="lg-article__byline-av">
               {ticket.client_id.slice(0, 2).toUpperCase()}
             </span>
             <div className="lg-article__byline-nm">
@@ -408,12 +363,6 @@ export function TicketDetailPage() {
             <div className="lg-article__byline-pills">
               <StatusPill status={ticket.status} />
               <PriorityBars priority={ticket.priority} />
-              <span style={vt('sig-clock')}>
-                <SlaOdometer
-                  dueDate={ticket.due_date}
-                  estimatedCompletion={ticket.estimated_completion}
-                />
-              </span>
             </div>
           </div>
 
@@ -425,14 +374,9 @@ export function TicketDetailPage() {
               </p>
             )}
             {thread.map((m, i) => {
-              // The backend doesn't include sender role in ThreadEntry, so we
-              // infer it:
-              //   • Desk viewer  → their own messages are "from the desk".
-              //   • Client viewer → any sender that isn't the ticket's client
-              //                     is the desk (single-desk model for now).
-              const isFromDesk = isDesk
-                ? (!!user && m.sender_id === user.sub)
-                : m.sender_id !== ticket.client_id;
+              // The handoff doesn't currently tell us if a sender is desk or
+              // client per message. We fall back to a sender_id comparison.
+              const isFromDesk = !!user && m.sender_id === user.sub && isDesk;
               return (
                 <div
                   key={m.id}
@@ -449,22 +393,9 @@ export function TicketDetailPage() {
                     </div>
                     <div className="lg-msg__txt">{m.body}</div>
                     {m.attachment_path && (
-                      <button
-                        type="button"
-                        className="lg-msg__attach"
-                        onClick={async () => {
-                          try {
-                            const blob = await api.get<Blob>(m.attachment_path!, { responseType: 'blob' }).then((r) => r.data);
-                            downloadBlob(blob, m.attachment_path!.split('/').pop() ?? 'attachment');
-                          } catch {
-                            /* attachment unavailable — no-op */
-                          }
-                        }}
-                        style={{ cursor: 'pointer', background: 'none', border: 'none', textDecoration: 'underline', textAlign: 'left', padding: 0 }}
-                        title="Download attachment"
-                      >
-                        📎 {m.attachment_path.split('/').pop()}
-                      </button>
+                      <span className="lg-msg__attach" title="Backend doesn't yet expose a download route (see Known Gaps in the handoff).">
+                        📎 {m.attachment_path.split('/').pop()} (download n/a)
+                      </span>
                     )}
                   </div>
                 </div>
@@ -494,9 +425,7 @@ export function TicketDetailPage() {
                     Internal note
                   </button>
                 )}
-                <span style={{ marginLeft: 'auto' }}>
-                  {/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘↵' : 'Ctrl+↵'} to send
-                </span>
+                <span style={{ marginLeft: 'auto' }}>⌘↵ to send</span>
               </div>
 
               <textarea
@@ -513,12 +442,6 @@ export function TicketDetailPage() {
                 rows={4}
               />
 
-              {(replyM.isError || noteM.isError) && (
-                <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--red)', padding: '4px 0' }}>
-                  {extractApiError(replyM.error ?? noteM.error, 'Failed to send — try again.')}
-                </div>
-              )}
-
               <div className="lg-composer__ctrls">
                 <div className="lg-composer__l">
                   {composerTab === 'reply' && (
@@ -528,7 +451,6 @@ export function TicketDetailPage() {
                         ref={fileRef}
                         type="file"
                         hidden
-                        accept=".pdf,.png,.jpg,.jpeg,.gif,.txt,.md"
                         onChange={(e) => setPendingFile(e.target.files?.[0] ?? null)}
                       />
                     </label>
@@ -564,55 +486,22 @@ export function TicketDetailPage() {
             <span className="vrt">Controls · expand</span>
           </div>
 
-          {isDesk ? (
+          {isDesk && (
             <PropsContent
               ticket={ticket}
               notes={notes}
               can={can}
               transition={(k) => transitionM.mutate(k)}
               shareMagicLink={() => magicM.mutate()}
-              onDelete={() =>
-                showConfirm(
-                  { title: 'Delete this ticket?', body: 'All messages and attachments will be permanently erased. This cannot be undone.', confirmLabel: 'Delete permanently', danger: true },
-                  () => { deleteM.mutate(); setConfirmOpts(null); }
-                )
-              }
               transitionPending={transitionM.isPending}
               magicPending={magicM.isPending}
-              deletePending={deleteM.isPending}
-              editingProps={editingProps}
-              onToggleEdit={() => setEditingProps((v) => !v)}
-              onSaveEdit={(p) => patchM.mutate(p)}
-              savePending={patchM.isPending}
             />
-          ) : (
+          )}
+          {!isDesk && (
             <ReadOnlyProps ticket={ticket} />
           )}
         </aside>
       </div>
-
-      {/* ── Magic-link modal ────────────────────────────────────────── */}
-      {magicLinkUrl && (
-        <MagicLinkModal
-          url={magicLinkUrl}
-          scope="ticket"
-          ticketId={ticket.id.slice(0, 8)}
-          onClose={() => setMagicLinkUrl(null)}
-          onRegenerate={async () => {
-            const data = await ticketsApi.magicLinkFor(id);
-            setMagicLinkUrl(data.url);
-          }}
-        />
-      )}
-
-      {/* ── Custom confirm modal ────────────────────────────────────── */}
-      {confirmOpts && (
-        <ConfirmModal
-          {...confirmOpts}
-          onConfirm={confirmOpts.onConfirm}
-          onCancel={() => setConfirmOpts(null)}
-        />
-      )}
 
       {/* ── Mobile bottom sheet ─────────────────────────────────────── */}
       <div className={'lg-sheet' + (sheetOpen ? ' is-open' : '')}>
@@ -627,26 +516,13 @@ export function TicketDetailPage() {
             can={can}
             transition={(k) => { transitionM.mutate(k); setSheetOpen(false); }}
             shareMagicLink={() => magicM.mutate()}
-            onDelete={() => {
-              setSheetOpen(false);
-              showConfirm(
-                { title: 'Delete this ticket?', body: 'All messages and attachments will be permanently erased. This cannot be undone.', confirmLabel: 'Delete permanently', danger: true },
-                () => { deleteM.mutate(); setConfirmOpts(null); }
-              );
-            }}
             transitionPending={transitionM.isPending}
             magicPending={magicM.isPending}
-            deletePending={deleteM.isPending}
-            editingProps={editingProps}
-            onToggleEdit={() => setEditingProps((v) => !v)}
-            onSaveEdit={(p) => patchM.mutate(p)}
-            savePending={patchM.isPending}
           />
         ) : (
           <ReadOnlyProps ticket={ticket} />
         )}
       </div>
-      <BottomTabBar active="tickets" />
     </div>
   );
 }
@@ -662,40 +538,17 @@ function PropsContent({
   can,
   transition,
   shareMagicLink,
-  onDelete,
   transitionPending,
   magicPending,
-  deletePending,
-  editingProps,
-  onToggleEdit,
-  onSaveEdit,
-  savePending,
 }: {
   ticket: TicketResponse;
   notes: InternalNote[];
-  can: TransitionAbility;
+  can: { ack: boolean; pend: boolean; close: boolean };
   transition: (k: 'ack' | 'pend' | 'close') => void;
   shareMagicLink: () => void;
-  onDelete: () => void;
   transitionPending: boolean;
   magicPending: boolean;
-  deletePending: boolean;
-  editingProps: boolean;
-  onToggleEdit: () => void;
-  onSaveEdit: (p: PatchTicketPayload) => void;
-  savePending: boolean;
 }) {
-  if (editingProps) {
-    return (
-      <EditPropsPanel
-        ticket={ticket}
-        onCancel={onToggleEdit}
-        onSave={onSaveEdit}
-        savePending={savePending}
-      />
-    );
-  }
-
   return (
     <>
       <div className="lg-props__sec">
@@ -723,7 +576,11 @@ function PropsContent({
             type="button"
             className="lg-props__act is-danger"
             disabled={!can.close || transitionPending}
-            onClick={() => transition('close')}
+            onClick={() => {
+              if (confirm('Close this ticket? Clients can still read but not reply.')) {
+                transition('close');
+              }
+            }}
           >
             <span>Close ticket</span>
             <span className="arr">→ closed</span>
@@ -732,24 +589,11 @@ function PropsContent({
       </div>
 
       <div className="lg-props__sec">
-        <div className="lg-props__lbl" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>Properties</span>
-          <button
-            type="button"
-            onClick={onToggleEdit}
-            style={{
-              fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.14em',
-              textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)',
-              padding: '2px 8px', cursor: 'pointer', color: 'var(--mid)',
-            }}
-          >
-            Edit ⊙
-          </button>
-        </div>
+        <div className="lg-props__lbl">Properties</div>
         <div className="lg-props__kv">
           <div className="row"><span className="k">Priority</span><span className="v italic">{ticket.priority}</span></div>
           <div className="row"><span className="k">Category</span><span className="v italic">{ticket.category ?? '—'}</span></div>
-          <div className="row"><span className="k">Type</span><span className="v">{TICKET_TYPE_LABEL[ticket.ticket_type]}</span></div>
+          <div className="row"><span className="k">Type</span><span className="v">{ticket.ticket_type.replace('_', ' ')}</span></div>
           <div className="row"><span className="k">Due</span><span className="v">{ticket.due_date ?? '—'}</span></div>
           <div className="row"><span className="k">Created</span><span className="v">{new Date(ticket.created_at).toLocaleDateString('en-GB')}</span></div>
           <div className="row"><span className="k">Recurring</span><span className="v" style={{ color: ticket.recurring ? 'var(--red)' : 'var(--mid)' }}>
@@ -791,22 +635,7 @@ function PropsContent({
             onClick={shareMagicLink}
           >
             <span>{magicPending ? 'Generating…' : 'Magic link for client'}</span>
-            <span className="arr">→ QR + copy</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="lg-props__sec">
-        <div className="lg-props__lbl">Danger zone</div>
-        <div className="lg-props__actions">
-          <button
-            type="button"
-            className="lg-props__act is-danger"
-            disabled={deletePending}
-            onClick={onDelete}
-          >
-            <span>{deletePending ? 'Deleting…' : 'Delete ticket'}</span>
-            <span className="arr">permanent</span>
+            <span className="arr">→ copy</span>
           </button>
         </div>
       </div>
@@ -814,4 +643,20 @@ function PropsContent({
   );
 }
 
-// ── Edit-properties panel ────────────────────────────────────────────────────
+/** Client-side props rail — read-only summary, no transitions / no notes. */
+function ReadOnlyProps({ ticket }: { ticket: TicketResponse }) {
+  return (
+    <>
+      <div className="lg-props__sec">
+        <div className="lg-props__lbl">Properties</div>
+        <div className="lg-props__kv">
+          <div className="row"><span className="k">Status</span><span className="v italic">{ticket.status}</span></div>
+          <div className="row"><span className="k">Priority</span><span className="v italic">{ticket.priority}</span></div>
+          <div className="row"><span className="k">Category</span><span className="v italic">{ticket.category ?? '—'}</span></div>
+          <div className="row"><span className="k">Due</span><span className="v">{ticket.due_date ?? '—'}</span></div>
+          <div className="row"><span className="k">Created</span><span className="v">{new Date(ticket.created_at).toLocaleDateString('en-GB')}</span></div>
+        </div>
+      </div>
+    </>
+  );
+}

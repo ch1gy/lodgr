@@ -11,6 +11,7 @@
 // All styles live in tokens.css under .lg-mast*.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { useEffect, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -18,6 +19,15 @@ import { useTheme } from '../theme/ThemeContext';
 interface Props {
   active?: 'tickets' | 'clients' | 'invoices' | 'reports' | 'settings';
 }
+
+type NavKey = Props['active'];
+const NAV: { key: NavKey; to: string; label: string; deskOnly: boolean }[] = [
+  { key: 'tickets',  to: '/tickets',  label: 'Tickets',  deskOnly: false },
+  { key: 'clients',  to: '/clients',  label: 'Clients',  deskOnly: true },
+  { key: 'invoices', to: '/invoices', label: 'Invoices', deskOnly: true },
+  { key: 'reports',  to: '/reports',  label: 'Reports',  deskOnly: true },
+  { key: 'settings', to: '/settings', label: 'Settings', deskOnly: false },
+];
 
 /** Format the masthead's issue label deterministically.
  *  We treat the issue number as DDD-of-the-year so it changes once a day. */
@@ -32,6 +42,17 @@ function issueLabel(now = new Date()): string {
 export function Masthead({ active = 'tickets' }: Props) {
   const { profile, isDesk, logout } = useAuth();
   const { theme, toggle } = useTheme();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Lock body scroll + close on Escape while the drawer is open.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey); };
+  }, [menuOpen]);
 
   // Use server-side profile for email — JWT does not carry the email field.
   const email = profile?.email ?? '';
@@ -44,8 +65,21 @@ export function Masthead({ active = 'tickets' }: Props) {
       .slice(0, 2)
       .join('') || '—';
 
+  const visibleNav = NAV.filter((n) => !n.deskOnly || isDesk);
+
   return (
     <header className="lg-mast">
+      {/* Hamburger — mobile only (CSS hides it ≥769px). Opens the drawer. */}
+      <button
+        type="button"
+        className="lg-mast-burger"
+        aria-label="Open menu"
+        aria-expanded={menuOpen}
+        onClick={() => setMenuOpen(true)}
+      >
+        <i></i><i></i><i></i>
+      </button>
+
       <div className="lg-mast-left">
         <span className="lg-mast-issue">{issueLabel()}</span>
         <span className="lg-mast-issue">
@@ -106,6 +140,61 @@ export function Masthead({ active = 'tickets' }: Props) {
           <span className="av">{initials}</span>
           <span className="nm">{displayName || '—'}</span>
         </div>
+      </div>
+
+      {/* ── Mobile drawer (hamburger menu) ─────────────────────────────── */}
+      <div className={'lg-drawer' + (menuOpen ? ' is-open' : '')} aria-hidden={!menuOpen}>
+        <button className="lg-drawer__scrim" aria-label="Close menu" tabIndex={menuOpen ? 0 : -1} onClick={() => setMenuOpen(false)} />
+        <nav className="lg-drawer__panel" aria-label="Main navigation">
+          <div className="lg-drawer__top">
+            <span className="lg-drawer__wm"><i>Lodgr</i><span className="dot">.</span></span>
+            <button className="lg-drawer__x" aria-label="Close menu" onClick={() => setMenuOpen(false)}>✕</button>
+          </div>
+
+          <div className="lg-drawer__who">
+            <span className="av">{initials}</span>
+            <span className="meta">
+              <b>{displayName || 'Signed in'}</b>
+              <span>{isDesk ? 'Desk' : 'Client'}{email ? ` · ${email}` : ''}</span>
+            </span>
+          </div>
+
+          <div className="lg-drawer__links">
+            {visibleNav.map((n, i) => (
+              <Link
+                key={n.to}
+                to={n.to}
+                className={'lg-drawer__link' + (active === n.key ? ' active' : '')}
+                style={{ '--di': i } as CSSProperties}
+                onClick={() => setMenuOpen(false)}
+              >
+                <span className="n">{String(i + 1).padStart(2, '0')}</span>
+                {n.label}
+                <span className="ar">→</span>
+              </Link>
+            ))}
+          </div>
+
+          <div className="lg-drawer__foot">
+            <button
+              type="button"
+              className="lg-drawer__theme"
+              aria-pressed={theme === 'dark'}
+              onClick={(e) => toggle({ x: e.clientX, y: e.clientY })}
+            >
+              <span className={'seg light' + (theme !== 'dark' ? ' on' : '')}>LGT</span>
+              <span className="slash" aria-hidden>/</span>
+              <span className={'seg dark' + (theme === 'dark' ? ' on' : '')}>DRK</span>
+            </button>
+            <button
+              type="button"
+              className="lg-drawer__signout"
+              onClick={() => { setMenuOpen(false); void logout(); }}
+            >
+              Sign out
+            </button>
+          </div>
+        </nav>
       </div>
     </header>
   );

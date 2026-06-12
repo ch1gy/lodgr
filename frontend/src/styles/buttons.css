@@ -204,3 +204,85 @@
 .acc__inner { overflow: hidden; }
 .acc__icon  { transition: transform var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out); }
 .acc.is-open .acc__icon { transform: rotate(45deg); color: var(--red); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * CONSISTENCY BRIDGE
+ * Several screens were built before the .lg-bt system and still use one-off
+ * button classes. Rather than rewrite every page's JSX, we map those classes
+ * onto the canonical look here so EVERY button shares the same shape, metrics,
+ * press feedback (scale .97) and arrow behaviour. Solid vs outline ROLE is
+ * preserved — only the execution is unified.
+ *
+ * (Ideal end-state: swap these for <button className="lg-bt lg-bt--solid">
+ *  in the components. This bridge makes them consistent in the meantime.)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.lg-login__signin,            /* login — primary submit          */
+.lg-cl-filt .new,             /* clients — "+ New client"        */
+.lg-cl-row .acts .a,          /* clients — row actions           */
+.lg-pw__use button,           /* generator — "Use this"          */
+.lg-pw__copy button,          /* generator — copy / regenerate   */
+.lg-set__row button:not(.lg-bt),     /* settings — update password  */
+.lg-rp__dl, .lg-rp__download, .lg-rp__gen {  /* reports — download PDF */
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color            var(--dur-fast) var(--ease-out),
+    border-color     var(--dur-fast) var(--ease-out),
+    transform        var(--dur-fast) var(--ease-spring),
+    box-shadow       var(--dur-fast) var(--ease-out);
+}
+/* unified press feedback */
+.lg-login__signin:active:not(:disabled),
+.lg-cl-filt .new:active:not(:disabled),
+.lg-cl-row .acts .a:active:not(:disabled),
+.lg-pw__use button:active:not(:disabled),
+.lg-pw__copy button:active:not(:disabled),
+.lg-set__row button:not(.lg-bt):active:not(:disabled),
+.lg-rp__dl:active:not(:disabled),
+.lg-rp__download:active:not(:disabled),
+.lg-rp__gen:active:not(:disabled) { transform: scale(0.97); }
+
+/* unified disabled */
+.lg-login__signin:disabled,
+.lg-cl-filt .new:disabled,
+.lg-cl-row .acts .a:disabled,
+.lg-pw__use button:disabled,
+.lg-rp__dl:disabled, .lg-rp__download:disabled, .lg-rp__gen:disabled {
+  opacity: 0.4; pointer-events: none; cursor: not-allowed;
+}
+
+/* the red arrow accent nudges on hover, everywhere */
+.lg-login__signin .arr,
+.lg-pw__use button .arr,
+.lg-rp__dl .arr, .lg-rp__download .arr {
+  color: var(--red); display: inline-block;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.lg-login__signin:hover:not(:disabled) .arr,
+.lg-pw__use button:hover:not(:disabled) .arr,
+.lg-rp__dl:hover:not(:disabled) .arr,
+.lg-rp__download:hover:not(:disabled) .arr { transform: translateX(3px); }
+
+/* primary solids get the same soft lift on hover as .lg-bt--solid */
+.lg-login__signin:hover:not(:disabled),
+.lg-cl-filt .new:hover:not(:disabled),
+.lg-cl-row .acts .a.primary:hover:not(:disabled),
+.lg-pw__use button:hover:not(:disabled),
+.lg-rp__dl:hover:not(:disabled),
+.lg-rp__download:hover:not(:disabled),
+.lg-rp__gen:hover:not(:disabled) {
+  box-shadow: 0 3px 10px color-mix(in oklab, var(--ink) 18%, transparent);
+}
+[data-theme="dark"] .lg-login__signin:hover:not(:disabled),
+[data-theme="dark"] .lg-cl-filt .new:hover:not(:disabled),
+[data-theme="dark"] .lg-pw__use button:hover:not(:disabled) {
+  box-shadow: 0 3px 10px rgba(0,0,0,0.4);
+}

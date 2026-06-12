@@ -15,7 +15,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Masthead } from '../components/Masthead';
-import { BottomTabBar } from '../components/BottomTabBar';
 import { PasswordGenerator } from '../components/PasswordGenerator';
 import { MagicLinkModal } from '../components/MagicLinkModal';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -730,7 +729,6 @@ export function ClientsPage() {
         />
       )}
 
-      <BottomTabBar active="clients" />
     </div>
   );
 }

@@ -13,6 +13,7 @@ import ReactDOM from 'react-dom/client';
 import { App } from './App';
 import { applyInitialThemeSync } from './theme/ThemeContext';
 import './styles/tokens.css';
+import './styles/buttons.css';
 
 applyInitialThemeSync();
 

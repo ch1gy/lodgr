@@ -8,12 +8,13 @@
 // access token, which the auth API wires into tokenStore automatically.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { SessionResponse } from '../api/types';
 import { Masthead } from '../components/Masthead';
 import { PasswordGenerator } from '../components/PasswordGenerator';
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
 import { auth as authApi } from '../api/auth';
 import { admin } from '../api/admin';
 import { extractApiError } from '../utils/format';
@@ -30,49 +31,116 @@ const NAV_ITEMS: Array<{ key: NavItem; label: string; sub: string }> = [
   { key: 'danger',        label: '— Sign out everywhere', sub: 'Revoke every other session' },
 ];
 
+function useIsPhone() {
+  const [isPhone, setIsPhone] = useState(() => window.matchMedia('(max-width: 540px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 540px)');
+    const handler = (e: MediaQueryListEvent) => setIsPhone(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return isPhone;
+}
+
 export function SettingsPage() {
-  const { user, profile } = useAuth();
+  const { user, profile, logout } = useAuth();
+  const { theme, toggle } = useTheme();
   const [section, setSection] = useState<NavItem>('password');
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const isPhone = useIsPhone();
+
+  function summaryFor(key: NavItem): string {
+    switch (key) {
+      case 'password':     return 'Change your passphrase';
+      case 'desk-profile': return 'Invoice "From" info';
+      case 'profile':      return profile?.name ?? 'Name and contact email';
+      case 'sessions':     return 'Active device list';
+      case 'notifications':return 'All channels';
+      case 'danger':       return 'Revoke every other session';
+    }
+  }
 
   return (
     <div className="lg-v2">
       <Masthead active="settings" />
       <div className="lg-set">
-        {/* ── Nav ─────────────────────────────────────────────────── */}
-        <nav className="lg-set__nav">
-          <div className="lg-set__eye">— The desk · settings</div>
-          <div className="lg-set__h1">Your<br /><i>account.</i></div>
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              className={`lg-set__item${section === item.key ? ' on' : ''}`}
-              onClick={() => setSection(item.key)}
-              style={{ background: 'none', border: 'none', textAlign: 'left', width: '100%' }}
-            >
-              <span className="k" style={item.key === 'danger' ? { color: 'var(--red)' } : undefined}>
-                {item.label}
-              </span>
-              <span className="v">{item.sub}</span>
-            </button>
-          ))}
-        </nav>
-
-        {/* ── Body ────────────────────────────────────────────────── */}
-        <div className="lg-set__body">
-          {section === 'password' && (
-            <PasswordSection userEmail={profile?.email ?? user?.email} />
-          )}
-          {section === 'desk-profile' && <DeskProfileSection />}
-          {section === 'profile' && (
-            <PlaceholderSection title="Profile" note="Profile editing is coming soon. Contact the desk to update your name or email." />
-          )}
-          {section === 'sessions' && <SessionsSection />}
-          {section === 'notifications' && (
-            <PlaceholderSection title="Notifications" note="Notification preferences are coming soon." />
-          )}
-          {section === 'danger' && <DangerSection />}
-        </div>
+        {isPhone ? (
+          /* ── Mobile: row list OR drill-in ─────────────────────── */
+          !mobileOpen ? (
+            <div className="lg-set__body">
+              <div className="lg-set__eye">— The desk · Account</div>
+              <div className="lg-set__h1" style={{ fontSize: 40, fontFamily: 'var(--serif)', fontStyle: 'italic', marginBottom: 24 }}>Settings</div>
+              <nav className="lg-set__mlist">
+                {NAV_ITEMS.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className="lg-set__mrow"
+                    onClick={() => { setSection(item.key); setMobileOpen(true); }}
+                  >
+                    <span className="k" style={item.key === 'danger' ? { color: 'var(--red)' } : undefined}>{item.label.replace('— ', '')}</span>
+                    <span className="v">{summaryFor(item.key)}</span>
+                    <span className="chev">›</span>
+                  </button>
+                ))}
+                <div className="lg-set__mrow" style={{ cursor: 'default' }}>
+                  <span className="k">Darkroom</span>
+                  <button
+                    type="button"
+                    onClick={() => toggle()}
+                    style={{ background: 'none', border: 'none', fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 16, color: 'var(--ink)', cursor: 'pointer', padding: 0 }}
+                  >
+                    {theme === 'dark' ? 'On' : 'Off'}
+                  </button>
+                  <span className="chev" />
+                </div>
+                <button type="button" className="lg-set__msignout" onClick={() => logout()}>
+                  Sign out everywhere ⊘
+                </button>
+              </nav>
+            </div>
+          ) : (
+            <div className="lg-set__body">
+              <button type="button" className="lg-set__mback" onClick={() => setMobileOpen(false)}>← Settings</button>
+              {section === 'password' && <PasswordSection userEmail={profile?.email ?? user?.email} />}
+              {section === 'desk-profile' && <DeskProfileSection />}
+              {section === 'profile' && <PlaceholderSection title="Profile" note="Profile editing is coming soon. Contact the desk to update your name or email." />}
+              {section === 'sessions' && <SessionsSection />}
+              {section === 'notifications' && <PlaceholderSection title="Notifications" note="Notification preferences are coming soon." />}
+              {section === 'danger' && <DangerSection />}
+            </div>
+          )
+        ) : (
+          <>
+            {/* ── Desktop: side nav + body ───────────────────────── */}
+            <nav className="lg-set__nav">
+              <div className="lg-set__eye">— The desk · settings</div>
+              <div className="lg-set__h1">Your<br /><i>account.</i></div>
+              {NAV_ITEMS.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`lg-set__item${section === item.key ? ' on' : ''}`}
+                  onClick={() => setSection(item.key)}
+                  style={{ background: 'none', border: 'none', textAlign: 'left', width: '100%' }}
+                >
+                  <span className="k" style={item.key === 'danger' ? { color: 'var(--red)' } : undefined}>
+                    {item.label}
+                  </span>
+                  <span className="v">{item.sub}</span>
+                </button>
+              ))}
+            </nav>
+            <div className="lg-set__body">
+              {section === 'password' && <PasswordSection userEmail={profile?.email ?? user?.email} />}
+              {section === 'desk-profile' && <DeskProfileSection />}
+              {section === 'profile' && <PlaceholderSection title="Profile" note="Profile editing is coming soon. Contact the desk to update your name or email." />}
+              {section === 'sessions' && <SessionsSection />}
+              {section === 'notifications' && <PlaceholderSection title="Notifications" note="Notification preferences are coming soon." />}
+              {section === 'danger' && <DangerSection />}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

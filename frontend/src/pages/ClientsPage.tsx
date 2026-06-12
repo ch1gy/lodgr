@@ -22,6 +22,7 @@ import type { ConfirmOptions } from '../components/ConfirmModal';
 import { Dropdown } from '../components/Dropdown';
 import type { DropdownItem } from '../components/Dropdown';
 import { admin } from '../api/admin';
+import { tickets as ticketsApi } from '../api/tickets';
 import { downloadBlob, extractApiError } from '../utils/format';
 import type { Client, SubClient } from '../api/types';
 import '../styles/v2.css';
@@ -132,9 +133,10 @@ interface RowProps {
   client: Client;
   onAction: (action: string, id: string) => void;
   disabled?: boolean;
+  counts?: { all: number; open: number };
 }
 
-function ClientRow({ client, onAction, disabled = false }: RowProps) {
+function ClientRow({ client, onAction, disabled = false, counts }: RowProps) {
   const qc         = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [profile, setProfile]   = useState({
@@ -203,9 +205,10 @@ function ClientRow({ client, onAction, disabled = false }: RowProps) {
           {metaLine}
         </div>
 
-        <div className="stat-blk">
-          <div className="v">—</div>
-          <div className="lbl">tickets</div>
+        <div className="stat-blks">
+          <div className="stat-blk"><div className="v">{String(counts?.all ?? 0).padStart(2, '0')}</div><div className="lbl">all-time</div></div>
+          <div className="stat-blk"><div className="v red">{String(counts?.open ?? 0).padStart(2, '0')}</div><div className="lbl">open</div></div>
+          <div className="stat-blk"><div className="v">{isLocked ? '⚠' : client.deleted_at ? '◌' : '✓'}</div><div className="lbl">{isLocked ? 'locked' : client.deleted_at ? 'archived' : 'active'}</div></div>
         </div>
 
         <div className={`status-blk ${status}`}>
@@ -504,6 +507,22 @@ export function ClientsPage() {
     queryFn: () => admin.listClients(),
   });
 
+  const ticketsQ = useQuery({
+    queryKey: ['tickets', 'all-for-counts'],
+    queryFn: () => ticketsApi.list(1, 500),
+    staleTime: 5 * 60_000,
+  });
+
+  const countsByClient = useMemo(() => {
+    const m: Record<string, { all: number; open: number }> = {};
+    for (const t of ticketsQ.data?.tickets ?? []) {
+      const c = (m[t.client_id] ??= { all: 0, open: 0 });
+      c.all++;
+      if (t.status === 'open' || t.status === 'acknowledged' || t.status === 'pending') c.open++;
+    }
+    return m;
+  }, [ticketsQ.data]);
+
   const allClients = clientsQ.data ?? [];
 
   const counts = useMemo(() => {
@@ -608,12 +627,13 @@ export function ClientsPage() {
       {/* ── KPI header ──────────────────────────────────────────────── */}
       <div className="lg-cl-head grain">
         <div>
+          <div className="lg-cl-eye">— Roster · {String(counts.all).padStart(2, '0')}</div>
           <h1>The roster<span className="count">/ {String(counts.all).padStart(2, '0')}</span></h1>
           <div className="sub">
             {counts.active} active · {counts.locked} locked · {counts.archived} archived
           </div>
         </div>
-        <div className="right">
+        <div className="right lg-cl-kpis">
           <div className="kpi">
             <div className="v">{String(counts.active).padStart(2, '0')}</div>
             <div className="lbl">Active</div>
@@ -696,7 +716,7 @@ export function ClientsPage() {
           </div>
         )}
         {visible.map((c) => (
-          <ClientRow key={c.id} client={c} onAction={handleAction} disabled={anyPending} />
+          <ClientRow key={c.id} client={c} onAction={handleAction} disabled={anyPending} counts={countsByClient[c.id]} />
         ))}
       </div>
 

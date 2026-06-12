@@ -984,34 +984,107 @@
 .lg-page--entered  { transform: none; opacity: 1; }
 .lg-page--exiting  { transform: translateX(-40px); opacity: 0; }
 
-/* ── 540px (phone) overrides — settings, reports, invoices, pw generator ── */
+/* ══════════════════════════════════════════════════════════════════════ */
+/* iPad TIER (769–1024px) — keep the split-views, just tighten.            */
+/* The desktop layouts have room on a tablet; don't collapse them to a     */
+/* single column like phones do. Narrow rails + trim padding/type so the   */
+/* two-column Settings, split Reports, and full Clients grid still fit.     */
+/* Placed BEFORE the ≤768/≤540 blocks so narrower overrides still win.     */
+/* ══════════════════════════════════════════════════════════════════════ */
+@media (min-width: 769px) and (max-width: 1024px) {
+  /* ── Settings: keep the side-nav (narrower), trim body padding ──────── */
+  .lg-set { grid-template-columns: 232px 1fr; }
+  .lg-set__nav { padding: 36px 20px 24px; }
+  .lg-set__body { padding: 40px 40px 36px; }
+  .lg-set__h1 { font-size: 38px; }
+  .lg-set__h2 { font-size: 40px; }
+
+  /* ── Reports: keep the split, narrow the right rail ─────────────────── */
+  .lg-rp { grid-template-columns: 1fr 360px; }
+  .lg-rp__left { padding: 40px 40px; }
+  .lg-rp__h1 { font-size: 60px; }
+  .lg-rp__bgnum { font-size: 260px; }
+  .lg-rp__right { padding: 40px 32px 32px; }
+  .lg-rp__months { grid-template-columns: repeat(4, 1fr); }
+
+  /* ── Clients: keep the full grid, drop one dense column + trim ──────── */
+  .lg-cl-head { padding: 32px 32px 22px; }
+  .lg-cl-head h1 { font-size: 56px; }
+  .lg-cl-filt { padding: 12px 32px; }
+  .lg-cl-row {
+    grid-template-columns: 56px 1.4fr 1fr 110px minmax(220px, auto);
+    padding: 18px 32px;
+  }
+  /* the per-row stat column is the first to go; status + meta stay */
+  .lg-cl-row .stat-blk { display: none; }
+
+  /* ── Password generator + modals: a touch tighter ───────────────────── */
+  .lg-pw__opts { grid-template-columns: 1fr 1fr; }
+  .lg-mdl__h1 { font-size: 36px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════ */
+/* MOBILE RESPONSIVE FIXES (≤768 / ≤540)                                   */
+/* The admin screens were built desktop-first; several breakpoints were    */
+/* no-ops (e.g. flex-direction on a grid) or missing, causing horizontal   */
+/* overflow on phones. These rules collapse every multi-column layout to a */
+/* single stacked column and tame oversized type/padding.                  */
+/* ══════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  /* never let an admin screen scroll sideways */
+  .lg-v2, .lg-cl-rows, .lg-rp, .lg-set { overflow-x: hidden; }
+
+  /* ── Settings ─────────────────────────────────────────────────────── */
+  .lg-set__body { padding: 28px 20px 32px; }
+  .lg-set__h1 { font-size: 34px; margin-bottom: 22px; }
+  .lg-set__h2 { font-size: 32px; }
+  .lg-set__dek { font-size: 14px; margin-bottom: 24px; }
+  /* the "signed in as … / UPDATE PASSWORD" row must stack so the button isn't clipped */
+  .lg-set__row { flex-direction: column; align-items: stretch; gap: 16px; }
+  .lg-set__row .left { line-height: 1.8; }
+  .lg-set__row .lg-bt,
+  .lg-set__row button { width: 100%; justify-content: center; }
+}
+
 @media (max-width: 540px) {
+  /* ── Clients: collapse the head grid (the real fix — grid, not flex) ── */
+  .lg-cl-head { grid-template-columns: 1fr; }
+  .lg-cl-head h1 { font-size: 44px; }
+  .lg-cl-head .right { flex-wrap: wrap; gap: 22px; }
 
-  /* Settings */
-  .lg-set__body { padding: 24px 18px 28px; }
-  .lg-set__h2   { font-size: clamp(28px, 10vw, 40px); margin-bottom: 8px; }
-  .lg-set__dek  { font-size: 14px; margin-bottom: 24px; }
-  .lg-set__split { gap: 28px; }
+  /* ── Clients filter bar: wrap instead of overflowing right ──────────── */
+  .lg-cl-filt { flex-wrap: wrap; gap: 12px 16px; }
+  .lg-cl-filt .group { flex-wrap: wrap; gap: 14px; }
+  .lg-cl-filt .spacer { display: none; }
+  .lg-cl-filt input { width: 100%; min-width: 0; }
+  .lg-cl-filt .new { margin-left: 0; }
 
-  /* Reports */
-  .lg-rp__left  { padding: 24px 18px; overflow: visible; }
-  .lg-rp__right { padding: 24px 18px 28px; }
-  .lg-rp__h1    { font-size: clamp(36px, 12vw, 56px); margin-bottom: 14px; }
-  .lg-rp__dek   { font-size: 14px; margin-bottom: 24px; }
-  .lg-rp__bgnum { display: none; }
+  /* ── Clients rows: keep avatar + name + actions, drop dense columns ──── */
+  .lg-cl-row .acts { gap: 6px; }
+  .lg-cl-row .acts .a { font-size: 9px; padding: 5px 9px; }
+
+  /* ── Password generator: stack everything ───────────────────────────── */
+  .lg-pw { padding: 20px 16px; gap: 18px; }
+  .lg-pw__head { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .lg-pw__tabs { flex-wrap: wrap; gap: 14px; }
+  .lg-pw__out { flex-direction: column; align-items: stretch; gap: 14px; }
+  .lg-pw__pw { font-size: 16px; }
+  .lg-pw__copy { flex-direction: row; align-items: center; gap: 18px; align-self: flex-start; }
+  .lg-pw__opts { grid-template-columns: 1fr; }
+  .lg-pw__use { flex-direction: column; align-items: stretch; gap: 12px; }
+  .lg-pw__use .lg-bt,
+  .lg-pw__use button { width: 100%; justify-content: center; }
+
+  /* ── Reports: shrink the giant headline + watermark, fit the month grid ─ */
+  .lg-rp__left { padding: 30px 22px; }
+  .lg-rp__h1 { font-size: 44px; }
+  .lg-rp__bgnum { font-size: 190px; right: -16px; bottom: -50px; }
+  .lg-rp__right { padding: 28px 20px 32px; }
   .lg-rp__months { grid-template-columns: repeat(3, 1fr); }
-  .lg-rp__recent .it { grid-template-columns: 80px 1fr; }
+  .lg-rp__recent .it { grid-template-columns: 72px 1fr; }
   .lg-rp__recent .it .who { display: none; }
 
-  /* Password generator */
-  .lg-pw         { padding: 20px 16px 18px; }
-  .lg-pw__out    { flex-direction: column; align-items: stretch; gap: 12px; }
-  .lg-pw__copy   { flex-direction: row; justify-content: flex-start; flex-wrap: wrap; gap: 10px 16px; }
-  .lg-pw__opts   { grid-template-columns: 1fr; }
-
-  /* Client expand profile grid */
-  .lg-cl-expand__profile-grid { grid-template-columns: 1fr; }
-
-  /* Invoices — wrap table in horizontal scroll (desk-only page) */
-  .lg-inv-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* ── Shared modal headings a touch smaller ──────────────────────────── */
+  .lg-mdl__h1 { font-size: 26px; }
 }

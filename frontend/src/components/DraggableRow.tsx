@@ -70,7 +70,7 @@ export function DraggableRow({ id, status, children }: Props) {
     axisLock.current = null;
     threshold.current = (wrapRef.current?.offsetWidth ?? 400) * 0.33;
     // iOS can throw InvalidStateError if the browser already claimed the gesture
-    try { (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId); } catch { }
+    try { (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId); } catch { /* iOS InvalidStateError — ignore */ }
   }, []);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {

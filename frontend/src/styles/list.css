@@ -389,6 +389,7 @@
     background: var(--ink); color: var(--cream);
     border-color: var(--ink); border-bottom-width: 1px; padding-bottom: 8px;
   }
+  .lg-list__filt-tab.is-active b { color: var(--cream); }
 
   /* ── Draft A stacked card (mobile/Mobile Motion.html) ──────────────── */
   /* Grid areas: top (av · nm · sla) / title / bottom (status · cat) */
@@ -438,6 +439,7 @@
     grid-area: cat;
     font-size: 8.5px; text-align: right; align-self: center; margin-bottom: 0;
     min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--mid);
   }
   /* Hash moved to top line — hide from bottom row */
   .lg-row__cat .lg-row__hash { display: none; }

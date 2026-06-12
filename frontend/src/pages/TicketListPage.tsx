@@ -318,6 +318,7 @@ export function TicketListPage() {
           <div className="lg-list__filt-group">
             {(['all', 'open', 'acknowledged', 'pending', 'closed'] as Filter[]).map((f) => {
               const label = f === 'all' ? 'All' : f === 'acknowledged' ? 'Ack' : f[0].toUpperCase() + f.slice(1);
+              const n = f === 'all' ? counts.all : counts[f as TicketStatus];
               return (
                 <button
                   key={f}
@@ -329,7 +330,7 @@ export function TicketListPage() {
                   }
                   onClick={() => { setFilter(f); setPage(1); }}
                 >
-                  {label} <b>{f === 'all' ? counts.all : counts[f as TicketStatus]}</b>
+                  {label}{n > 0 && <> <b>{n}</b></>}
                 </button>
               );
             })}
@@ -513,7 +514,7 @@ export function TicketListPage() {
                 </div>
                 <div className="lg-row__title-blk">
                   <div className="lg-row__cat">
-                    {t.category ?? TICKET_TYPE_LABEL[t.ticket_type]} · <span className="lg-row__hash">{t.id.slice(0, 8)}</span>
+                    {t.category ?? TICKET_TYPE_LABEL[t.ticket_type]}<span className="lg-row__hash"> · {t.id.slice(0, 8)}</span>
                     {t.sub_client_name && (
                       <span style={{ marginLeft: 8, color: 'var(--red)', fontFamily: 'var(--mono)', fontSize: 9 }}>
                         › {t.sub_client_name}

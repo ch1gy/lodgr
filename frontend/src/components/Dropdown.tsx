@@ -1,6 +1,8 @@
 // Dropdown.tsx — scales open from its trigger; outside-click + Esc close (§6.6c, §9.6)
+// Menu is portalled to <body> so overflow:hidden/auto parents don't clip it.
 
-import { useEffect, useRef, useState, ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import '../styles/dropdown.css';
 
 export interface DropdownItem {
@@ -18,12 +20,29 @@ interface Props {
 
 export function Dropdown({ trigger, items, align = 'left' }: Props) {
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, right: 'auto' as string | number });
+
+  // Position the portalled menu below the trigger.
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current) return;
+    const r = triggerRef.current.getBoundingClientRect();
+    if (align === 'right') {
+      setMenuPos({ top: r.bottom + 6, left: 'auto' as unknown as number, right: window.innerWidth - r.right });
+    } else {
+      setMenuPos({ top: r.bottom + 6, left: r.left, right: 'auto' });
+    }
+  }, [open, align]);
 
   useEffect(() => {
     if (!open) return;
     function handleClick(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+      const t = e.target as Node;
+      if (
+        triggerRef.current && !triggerRef.current.contains(t) &&
+        menuRef.current && !menuRef.current.contains(t)
+      ) {
         setOpen(false);
       }
     }
@@ -38,11 +57,16 @@ export function Dropdown({ trigger, items, align = 'left' }: Props) {
     };
   }, [open]);
 
+  const menuStyle: React.CSSProperties =
+    align === 'right'
+      ? { position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }
+      : { position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 9999 };
+
   return (
-    <div ref={rootRef} className="lg-dd" style={{ position: 'relative', display: 'inline-block' }}>
+    <div ref={triggerRef} className="lg-dd" style={{ position: 'relative', display: 'inline-block' }}>
       <div onClick={() => setOpen((v) => !v)}>{trigger}</div>
-      {open && (
-        <div className={`lg-dd__menu lg-dd__menu--${align}`} role="menu">
+      {open && createPortal(
+        <div ref={menuRef} className={`lg-dd__menu lg-dd__menu--${align}`} role="menu" style={menuStyle}>
           {items.map((item, i) => (
             <button
               key={i}
@@ -55,7 +79,8 @@ export function Dropdown({ trigger, items, align = 'left' }: Props) {
               {item.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

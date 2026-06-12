@@ -1088,3 +1088,57 @@
   /* ── Shared modal headings a touch smaller ──────────────────────────── */
   .lg-mdl__h1 { font-size: 26px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════ */
+/* INVOICES TABLE — responsive                                             */
+/* The header + rows were inline-styled 7-col grids (un-overridable by     */
+/* media queries). They now use these classes: desktop keeps the table,    */
+/* ≤1024 drops the Issued column, ≤768 collapses each row into a card.     */
+/* ══════════════════════════════════════════════════════════════════════ */
+.lg-inv-table-wrap { padding: 0 40px; }
+
+.lg-inv-cols, .lg-inv-row {
+  display: grid;
+  grid-template-columns: 28px 1fr 120px 120px 110px 110px auto;
+  gap: 12px;
+  align-items: center;
+}
+.lg-inv-cols {
+  padding: 6px 0; border-bottom: 2px solid var(--ink);
+  font-family: var(--mono); font-size: 9px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--mid);
+}
+.lg-inv-row { padding: 12px 0; cursor: pointer; font-family: var(--mono); font-size: 10px; }
+.lg-inv-c-id { min-width: 0; }
+.lg-inv-exp { padding: 0 40px 16px; border-top: 1px dashed var(--rule); margin-top: -1px; }
+
+@media (max-width: 1024px) {
+  .lg-inv-table-wrap { padding: 0 28px; }
+  .lg-inv-cols, .lg-inv-row { grid-template-columns: 24px 1fr 110px 100px 100px auto; gap: 10px; }
+  .lg-inv-cols .lg-inv-c-issued, .lg-inv-row > .lg-inv-c-issued { display: none; }
+  .lg-inv-exp { padding: 0 16px 16px; }
+}
+
+@media (max-width: 768px) {
+  .lg-inv-table-wrap { padding: 0 18px; }
+  .lg-inv-cols { display: none; }   /* rows become self-describing cards */
+  .lg-inv-row {
+    grid-template-columns: 16px 1fr auto;
+    grid-template-areas:
+      "exp id     status"
+      ".   due    amount"
+      ".   acts   acts";
+    gap: 6px 10px;
+    padding: 14px 0;
+    align-items: start;
+  }
+  .lg-inv-c-exp    { grid-area: exp; padding-top: 2px; }
+  .lg-inv-c-id     { grid-area: id; }
+  .lg-inv-c-issued { display: none; }
+  .lg-inv-c-due    { grid-area: due; }
+  .lg-inv-c-due::before { content: 'Due · '; color: var(--mid); }
+  .lg-inv-c-status { grid-area: status; text-align: right; }
+  .lg-inv-c-amount { grid-area: amount; text-align: right; }
+  .lg-inv-c-acts   { grid-area: acts; flex-wrap: wrap; margin-top: 6px; }
+  .lg-inv-exp { padding: 0 0 16px; }
+}

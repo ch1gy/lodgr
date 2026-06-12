@@ -624,21 +624,9 @@ function InvoiceRow({ invoice, clientName, onStatusChange, onDelete, onDownload,
   return (
     <div style={{ borderBottom: '1px solid var(--rule)' }}>
       {/* ── Summary row ─────────────────────────────────────────────────── */}
-      <div
-        onClick={() => setExpanded((v) => !v)}
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '28px 1fr 120px 120px 110px 110px auto',
-          gap: 12,
-          padding: '12px 0',
-          cursor: 'pointer',
-          alignItems: 'center',
-          fontFamily: 'var(--mono)',
-          fontSize: 10,
-        }}
-      >
-        <span style={{ color: 'var(--mid)' }}>{expanded ? '▾' : '▸'}</span>
-        <div>
+      <div className="lg-inv-row" onClick={() => setExpanded((v) => !v)}>
+        <span className="lg-inv-c-exp" style={{ color: 'var(--mid)' }}>{expanded ? '▾' : '▸'}</span>
+        <div className="lg-inv-c-id">
           <div style={{ fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>
             {invoice.number}
             {invoice.kra_number && (
@@ -647,17 +635,17 @@ function InvoiceRow({ invoice, clientName, onStatusChange, onDelete, onDownload,
           </div>
           <div style={{ color: 'var(--mid)', marginTop: 2 }}>{clientName}</div>
         </div>
-        <div style={{ color: 'var(--mid)' }}>{fmtDate(invoice.issued_date)}</div>
-        <div style={{ color: invoice.status === 'paid' ? '#2a7a3b' : invoice.status === 'draft' ? 'var(--mid)' : 'var(--ink)' }}>
+        <div className="lg-inv-c-issued" style={{ color: 'var(--mid)' }}>{fmtDate(invoice.issued_date)}</div>
+        <div className="lg-inv-c-due" style={{ color: invoice.status === 'paid' ? '#2a7a3b' : invoice.status === 'draft' ? 'var(--mid)' : 'var(--ink)' }}>
           {fmtDate(invoice.due_date)}
         </div>
-        <div style={{ color: STATUS_COLOR[invoice.status], fontWeight: 500 }}>
+        <div className="lg-inv-c-status" style={{ color: STATUS_COLOR[invoice.status], fontWeight: 500 }}>
           {STATUS_LABEL[invoice.status]}
         </div>
-        <div style={{ fontWeight: 600, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>
+        <div className="lg-inv-c-amount" style={{ fontWeight: 600, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>
           {invoice.currency} {total.toLocaleString('en-US')}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="lg-inv-c-acts" style={{ display: 'flex', gap: 8 }}>
           <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(invoice); }}
             style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--ink)' }}>
             Edit ✎
@@ -679,7 +667,7 @@ function InvoiceRow({ invoice, clientName, onStatusChange, onDelete, onDownload,
 
       {/* ── Expanded detail ──────────────────────────────────────────────── */}
       {expanded && (
-        <div style={{ padding: '0 40px 16px', borderTop: '1px dashed var(--rule)', marginTop: -1 }}>
+        <div className="lg-inv-exp">
           {/* Status control */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 14, paddingTop: 14 }}>
             {(['draft', 'sent', 'paid'] as InvoiceStatus[]).map((s) => (
@@ -690,7 +678,7 @@ function InvoiceRow({ invoice, clientName, onStatusChange, onDelete, onDownload,
                 style={{
                   fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
                   background: invoice.status === s ? 'var(--ink)' : 'none',
-                  color: invoice.status === s ? 'var(--paper)' : 'var(--mid)',
+                  color: invoice.status === s ? 'var(--cream)' : 'var(--mid)',
                   border: '1px solid var(--rule)', padding: '3px 12px', cursor: 'pointer',
                 }}
               >
@@ -866,21 +854,10 @@ export function InvoicesPage() {
 
         {/* ── Column headers + rows (scroll on mobile) ─────────────────────── */}
         <div className="lg-inv-table-wrap">
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '28px 1fr 120px 120px 110px 110px auto',
-          gap: 12,
-          padding: '6px 0',
-          borderBottom: '2px solid var(--ink)',
-          fontFamily: 'var(--mono)',
-          fontSize: 9,
-          letterSpacing: '.14em',
-          textTransform: 'uppercase',
-          color: 'var(--mid)',
-        }}>
+        <div className="lg-inv-cols">
           <span />
           <span>Ref / Client</span>
-          <span>Issued</span>
+          <span className="lg-inv-c-issued">Issued</span>
           <span>Due</span>
           <span>Status</span>
           <span>Amount</span>

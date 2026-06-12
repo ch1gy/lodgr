@@ -388,7 +388,7 @@
       "av nm sla"
       "ttl ttl ttl"
       "st  st  cat";
-    grid-template-columns: 26px 1fr auto;
+    grid-template-columns: 26px 1fr fit-content(52%);
     grid-template-rows: auto auto auto;
     padding: 18px 20px;
     gap: 0;
@@ -427,6 +427,7 @@
   .lg-row__cat {
     grid-area: cat;
     font-size: 8.5px; text-align: right; align-self: center; margin-bottom: 0;
+    min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
 
   /* Hidden on mobile cards */

@@ -212,7 +212,7 @@ export function CreateTicketModal({ onClose }: Props) {
   ].filter(Boolean).join(' ');
 
   return (
-    <div className="lg-ov" role="dialog" aria-modal aria-label="Open a new ticket">
+    <div className="lg-ov" role="dialog" aria-modal aria-label="Open a new ticket" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       {/* Hidden SVG filter for ink-roughen effect on stamp */}
       <svg width="0" height="0" style={{ position: 'absolute', overflow: 'hidden' }} aria-hidden>
         <defs>

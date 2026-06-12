@@ -125,10 +125,16 @@
 }
 
 /* create-ticket sizing */
-.lg-mdl.create { width: min(920px, 90vw); }
+@media (min-width: 541px) {
+  .lg-mdl.create  { width: min(920px, 90vw); }
+  .lg-mdl.invoice { width: min(780px, 90vw); }
+  .lg-mdl.magic   { width: min(540px, 90vw); }
+}
+/* ↑ Desktop-only sizing. Rule: never write bare (un-media-queried) width/layout
+   overrides for .lg-mdl.* below the ≤540 block — they win by source order.
+   Desktop sizing always goes in @media (min-width: 541px). */
 
 /* invoice modal sizing */
-.lg-mdl.invoice { width: min(780px, 90vw); }
 .lg-mdl.invoice form { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .lg-mdl.invoice .lg-mdl__body { padding: 24px 36px 28px; }
 .inv-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
@@ -162,7 +168,6 @@
 }
 
 /* magic-link QR modal */
-.lg-mdl.magic { width: min(540px, 90vw); }
 .lg-mdl.magic .lg-mdl__body { padding: 36px 48px 28px; display: flex; flex-direction: column; align-items: center; flex: 1; min-height: 0; overflow-y: auto; }
 /* QR frame always stays light — theme-independent so scanners always see contrast. */
 .lg-mdl.magic .qr-frame {

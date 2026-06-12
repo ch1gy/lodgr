@@ -523,7 +523,7 @@ export function ClientsPage() {
     return m;
   }, [ticketsQ.data]);
 
-  const allClients = clientsQ.data ?? [];
+  const allClients = useMemo(() => clientsQ.data ?? [], [clientsQ.data]);
 
   const counts = useMemo(() => {
     const c = { all: 0, active: 0, locked: 0, archived: 0 };

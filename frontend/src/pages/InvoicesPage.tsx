@@ -748,8 +748,8 @@ export function InvoicesPage() {
     queryFn: () => admin.listClients(),
   });
 
-  const invoices: InvoiceResponse[] = invoicesQ.data ?? [];
-  const clients: Client[] = clientsQ.data ?? [];
+  const invoices = useMemo<InvoiceResponse[]>(() => invoicesQ.data ?? [], [invoicesQ.data]);
+  const clients = useMemo<Client[]>(() => clientsQ.data ?? [], [clientsQ.data]);
 
   const clientMap = useMemo(() => {
     const m: Record<string, string> = {};

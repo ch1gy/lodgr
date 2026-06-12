@@ -298,7 +298,7 @@ export function TicketListPage() {
             </h1>
             <div className="lg-list__sub lg-list__sub--desk">{sub}</div>
             {isDesk && (
-              <div className="lg-list__swipe-hint">Swipe a card to triage · tap to open.</div>
+              <div className="lg-list__swipe-hint">Swipe → ack · ← resolve · tap to open.</div>
             )}
           </div>
           {isDesk && (
@@ -509,11 +509,11 @@ export function TicketListPage() {
                   >
                     {clientInitials(clientMap[t.client_id] ?? t.client_id)}
                   </span>
-                  <span className="lg-row__client-nm">{clientMap[t.client_id] ?? t.client_id.slice(0, 8)}</span>
+                  <span className="lg-row__client-nm">{clientMap[t.client_id] ?? t.client_id.slice(0, 8)}<span className="lg-row__hash-nm"> · #{t.id.slice(0, 8)}</span></span>
                 </div>
                 <div className="lg-row__title-blk">
                   <div className="lg-row__cat">
-                    {t.category ?? TICKET_TYPE_LABEL[t.ticket_type]} · {t.id.slice(0, 8)}
+                    {t.category ?? TICKET_TYPE_LABEL[t.ticket_type]} · <span className="lg-row__hash">{t.id.slice(0, 8)}</span>
                     {t.sub_client_name && (
                       <span style={{ marginLeft: 8, color: 'var(--red)', fontFamily: 'var(--mono)', fontSize: 9 }}>
                         › {t.sub_client_name}

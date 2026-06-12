@@ -727,3 +727,26 @@
 /* Attach pill */
 .lg-msg__attach:hover { color: var(--ink); border-color: var(--ink); }
 
+
+/* ── Meta grid (mobile only — props rail covers this on desktop) ─────── */
+.lg-article__meta { display: none; }
+@media (max-width: 768px) {
+  .lg-article__meta {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 18px 24px;
+    border-top: 2px solid var(--ink); margin: 18px 0 6px; padding-top: 16px;
+  }
+  .lg-article__meta .mi .k {
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--mid); margin-bottom: 5px;
+  }
+  .lg-article__meta .mi .v {
+    font-family: var(--serif); font-style: italic; font-size: 19px; color: var(--ink);
+  }
+  .lg-article__meta .mi .v.red { color: var(--red); }
+}
+
+/* ── Breadcrumb mobile overrides ─────────────────────────────────────── */
+@media (max-width: 540px) {
+  .lg-detail__modes { display: none; }
+  .lg-detail__bread-client { display: none; }
+}

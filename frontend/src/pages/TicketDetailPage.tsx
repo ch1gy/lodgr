@@ -25,7 +25,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { tickets as ticketsApi } from '../api/tickets';
+import { admin } from '../api/admin';
 import type {
   InternalNote,
   TicketResponse,
@@ -80,6 +83,12 @@ function daysUntil(date: string | null): number | null {
   return Math.round((+d - +t) / 86_400_000);
 }
 
+function clientInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return name.replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase() || '??';
+}
+
 export function TicketDetailPage() {
   const { id = '' } = useParams<{ id: string }>();
   const { user, isDesk, isScoped } = useAuth();
@@ -122,6 +131,19 @@ export function TicketDetailPage() {
     enabled: !!id && isDesk,
     refetchOnWindowFocus: false,
   });
+
+  const clientsQ = useQuery({
+    queryKey: ['clients'],
+    queryFn: () => admin.listClients(),
+    enabled: isDesk,
+    staleTime: 5 * 60_000,
+  });
+
+  const clientMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const c of clientsQ.data ?? []) m[c.id] = c.name;
+    return m;
+  }, [clientsQ.data]);
 
   // ── Mutations ────────────────────────────────────────────────────────
   const replyM = useMutation({
@@ -197,6 +219,8 @@ export function TicketDetailPage() {
 
   const due = daysUntil(ticket?.due_date ?? null);
   const dueLbl = due === null ? '—' : due < 0 ? `${Math.abs(due)}d overdue` : due === 0 ? 'today' : `${due}d`;
+  const clientName = ticket ? (clientMap[ticket.client_id] ?? `#${ticket.client_id.slice(0, 8)}`) : '—';
+  const createdByLabel = isDesk ? 'the desk' : clientName;
 
   // ── Render ───────────────────────────────────────────────────────────
   if (ticketQ.isLoading) {
@@ -240,7 +264,7 @@ export function TicketDetailPage() {
         <button type="button" className="lg-detail__back" onClick={() => nav('/tickets')}>← Tickets</button>
         <span>/</span>
         <b>{ticket.id.slice(0, 8)}</b>
-        <span style={{ color: 'var(--mid)' }}>· {ticket.client_id.slice(0, 8)}</span>
+        <span className="lg-detail__bread-client" style={{ color: 'var(--mid)' }}>· {clientName}</span>
         <div className="lg-detail__bread-spacer" />
 
         {showQueueRail && (
@@ -339,23 +363,29 @@ export function TicketDetailPage() {
               {ticket.category ?? ticket.ticket_type.replace('_', ' ')}
             </div>
             <div className="lg-article__above-r">
-              <b>{ticket.id}</b>
+              <b>#{ticket.id.slice(0, 8)}</b>
               <br />
               Opened {timeAgo(ticket.created_at)} · {fmtDateTime(ticket.created_at)}
             </div>
           </div>
 
           <h1 className="lg-article__h1">{ticket.title}</h1>
+          <div className="lg-article__meta">
+            <div className="mi"><div className="k">Client</div><div className="v">{clientName}</div></div>
+            <div className="mi"><div className="k">Status</div><div className="v red">{ticket.status}</div></div>
+            <div className="mi"><div className="k">Due in</div><div className="v red">{dueLbl}</div></div>
+            <div className="mi"><div className="k">Priority</div><div className="v">{ticket.priority}</div></div>
+          </div>
           {ticket.description && (
-            <p className="lg-article__dek">{ticket.description}</p>
+            <div className="lg-article__dek"><ReactMarkdown remarkPlugins={[remarkGfm]}>{ticket.description}</ReactMarkdown></div>
           )}
 
           <div className="lg-article__byline">
             <span className="lg-article__byline-av">
-              {ticket.client_id.slice(0, 2).toUpperCase()}
+              {clientInitials(clientMap[ticket.client_id] ?? ticket.client_id)}
             </span>
             <div className="lg-article__byline-nm">
-              Client {ticket.client_id.slice(0, 8)} <b>· created by {ticket.created_by.slice(0, 8)}</b>
+              {clientName} <b>· created by {createdByLabel}</b>
               <small>
                 {thread.length} message{thread.length === 1 ? '' : 's'} · due {dueLbl}
               </small>

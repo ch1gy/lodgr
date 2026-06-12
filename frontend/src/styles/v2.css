@@ -86,14 +86,36 @@
 @media (max-width: 540px) {
   .lg-ov { padding: 0; align-items: flex-end; } /* sheet slides up from bottom */
   .lg-mdl {
-    width: 100%; max-height: 96vh;
+    width: 100%;
     border-left: none; border-right: none; border-bottom: none;
+    height: var(--sheet-h, 62vh);
+    max-height: 94vh;
+    transition: height 420ms cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .lg-mdl__top  { padding: 14px 20px; }
+  .lg-mdl.is-dragging { transition: none; }
+  .lg-mdl__top  { padding: 8px 20px 12px; border-bottom: none; }
   .lg-mdl__body { padding: 20px 20px 24px; }
   .lg-mdl__foot { padding: 14px 20px; }
-  .lg-mdl__h1   { font-size: 28px; }
+  .lg-mdl__h1   { font-size: 30px; }
+  /* Grab handle */
+  .lg-mdl__grab {
+    display: flex; justify-content: center; padding: 10px 0 2px;
+    cursor: grab; touch-action: none; flex-shrink: 0;
+  }
+  .lg-mdl__grab-bar { width: 44px; height: 4px; border-radius: 2px; background: var(--rule); }
+  /* Compact header on mobile */
+  .lg-mdl__no  { display: none; }
+  .lg-mdl__dek { display: none; }
+  .lg-mdl__rule { margin-top: 0; }
+  /* Footer: full-width submit */
+  .lg-mdl__foot { flex-direction: column-reverse; gap: 10px; align-items: stretch; }
+  .lg-mdl__btns { display: flex; gap: 0; }
+  .lg-mdl__btns .lg-bt--text { display: none; }
+  .lg-mdl__btns .lg-bt--solid { flex: 1; justify-content: center; padding: 16px; }
+  .lg-mdl__foot .meta { text-align: center; }
 }
+/* Grab handle hidden on desktop */
+.lg-mdl__grab { display: none; }
 
 /* create-ticket sizing */
 .lg-mdl.create { width: min(920px, 90vw); }

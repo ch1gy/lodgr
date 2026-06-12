@@ -44,6 +44,29 @@ export function CreateTicketModal({ onClose }: Props) {
   const [phase, setPhase]       = useState<FilingPhase>('idle');
   const [stampNo, setStampNo]   = useState('');
   const stampRot = useRef(0);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const drag = useRef({ startY: 0, startH: 0, on: false });
+
+  function onGrabDown(e: React.PointerEvent) {
+    const el = sheetRef.current; if (!el) return;
+    drag.current = { startY: e.clientY, startH: el.getBoundingClientRect().height, on: true };
+    el.classList.add('is-dragging');
+    (e.target as Element).setPointerCapture(e.pointerId);
+  }
+  function onGrabMove(e: React.PointerEvent) {
+    const el = sheetRef.current; if (!el || !drag.current.on) return;
+    const h = drag.current.startH + (drag.current.startY - e.clientY);
+    el.style.setProperty('--sheet-h', `${Math.min(window.innerHeight * 0.94, Math.max(120, h))}px`);
+  }
+  function onGrabUp() {
+    const el = sheetRef.current; if (!el || !drag.current.on) return;
+    drag.current.on = false;
+    el.classList.remove('is-dragging');
+    const h = el.getBoundingClientRect().height;
+    const vh = window.innerHeight;
+    if (h < vh * 0.38) { onClose(); return; }
+    el.style.setProperty('--sheet-h', h > vh * 0.78 ? '94vh' : '62vh');
+  }
 
   // Close on Escape.
   const stableClose = useCallback(onClose, [onClose]);
@@ -199,7 +222,7 @@ export function CreateTicketModal({ onClose }: Props) {
           </filter>
         </defs>
       </svg>
-      <div className={mdlClass}>
+      <div className={mdlClass} ref={sheetRef}>
         {/* ── Filing ritual stamp overlay ──────────────────────────── */}
         {(phase === 'stamping' || phase === 'filed') && (
           <div className="lg-stamp-ov" aria-hidden>
@@ -215,6 +238,11 @@ export function CreateTicketModal({ onClose }: Props) {
           </div>
         )}
 
+        {/* ── Grab handle (mobile sheet only) ─────────────────── */}
+        <div className="lg-mdl__grab" onPointerDown={onGrabDown} onPointerMove={onGrabMove} onPointerUp={onGrabUp}>
+          <span className="lg-mdl__grab-bar" />
+        </div>
+
         {/* ── Header ──────────────────────────────────────────────── */}
         <div className="lg-mdl__top">
           <span className="lg-mdl__eye">— Section 02 — Open a new ticket</span>
@@ -223,7 +251,10 @@ export function CreateTicketModal({ onClose }: Props) {
         </div>
 
         {/* ── Body ────────────────────────────────────────────────── */}
-        <form id="create-ticket-form" onSubmit={handleSubmit}>
+        <form id="create-ticket-form" onSubmit={handleSubmit} onFocusCapture={() => {
+          if (window.innerWidth <= 540 && (window.visualViewport?.height ?? 800) < 600)
+            sheetRef.current?.style.setProperty('--sheet-h', '94vh');
+        }}>
           <div className="lg-mdl__body">
             <div className="lg-mdl__h1">A fresh entry <em>for the desk.</em></div>
             <div className="lg-mdl__dek">

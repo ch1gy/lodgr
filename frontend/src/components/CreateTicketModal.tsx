@@ -239,7 +239,7 @@ export function CreateTicketModal({ onClose }: Props) {
         )}
 
         {/* ── Grab handle (mobile sheet only) ─────────────────── */}
-        <div className="lg-mdl__grab" onPointerDown={onGrabDown} onPointerMove={onGrabMove} onPointerUp={onGrabUp}>
+        <div className="lg-mdl__grab" onPointerDown={onGrabDown} onPointerMove={onGrabMove} onPointerUp={onGrabUp} onPointerCancel={onGrabUp}>
           <span className="lg-mdl__grab-bar" />
         </div>
 

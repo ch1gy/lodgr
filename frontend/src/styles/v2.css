@@ -114,9 +114,9 @@
   .lg-mdl__btns .lg-bt--solid { flex: 1; justify-content: center; padding: 16px; }
   .lg-mdl__foot .meta { text-align: center; }
 }
-/* Grab handle: hidden by default, shown only on mobile (rule must come BEFORE the media query) */
-.lg-mdl__grab { display: none; }
-/* Override restored inside the ≤540 block above ↑ (order matters) */
+@media (min-width: 541px) {
+  .lg-mdl__grab { display: none; }
+}
 
 /* create-ticket sizing */
 .lg-mdl.create { width: min(920px, 90vw); }
@@ -1231,9 +1231,6 @@
   /* Fix 2: eyebrow one line */
   .lg-mdl__top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .lg-mdl__eye { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* h1 always visible */
-  .lg-mdl__h1 { display: block !important; }
-
   /* Fix 2: hide required/optional tags */
   .lg-f__req, .lg-f__opt { display: none; }
 

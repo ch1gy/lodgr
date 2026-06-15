@@ -337,7 +337,7 @@ html,body{{background:var(--paper);padding:0;margin:0;height:100%;font-family:va
 /* Continuation bar — only visible when <thead> repeats on overflow pages */
 .rp__det-cont{{
   display:flex;align-items:baseline;gap:14px;
-  padding:10px 44px 10px;border-bottom:1px solid #14110d22;
+  padding:10px 44px 32px;border-bottom:1px solid #14110d22;
   background:var(--paper);
   margin:0 0 0 0;
 }}

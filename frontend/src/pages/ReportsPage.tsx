@@ -18,20 +18,21 @@ export function ReportsPage() {
 
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [clientSearch, setClientSearch]     = useState('');
+  const [pickerOpen, setPickerOpen]         = useState(false);
   const [from, setFrom] = useState(toDateString(firstOfMonth));
   const [to, setTo]     = useState(today);
 
   const pickerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!clientSearch || selectedClient) return;
+    if (!pickerOpen) return;
     function handleOutside(e: MouseEvent) {
       if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
-        setClientSearch('');
+        setPickerOpen(false);
       }
     }
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
-  }, [clientSearch, selectedClient]);
+  }, [pickerOpen]);
 
   const clientsQ = useQuery({
     queryKey: ['clients'],
@@ -116,12 +117,14 @@ export function ReportsPage() {
                 className="lg-f__inp"
                 placeholder="Search by name or email…"
                 value={clientSearch}
+                onFocus={() => setPickerOpen(true)}
                 onChange={(e) => {
                   setClientSearch(e.target.value);
                   setSelectedClient(null);
+                  setPickerOpen(true);
                 }}
               />
-              {clientSearch && !selectedClient && filtered.length > 0 && (
+              {pickerOpen && !selectedClient && filtered.length > 0 && (
                 <div style={{
                   border: '1px solid var(--ink)',
                   borderTop: 'none',
@@ -141,6 +144,7 @@ export function ReportsPage() {
                       onClick={() => {
                         setSelectedClient(c);
                         setClientSearch(c.name);
+                        setPickerOpen(false);
                       }}
                     >
                       <span style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 16 }}>{c.name}</span>{' '}

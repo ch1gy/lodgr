@@ -427,7 +427,7 @@ html,body{{background:var(--paper);padding:0;margin:0;height:100%;font-family:va
 </script>
 </body>
 </html>"#,
-        period = html_esc(&period),
+        period = html_esc(period),
         client_name_esc = html_esc(client_name),
         client_email_esc = html_esc(client_email),
         generated = html_esc(&generated),

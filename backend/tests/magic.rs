@@ -1,4 +1,4 @@
-﻿mod common;
+mod common;
 
 use backend::{error::AppError, models::Claims, services::magic};
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
@@ -48,9 +48,17 @@ async fn magic_link_generation_succeeds() {
     let config = common::test_config();
     let (client_id, _, _) = common::create_test_client(&pool).await;
 
-    let out = magic::create_magic_link(&pool, &config, &common::test_enc_key(), None, &client_id, "full", None)
-        .await
-        .unwrap();
+    let out = magic::create_magic_link(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &client_id,
+        "full",
+        None,
+    )
+    .await
+    .unwrap();
 
     assert!(out.url.contains("token="), "URL must contain token param");
 }
@@ -61,9 +69,17 @@ async fn magic_link_exchange_succeeds() {
     let config = common::test_config();
     let (client_id, _, _) = common::create_test_client(&pool).await;
 
-    let out = magic::create_magic_link(&pool, &config, &common::test_enc_key(), None, &client_id, "full", None)
-        .await
-        .unwrap();
+    let out = magic::create_magic_link(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &client_id,
+        "full",
+        None,
+    )
+    .await
+    .unwrap();
     let token = extract_token(&out.url);
 
     let jwt = magic::exchange_magic_link(&pool, &config, &token)
@@ -81,9 +97,17 @@ async fn magic_link_is_single_use() {
     let config = common::test_config();
     let (client_id, _, _) = common::create_test_client(&pool).await;
 
-    let out = magic::create_magic_link(&pool, &config, &common::test_enc_key(), None, &client_id, "full", None)
-        .await
-        .unwrap();
+    let out = magic::create_magic_link(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &client_id,
+        "full",
+        None,
+    )
+    .await
+    .unwrap();
     let token = extract_token(&out.url);
 
     magic::exchange_magic_link(&pool, &config, &token)
@@ -104,9 +128,17 @@ async fn expired_magic_link_rejected() {
     config.magic_link_ttl_secs = -3600; // expires_at is 1 hour in the past
     let (client_id, _, _) = common::create_test_client(&pool).await;
 
-    let out = magic::create_magic_link(&pool, &config, &common::test_enc_key(), None, &client_id, "full", None)
-        .await
-        .unwrap();
+    let out = magic::create_magic_link(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &client_id,
+        "full",
+        None,
+    )
+    .await
+    .unwrap();
     let token = extract_token(&out.url);
 
     let result = magic::exchange_magic_link(&pool, &config, &token).await;
@@ -124,15 +156,31 @@ async fn new_link_creation_revokes_prior_unconsumed_link() {
     let (client_id, _, _) = common::create_test_client(&pool).await;
 
     // Create first link.
-    let first = magic::create_magic_link(&pool, &config, &common::test_enc_key(), None, &client_id, "full", None)
-        .await
-        .unwrap();
+    let first = magic::create_magic_link(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &client_id,
+        "full",
+        None,
+    )
+    .await
+    .unwrap();
     let first_token = extract_token(&first.url);
 
     // Create second link â€” must invalidate the first.
-    magic::create_magic_link(&pool, &config, &common::test_enc_key(), None, &client_id, "full", None)
-        .await
-        .unwrap();
+    magic::create_magic_link(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &client_id,
+        "full",
+        None,
+    )
+    .await
+    .unwrap();
 
     let result = magic::exchange_magic_link(&pool, &config, &first_token).await;
     assert!(
@@ -147,9 +195,17 @@ async fn full_scope_link_creates_full_session() {
     let config = common::test_config();
     let (client_id, _, _) = common::create_test_client(&pool).await;
 
-    let out = magic::create_magic_link(&pool, &config, &common::test_enc_key(), None, &client_id, "full", None)
-        .await
-        .unwrap();
+    let out = magic::create_magic_link(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &client_id,
+        "full",
+        None,
+    )
+    .await
+    .unwrap();
     let token = extract_token(&out.url);
     let jwt = magic::exchange_magic_link(&pool, &config, &token)
         .await
@@ -169,10 +225,17 @@ async fn ticket_scoped_link_creates_scoped_session() {
     let ticket_id = uuid::Uuid::new_v4().to_string();
     insert_test_ticket(&pool, &ticket_id, &desk_id, &client_id).await;
 
-    let out =
-        magic::create_magic_link(&pool, &config, &common::test_enc_key(), None, &client_id, "ticket", Some(&ticket_id))
-            .await
-            .unwrap();
+    let out = magic::create_magic_link(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &client_id,
+        "ticket",
+        Some(&ticket_id),
+    )
+    .await
+    .unwrap();
     let token = extract_token(&out.url);
     let jwt = magic::exchange_magic_link(&pool, &config, &token)
         .await
@@ -182,4 +245,3 @@ async fn ticket_scoped_link_creates_scoped_session() {
     assert_eq!(claims.session_type, "scoped");
     assert_eq!(claims.ticket_scope.as_deref(), Some(ticket_id.as_str()));
 }
-

@@ -1,4 +1,4 @@
-﻿// Lockout-specific integration tests.
+// Lockout-specific integration tests.
 //
 // Covers the three new behaviours added alongside the auto-ticket feature:
 //   1. Permanent client lockout auto-creates a security_log ticket (urgent).
@@ -152,9 +152,17 @@ async fn magic_link_exchange_resets_lockout() {
         .unwrap();
 
     // Exchange a magic link â€” the exchange itself must reset the lockout.
-    let out = magic::create_magic_link(&pool, &config, &common::test_enc_key(), None, &client_id, "full", None)
-        .await
-        .unwrap();
+    let out = magic::create_magic_link(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &client_id,
+        "full",
+        None,
+    )
+    .await
+    .unwrap();
     let token = out.url.split("token=").nth(1).unwrap();
     magic::exchange_magic_link(&pool, &config, token)
         .await
@@ -212,4 +220,3 @@ async fn desk_permanent_lockout_does_not_create_ticket() {
         "desk lockout must not auto-create a security_log ticket"
     );
 }
-

@@ -1,4 +1,4 @@
-﻿mod common;
+mod common;
 
 use backend::{
     error::AppError,
@@ -311,5 +311,3 @@ async fn category_over_100_chars_rejected() {
     .await;
     assert!(matches!(r, Err(AppError::BadRequest(_))));
 }
-
-

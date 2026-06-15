@@ -1,4 +1,4 @@
-﻿// M8 â€” magic-link JWT revocation tests.
+// M8 â€” magic-link JWT revocation tests.
 //
 // These tests cover the security-critical failure modes, not just happy path:
 //   â€¢ active jti           â†’ allowed
@@ -226,10 +226,17 @@ async fn exchange_magic_link_creates_jti_row_and_preserves_ticket_scope() {
     .unwrap();
 
     // Generate and exchange a ticket-scoped magic link.
-    let link_out =
-        magic::create_magic_link(&pool, &config, &common::test_enc_key(), None, &client_id, "ticket", Some(&ticket_id))
-            .await
-            .unwrap();
+    let link_out = magic::create_magic_link(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &client_id,
+        "ticket",
+        Some(&ticket_id),
+    )
+    .await
+    .unwrap();
     let raw_token = link_out.url.split("token=").nth(1).unwrap();
     let jwt = magic::exchange_magic_link(&pool, &config, raw_token)
         .await
@@ -304,9 +311,17 @@ async fn exchange_magic_link_writes_magic_ok_auth_event() {
     let config = common::test_config();
     let (client_id, _, _) = common::create_test_client(&pool).await;
 
-    let out = magic::create_magic_link(&pool, &config, &common::test_enc_key(), None, &client_id, "full", None)
-        .await
-        .unwrap();
+    let out = magic::create_magic_link(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &client_id,
+        "full",
+        None,
+    )
+    .await
+    .unwrap();
     let token = out.url.split("token=").nth(1).unwrap().to_owned();
 
     magic::exchange_magic_link(&pool, &config, &token)
@@ -319,4 +334,3 @@ async fn exchange_magic_link_writes_magic_ok_auth_event() {
     assert_eq!(events.len(), 1, "one event must be written on exchange");
     assert_eq!(events[0].event_type, "magic_ok");
 }
-

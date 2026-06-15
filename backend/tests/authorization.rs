@@ -1,4 +1,4 @@
-﻿// Negative-authorization tests â€” every check here is an attempt by the *wrong*
+// Negative-authorization tests â€” every check here is an attempt by the *wrong*
 // principal to access data. The correct result is always rejection (404 or
 // Forbidden), never a successful read or a privilege escalation.
 //
@@ -283,5 +283,3 @@ async fn desk_can_post_message_to_any_ticket() {
         result
     );
 }
-
-

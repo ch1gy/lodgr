@@ -1,4 +1,4 @@
-﻿mod common;
+mod common;
 
 use backend::{
     db,
@@ -432,5 +432,3 @@ async fn client_post_message_is_stored_and_appears_in_thread() {
     assert_eq!(with_thread.thread[0].body, "Hello from the client.");
     assert_eq!(with_thread.thread[0].sender_id, client_id);
 }
-
-

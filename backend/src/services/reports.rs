@@ -48,8 +48,7 @@ pub async fn range_report(
     let period = format!("{} – {}", from, to);
     let html = render_report_html(&user.name, &client_email, &period, &tickets);
 
-    let worker =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdf-worker.js");
+    let worker = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdf-worker.js");
     let mut child = tokio::process::Command::new("node")
         .arg(&worker)
         .stdin(Stdio::piped())
@@ -90,7 +89,6 @@ fn html_esc(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-
 fn render_report_html(
     client_name: &str,
     client_email: &str,
@@ -102,7 +100,8 @@ fn render_report_html(
 
     // Aggregate counts
     let mut by_status: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
-    let mut by_priority: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    let mut by_priority: std::collections::BTreeMap<&str, usize> =
+        std::collections::BTreeMap::new();
     let mut by_type: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
     for t in tickets {
         *by_status.entry(t.status.as_str()).or_default() += 1;
@@ -225,7 +224,8 @@ fn render_report_html(
         ""
     };
 
-    format!(r#"<!DOCTYPE html>
+    format!(
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>

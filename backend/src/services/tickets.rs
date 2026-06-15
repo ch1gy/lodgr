@@ -202,9 +202,13 @@ pub async fn create(
             db::users::find_by_id(pool, &resolved_client_id).await
         };
         match user_result {
-            Ok(Some(user)) => {
-                spawn_ticket_notification_email(m, user, enc_key, ticket.title.clone(), TicketEvent::Created)
-            }
+            Ok(Some(user)) => spawn_ticket_notification_email(
+                m,
+                user,
+                enc_key,
+                ticket.title.clone(),
+                TicketEvent::Created,
+            ),
             Ok(None) => {}
             Err(e) => tracing::warn!(%e, "failed to fetch user for ticket-created email"),
         }
@@ -410,7 +414,9 @@ async fn apply_transition(
     // Fire-and-forget email — failure is non-fatal but logged.
     if let Some(m) = mailer {
         match db::users::find_by_id(pool, &ticket.client_id).await {
-            Ok(Some(user)) => spawn_ticket_notification_email(m, user, enc_key, ticket.title.clone(), event),
+            Ok(Some(user)) => {
+                spawn_ticket_notification_email(m, user, enc_key, ticket.title.clone(), event)
+            }
             Ok(None) => {}
             Err(e) => tracing::warn!(%e, "failed to fetch client for transition email"),
         }

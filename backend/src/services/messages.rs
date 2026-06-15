@@ -94,7 +94,11 @@ pub async fn post_message(
         if let Some(m) = mailer {
             match db::users::find_by_id(pool, rid).await {
                 Ok(Some(user)) => {
-                    let decrypted_email = match crypto::decrypt(enc_key, &user.email_nonce, &user.email) {
+                    let decrypted_email = match crypto::decrypt(
+                        enc_key,
+                        &user.email_nonce,
+                        &user.email,
+                    ) {
                         Ok(e) => e,
                         Err(err) => {
                             tracing::warn!(

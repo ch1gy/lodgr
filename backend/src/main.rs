@@ -238,10 +238,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(auth_limiter));
 
     let report_limited = Router::new()
-        .route(
-            "/reports/range/:client_id",
-            get(routes::reports::range),
-        )
+        .route("/reports/range/:client_id", get(routes::reports::range))
         .route_layer(from_fn(rate_limit_reports))
         .layer(Extension(report_limiter));
 

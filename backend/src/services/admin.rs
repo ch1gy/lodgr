@@ -490,7 +490,16 @@ pub async fn generate_magic_link(
     scope: &str,
     ticket_id: Option<&str>,
 ) -> AppResult<MagicLinkOutput> {
-    create_magic_link(pool, config, enc_key, mailer, target_user_id, scope, ticket_id).await
+    create_magic_link(
+        pool,
+        config,
+        enc_key,
+        mailer,
+        target_user_id,
+        scope,
+        ticket_id,
+    )
+    .await
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

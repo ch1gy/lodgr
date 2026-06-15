@@ -4,6 +4,100 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — BUG-1: email enablement + mailer hardening
+
+### Security fix — BUG-1: ciphertext emails passed to mailer / reports
+
+All four code paths that previously passed raw AES-256-GCM ciphertext (stored
+in `users.email`) directly to `lettre` or embedded it in PDFs have been fixed.
+
+#### `backend/src/email.rs` — de-panic + SMTP_TLS dev mode
+
+- **`build_mailbox(name, email) -> Result<Mailbox, AddressError>`**: new helper
+  that formats `"Name <email>"` and parses it — never calls `.unwrap()`. All
+  callers (`send_ticket_notification`, `send_magic_link`) now use it and `return`
+  early (with a `tracing::warn!`) on parse failure instead of panicking.
+- **`SmtpMailer.from`** field changed from `String` to `Mailbox` (parsed once at
+  construction time in `from_config`).
+- **`SmtpTls::None`** mode: `from_config` now matches on `config.smtp_tls`; when
+  `None`, uses `AsyncSmtpTransport::builder_dangerous()` and logs a loud `WARN`
+  that plaintext SMTP is active. Intended only for Mailpit in local dev.
+- **Unit tests** added:
+  - `valid_mailbox_parses` — happy path
+  - `ciphertext_hex_blob_is_rejected` — hex blob must not parse as email address
+  - `name_with_angle_brackets_does_not_panic` — adversarial name field
+  - `name_with_newline_does_not_panic` — adversarial name field
+
+#### `backend/src/config.rs` — `SmtpTls` enum
+
+- Added `SmtpTls { Starttls (default), None }` enum and `smtp_tls: SmtpTls`
+  field on `Config`. Parsed from `SMTP_TLS` env var; panics with a clear message
+  on unknown values.
+
+#### `backend/src/services/tickets.rs` — decrypt before email
+
+- `create`, `transition_ack/pend/close`, `apply_transition`, and
+  `spawn_ticket_notification_email` all now accept `enc_key: &EncryptionKey`.
+- `spawn_ticket_notification_email` decrypts `user.email` via
+  `crypto::decrypt(enc_key, &user.email_nonce, &user.email)` before spawning the
+  email task; logs warn + returns on decryption failure.
+
+#### `backend/src/services/messages.rs` — decrypt before email
+
+- `add_message` now accepts `enc_key: &EncryptionKey` and decrypts the assigned
+  user's email before spawning the new-message notification. Logs warn and
+  returns `Ok(entry)` on decryption failure (non-fatal).
+
+#### `backend/src/services/magic.rs` — decrypt before email
+
+- `create_magic_link` now accepts `enc_key: &EncryptionKey`.
+- Decrypts stored email before passing it to `send_magic_link`; logs warn and
+  skips email (no panic) on failure.
+
+#### `backend/src/services/admin.rs`
+
+- `generate_magic_link` passes `enc_key` down to `create_magic_link`.
+
+#### `backend/src/services/reports.rs` — decrypt client email in PDF
+
+- `range_report` now accepts `enc_key: &EncryptionKey`.
+- Decrypts client email with `unwrap_or_else` → `"(email unavailable)"` string
+  on failure; the report is still generated without a valid email rather than
+  erroring or embedding ciphertext.
+
+#### Route handlers updated
+
+- `backend/src/routes/tickets.rs` — `create`, `ack`, `pend`, `close` all extract
+  `State(enc_key): State<EncryptionKey>` and pass `&enc_key` to service layer.
+- `backend/src/routes/admin.rs` — `create_full_magic_link` extracts and passes
+  `enc_key`.
+- `backend/src/routes/reports.rs` — `range` handler extracts and passes `enc_key`.
+
+### Frontend
+
+#### `frontend/vite.config.ts`
+
+- Added `'/uploads': 'http://localhost:3000'` to the Vite dev proxy so uploaded
+  attachment files resolve correctly in local development.
+
+### Ops
+
+#### `.env.example` — complete SMTP + secret scaffolding
+
+Added the following previously missing variables:
+- **`EMAIL_HASH_SALT`** — with the same severity warning block as
+  `ENCRYPTION_SALT`; must be generated once with `openssl rand -hex 32` and never
+  changed after first run (all email lookup blind-index hashes depend on it).
+- **`BASE_URL`** — public origin used when building magic-link URLs; must be
+  `https://` in production.
+- **`SCOPED_TOKEN_TTL_SECS`** — lifetime of single-use client-portal JWTs
+  (default 86400 = 24 h).
+- **Full SMTP block** (`SMTP_HOST / PORT / USER / PASSWORD / FROM / TLS`) with
+  a commented Mailpit local-dev example (`localhost:1025`, `SMTP_TLS=none`, no
+  credentials).
+
+---
+
 ## [Unreleased] — CI hardening + b37511f follow-ups
 
 ### Backend — test correctness

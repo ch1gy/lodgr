@@ -245,7 +245,7 @@
 .lg-row:hover .lg-row__num { color: var(--red); }
 .lg-row.is-hot .lg-row__num { color: var(--red); }
 
-.lg-row__client { display: flex; align-items: center; gap: 10px; }
+.lg-row__client { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; }
 .lg-row__av {
   width: 28px; height: 28px;
   background: var(--ink); color: var(--cream);
@@ -261,6 +261,9 @@
   color: var(--ink);
   text-transform: uppercase;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .lg-row__title-blk { min-width: 0; }

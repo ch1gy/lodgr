@@ -239,8 +239,8 @@ async fn main() -> anyhow::Result<()> {
 
     let report_limited = Router::new()
         .route(
-            "/reports/monthly/:client_id/:year/:month",
-            get(routes::reports::monthly),
+            "/reports/range/:client_id",
+            get(routes::reports::range),
         )
         .route_layer(from_fn(rate_limit_reports))
         .layer(Extension(report_limiter));

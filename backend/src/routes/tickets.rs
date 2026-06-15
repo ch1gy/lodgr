@@ -81,12 +81,14 @@ fn default_ticket_type() -> String {
 pub async fn create(
     State(pool): State<SqlitePool>,
     State(mailer): State<Option<Arc<SmtpMailer>>>,
+    State(enc_key): State<EncryptionKey>,
     AuthUser(claims): AuthUser,
     Json(body): Json<CreateTicketRequest>,
 ) -> AppResult<impl IntoResponse> {
     let ticket = services::tickets::create(
         &pool,
         mailer.as_deref(),
+        &enc_key,
         &claims,
         CreateTicketInput {
             title: &body.title,
@@ -161,30 +163,33 @@ pub async fn update(
 pub async fn ack(
     State(pool): State<SqlitePool>,
     State(mailer): State<Option<Arc<SmtpMailer>>>,
+    State(enc_key): State<EncryptionKey>,
     _: DeskUser,
     Path(id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
-    services::tickets::transition_ack(&pool, &id, mailer.as_deref()).await?;
+    services::tickets::transition_ack(&pool, &id, mailer.as_deref(), &enc_key).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn pend(
     State(pool): State<SqlitePool>,
     State(mailer): State<Option<Arc<SmtpMailer>>>,
+    State(enc_key): State<EncryptionKey>,
     _: DeskUser,
     Path(id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
-    services::tickets::transition_pend(&pool, &id, mailer.as_deref()).await?;
+    services::tickets::transition_pend(&pool, &id, mailer.as_deref(), &enc_key).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn close(
     State(pool): State<SqlitePool>,
     State(mailer): State<Option<Arc<SmtpMailer>>>,
+    State(enc_key): State<EncryptionKey>,
     _: DeskUser,
     Path(id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
-    services::tickets::transition_close(&pool, &id, mailer.as_deref()).await?;
+    services::tickets::transition_close(&pool, &id, mailer.as_deref(), &enc_key).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

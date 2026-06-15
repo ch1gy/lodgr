@@ -94,12 +94,23 @@ pub async fn post_message(
         if let Some(m) = mailer {
             match db::users::find_by_id(pool, rid).await {
                 Ok(Some(user)) => {
+                    let decrypted_email = match crypto::decrypt(enc_key, &user.email_nonce, &user.email) {
+                        Ok(e) => e,
+                        Err(err) => {
+                            tracing::warn!(
+                                user_id = %user.id,
+                                "skipping new-message notification — could not decrypt client email: {err}"
+                            );
+                            return Ok(entry);
+                        }
+                    };
                     let m = m.clone();
+                    let name = user.name.clone();
                     let title = ticket.title.clone();
                     tokio::spawn(async move {
                         m.send_ticket_notification(
-                            &user.email,
-                            &user.name,
+                            &decrypted_email,
+                            &name,
                             &title,
                             TicketEvent::NewMessage,
                         )

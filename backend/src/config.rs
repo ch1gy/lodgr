@@ -1,6 +1,14 @@
 use jsonwebtoken::{DecodingKey, EncodingKey};
 use zeroize::Zeroizing;
 
+/// How to connect to the SMTP server.
+#[derive(Clone, Debug, Default)]
+pub enum SmtpTls {
+    #[default]
+    Starttls,
+    None,
+}
+
 #[derive(Clone)]
 pub struct Config {
     pub database_url: String,
@@ -19,6 +27,7 @@ pub struct Config {
     pub smtp_user: Option<String>,
     pub smtp_password: Option<Zeroizing<String>>,
     pub smtp_from: Option<String>,
+    pub smtp_tls: SmtpTls,
     /// Requests per second allowed per IP on auth endpoints (login, refresh, magic exchange).
     pub rate_limit_auth_rps: u32,
     /// Burst capacity for the auth rate limiter.
@@ -93,6 +102,18 @@ impl Config {
         let smtp_user = std::env::var("SMTP_USER").ok();
         let smtp_password = std::env::var("SMTP_PASSWORD").ok().map(Zeroizing::new);
         let smtp_from = std::env::var("SMTP_FROM").ok();
+        let smtp_tls = match std::env::var("SMTP_TLS")
+            .unwrap_or_else(|_| "starttls".into())
+            .to_lowercase()
+            .as_str()
+        {
+            "starttls" => SmtpTls::Starttls,
+            "none" => SmtpTls::None,
+            other => panic!(
+                "FATAL: unknown SMTP_TLS value '{other}'. \
+                 Valid values: starttls (default), none (dev only)."
+            ),
+        };
 
         let rate_limit_auth_rps = std::env::var("RATE_LIMIT_AUTH_RPS")
             .ok()
@@ -143,6 +164,7 @@ impl Config {
             smtp_user,
             smtp_password,
             smtp_from,
+            smtp_tls,
             rate_limit_auth_rps,
             rate_limit_auth_burst,
             rate_limit_report_rps,

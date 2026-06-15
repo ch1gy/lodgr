@@ -19,6 +19,7 @@ export default defineConfig({
       '/tickets': 'http://localhost:3000',
       '/admin': 'http://localhost:3000',
       '/reports': 'http://localhost:3000',
+      '/uploads': 'http://localhost:3000',
     },
   },
 })

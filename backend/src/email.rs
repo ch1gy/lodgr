@@ -1,14 +1,15 @@
 use lettre::{
-    message::header::ContentType, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
-    AsyncTransport, Message, Tokio1Executor,
+    message::{header::ContentType, Mailbox},
+    transport::smtp::authentication::Credentials,
+    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
 };
 
-use crate::config::Config;
+use crate::config::{Config, SmtpTls};
 
 #[derive(Clone)]
 pub struct SmtpMailer {
     transport: AsyncSmtpTransport<Tokio1Executor>,
-    from: String,
+    from: Mailbox,
 }
 
 impl SmtpMailer {
@@ -20,14 +21,34 @@ impl SmtpMailer {
             .as_ref()
             .map(|z| z.as_str().to_owned())
             .unwrap_or_default();
-        let from = config.smtp_from.clone().unwrap_or_else(|| user.clone());
+        let from_addr = config.smtp_from.clone().unwrap_or_else(|| user.clone());
 
         Some((|| {
-            let creds = Credentials::new(user, password);
-            let transport = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(host)?
-                .port(config.smtp_port)
-                .credentials(creds)
-                .build();
+            let from = build_mailbox("Lodgr Support", &from_addr)
+                .map_err(|e| anyhow::anyhow!("invalid SMTP_FROM address: {e}"))?;
+
+            let transport = match config.smtp_tls {
+                SmtpTls::Starttls => {
+                    let creds = Credentials::new(user, password);
+                    AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(host)?
+                        .port(config.smtp_port)
+                        .credentials(creds)
+                        .build()
+                }
+                SmtpTls::None => {
+                    tracing::warn!(
+                        "SMTP_TLS=none — plaintext SMTP, local development only. \
+                         Never use this in production."
+                    );
+                    let mut builder = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(host)
+                        .port(config.smtp_port);
+                    if !user.is_empty() {
+                        builder = builder.credentials(Credentials::new(user, password));
+                    }
+                    builder.build()
+                }
+            };
+
             Ok(SmtpMailer { transport, from })
         })())
     }
@@ -44,16 +65,27 @@ impl SmtpMailer {
         let subject = event.subject(ticket_title);
         let body = event.body(to_name, ticket_title);
 
+        let to = match build_mailbox(to_name, to_email) {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!(
+                    recipient = %mask_email(to_email),
+                    "skipping ticket notification — could not build recipient mailbox: {e}"
+                );
+                return;
+            }
+        };
+
         let email = match Message::builder()
-            .from(self.from.parse().unwrap())
-            .to(format!("{to_name} <{to_email}>").parse().unwrap())
+            .from(self.from.clone())
+            .to(to)
             .subject(subject)
             .header(ContentType::TEXT_PLAIN)
             .body(body)
         {
             Ok(m) => m,
             Err(e) => {
-                tracing::warn!("failed to build email: {e}");
+                tracing::warn!("failed to build ticket notification email: {e}");
                 return;
             }
         };
@@ -74,9 +106,20 @@ impl SmtpMailer {
              If you did not request this, you can safely ignore it."
         );
 
+        let to = match build_mailbox(to_name, to_email) {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!(
+                    recipient = %mask_email(to_email),
+                    "skipping magic link email — could not build recipient mailbox: {e}"
+                );
+                return;
+            }
+        };
+
         let email = match Message::builder()
-            .from(self.from.parse().unwrap())
-            .to(format!("{to_name} <{to_email}>").parse().unwrap())
+            .from(self.from.clone())
+            .to(to)
             .subject("Your support access link")
             .header(ContentType::TEXT_PLAIN)
             .body(body)
@@ -92,6 +135,13 @@ impl SmtpMailer {
             tracing::warn!(recipient = %mask_email(to_email), "failed to send magic link email: {e}");
         }
     }
+}
+
+/// Build a lettre `Mailbox` from a display name and email address.
+/// Returns `Err` (never panics) if either field is unparsable — e.g. when
+/// `email` is still ciphertext hex (regression guard for BUG-1).
+fn build_mailbox(name: &str, email: &str) -> Result<Mailbox, lettre::address::AddressError> {
+    format!("{name} <{email}>").parse()
 }
 
 fn mask_email(email: &str) -> String {
@@ -139,5 +189,37 @@ impl TicketEvent {
              Log in to view the full details.\n\n\
              — Support Team"
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_mailbox;
+
+    #[test]
+    fn valid_mailbox_parses() {
+        assert!(build_mailbox("Alice", "alice@example.com").is_ok());
+    }
+
+    #[test]
+    fn ciphertext_hex_blob_is_rejected() {
+        // Regression guard for BUG-1: raw AES-GCM ciphertext must never parse
+        // as a valid email address and reach the SMTP transport.
+        let hex_blob = "c61baccf48524829731acd62d8f63f1511d20251cedba7191bae8e1406a3b61d7eb";
+        assert!(
+            build_mailbox("Client", hex_blob).is_err(),
+            "ciphertext hex should not parse as a valid email"
+        );
+    }
+
+    #[test]
+    fn name_with_angle_brackets_does_not_panic() {
+        // Malformed names must not panic — build_mailbox returns Err gracefully.
+        let _ = build_mailbox("Bad <Name>", "user@example.com");
+    }
+
+    #[test]
+    fn name_with_newline_does_not_panic() {
+        let _ = build_mailbox("Bad\nName", "user@example.com");
     }
 }

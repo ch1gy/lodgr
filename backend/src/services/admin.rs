@@ -484,12 +484,13 @@ pub async fn unlock_client(pool: &SqlitePool, client_id: &str) -> AppResult<()> 
 pub async fn generate_magic_link(
     pool: &SqlitePool,
     config: &Config,
+    enc_key: &EncryptionKey,
     mailer: Option<&SmtpMailer>,
     target_user_id: &str,
     scope: &str,
     ticket_id: Option<&str>,
 ) -> AppResult<MagicLinkOutput> {
-    create_magic_link(pool, config, mailer, target_user_id, scope, ticket_id).await
+    create_magic_link(pool, config, enc_key, mailer, target_user_id, scope, ticket_id).await
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

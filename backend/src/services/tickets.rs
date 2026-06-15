@@ -67,6 +67,7 @@ pub async fn list(
 pub async fn create(
     pool: &SqlitePool,
     mailer: Option<&SmtpMailer>,
+    enc_key: &EncryptionKey,
     claims: &Claims,
     input: CreateTicketInput<'_>,
 ) -> AppResult<Ticket> {
@@ -202,7 +203,7 @@ pub async fn create(
         };
         match user_result {
             Ok(Some(user)) => {
-                spawn_ticket_notification_email(m, user, ticket.title.clone(), TicketEvent::Created)
+                spawn_ticket_notification_email(m, user, enc_key, ticket.title.clone(), TicketEvent::Created)
             }
             Ok(None) => {}
             Err(e) => tracing::warn!(%e, "failed to fetch user for ticket-created email"),
@@ -310,6 +311,7 @@ pub async fn transition_ack(
     pool: &SqlitePool,
     ticket_id: &str,
     mailer: Option<&SmtpMailer>,
+    enc_key: &EncryptionKey,
 ) -> AppResult<()> {
     apply_transition(
         pool,
@@ -318,6 +320,7 @@ pub async fn transition_ack(
         TicketEvent::Acknowledged,
         "Your ticket has been acknowledged.",
         mailer,
+        enc_key,
     )
     .await
 }
@@ -326,6 +329,7 @@ pub async fn transition_pend(
     pool: &SqlitePool,
     ticket_id: &str,
     mailer: Option<&SmtpMailer>,
+    enc_key: &EncryptionKey,
 ) -> AppResult<()> {
     apply_transition(
         pool,
@@ -334,6 +338,7 @@ pub async fn transition_pend(
         TicketEvent::Pending,
         "Your ticket is awaiting your response.",
         mailer,
+        enc_key,
     )
     .await
 }
@@ -342,6 +347,7 @@ pub async fn transition_close(
     pool: &SqlitePool,
     ticket_id: &str,
     mailer: Option<&SmtpMailer>,
+    enc_key: &EncryptionKey,
 ) -> AppResult<()> {
     apply_transition(
         pool,
@@ -350,6 +356,7 @@ pub async fn transition_close(
         TicketEvent::Closed,
         "Your ticket has been closed.",
         mailer,
+        enc_key,
     )
     .await
 }
@@ -361,12 +368,24 @@ pub async fn transition_close(
 fn spawn_ticket_notification_email(
     mailer: &SmtpMailer,
     user: User,
+    enc_key: &EncryptionKey,
     ticket_title: String,
     event: TicketEvent,
 ) {
+    let email = match crypto::decrypt(enc_key, &user.email_nonce, &user.email) {
+        Ok(e) => e,
+        Err(err) => {
+            tracing::warn!(
+                user_id = %user.id,
+                "skipping ticket notification — could not decrypt client email: {err}"
+            );
+            return;
+        }
+    };
     let m = mailer.clone();
+    let name = user.name.clone();
     tokio::spawn(async move {
-        m.send_ticket_notification(&user.email, &user.name, &ticket_title, event)
+        m.send_ticket_notification(&email, &name, &ticket_title, event)
             .await;
     });
 }
@@ -378,6 +397,7 @@ async fn apply_transition(
     event: TicketEvent,
     notify_msg: &str,
     mailer: Option<&SmtpMailer>,
+    enc_key: &EncryptionKey,
 ) -> AppResult<()> {
     let ticket = db::tickets::find_by_id(pool, ticket_id)
         .await?
@@ -390,7 +410,7 @@ async fn apply_transition(
     // Fire-and-forget email — failure is non-fatal but logged.
     if let Some(m) = mailer {
         match db::users::find_by_id(pool, &ticket.client_id).await {
-            Ok(Some(user)) => spawn_ticket_notification_email(m, user, ticket.title.clone(), event),
+            Ok(Some(user)) => spawn_ticket_notification_email(m, user, enc_key, ticket.title.clone(), event),
             Ok(None) => {}
             Err(e) => tracing::warn!(%e, "failed to fetch client for transition email"),
         }

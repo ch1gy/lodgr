@@ -1,12 +1,3 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// ReportsPage.tsx — /reports (desk only)
-//
-// Client picker → year → month → download PDF.
-//
-// GET /reports/monthly/:client_id/:year/:month returns a PDF blob.
-// We trigger a browser download by creating an <a> with an object URL.
-// ─────────────────────────────────────────────────────────────────────────────
-
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Masthead } from '../components/Masthead';
@@ -16,26 +7,20 @@ import { downloadBlob, extractApiError } from '../utils/format';
 import type { Client } from '../api/types';
 import '../styles/v2.css';
 
-const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+function toDateString(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
 
 export function ReportsPage() {
-  // Compute now inside the component so the date is accurate at render time,
-  // not frozen at module-load (which would be wrong over midnight on Dec 31).
   const now = new Date();
-  const THIS_YEAR  = now.getFullYear();
-  const THIS_MONTH = now.getMonth(); // 0-indexed
-
-  // Default to the previous completed month.
-  const defaultMonth = THIS_MONTH === 0 ? 11 : THIS_MONTH - 1;
-  const defaultYear  = THIS_MONTH === 0 ? THIS_YEAR - 1 : THIS_YEAR;
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const today = toDateString(now);
 
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [clientSearch, setClientSearch]     = useState('');
-  const [year, setYear]                     = useState(defaultYear);
-  const [month, setMonth]                   = useState(defaultMonth);
+  const [from, setFrom] = useState(toDateString(firstOfMonth));
+  const [to, setTo]     = useState(today);
 
-  // Close the client picker dropdown when clicking outside.
   const pickerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!clientSearch || selectedClient) return;
@@ -65,26 +50,20 @@ export function ReportsPage() {
       : activeClients;
   }, [activeClients, clientSearch]);
 
+  const rangeValid = from && to && from <= to;
+
   const downloadM = useMutation({
     mutationFn: () => {
       if (!selectedClient) throw new Error('No client selected');
-      const m = month + 1; // backend is 1-indexed
       return api
-        .get<Blob>(`/reports/monthly/${selectedClient.id}/${year}/${m}`, { responseType: 'blob' })
+        .get<Blob>(`/reports/range/${selectedClient.id}?from=${from}&to=${to}`, { responseType: 'blob' })
         .then((r) => r.data);
     },
     onSuccess: (blob) => {
       if (!selectedClient) return;
-      const m = String(month + 1).padStart(2, '0');
-      downloadBlob(blob, `lodgr-report-${selectedClient.id.slice(0, 8)}-${year}-${m}.pdf`);
+      downloadBlob(blob, `lodgr-report-${selectedClient.id.slice(0, 8)}-${from}-${to}.pdf`);
     },
   });
-
-  // Months available = up to the last completed month of the selected year.
-  const isFutureMonth = (y: number, m: number) =>
-    y > THIS_YEAR || (y === THIS_YEAR && m >= THIS_MONTH);
-
-  const years = [THIS_YEAR - 1, THIS_YEAR];
 
   const downloadErr = downloadM.error
     ? extractApiError(downloadM.error, 'Report generation failed. Try again.')
@@ -98,11 +77,11 @@ export function ReportsPage() {
         {/* ── Left editorial panel ───────────────────────────────── */}
         <div className="lg-rp__left">
           <div className="lg-rp__bgnum">R</div>
-          <div className="lg-rp__eye">— Section 03 · Monthly reports</div>
-          <h1 className="lg-rp__h1">A month <em>on paper.</em></h1>
+          <div className="lg-rp__eye">— Section 03 · Reports</div>
+          <h1 className="lg-rp__h1">A period <em>on paper.</em></h1>
           <div className="lg-rp__dek">
-            One PDF per client per month — every ticket opened, closed, acknowledged
-            or escalated, with response times and a short summary at the top.
+            One PDF per client per date range — every ticket opened, closed, acknowledged
+            or escalated, with a short summary at the top.
             Generated server-side. Downloads directly.
           </div>
 
@@ -115,7 +94,7 @@ export function ReportsPage() {
             </div>
             <div className="it">
               <span className="when">Step 02</span>
-              <span className="what">Select a year and month</span>
+              <span className="what">Set a from and to date</span>
               <span className="who" />
             </div>
             <div className="it">
@@ -175,54 +154,38 @@ export function ReportsPage() {
               )}
             </div>
 
-            {/* Year picker */}
-            <div className="lg-f">
-              <div className="lg-f__lbl"><span>Year</span></div>
-              <div className="lg-rp__pickyr">
-                {years.map((y) => (
-                  <button
-                    key={y}
-                    type="button"
-                    className={`yr${year === y ? ' on' : ''}`}
-                    onClick={() => setYear(y)}
-                  >
-                    {y}
-                  </button>
-                ))}
+            {/* Date range */}
+            <div className="lg-rp__daterange">
+              <div className="lg-f">
+                <div className="lg-f__lbl"><span>From</span></div>
+                <input
+                  type="date"
+                  className="lg-f__inp"
+                  value={from}
+                  max={to || today}
+                  onChange={(e) => setFrom(e.target.value)}
+                />
               </div>
-            </div>
-
-            {/* Month picker */}
-            <div className="lg-f">
-              <div className="lg-f__lbl"><span>Month</span><span className="opt">{year}</span></div>
-              <div className="lg-rp__months">
-                {MONTH_NAMES.map((name, i) => {
-                  const future = isFutureMonth(year, i);
-                  return (
-                    <button
-                      key={name}
-                      type="button"
-                      className={`lg-rp__mo${month === i ? ' on' : ''}${future ? ' dis' : ''}`}
-                      disabled={future}
-                      onClick={() => !future && setMonth(i)}
-                    >
-                      <span className="n">{name}</span>
-                      <span className="c">{future ? '·' : '—'}</span>
-                    </button>
-                  );
-                })}
+              <div className="lg-f">
+                <div className="lg-f__lbl"><span>To</span></div>
+                <input
+                  type="date"
+                  className="lg-f__inp"
+                  value={to}
+                  min={from}
+                  max={today}
+                  onChange={(e) => setTo(e.target.value)}
+                />
               </div>
             </div>
 
             {/* Preview box */}
-            {selectedClient && (
+            {selectedClient && rangeValid && (
               <div className="lg-rp__preview">
                 <div className="ttl">— Preview</div>
                 <div className="row">
                   <span className="k">File</span>
-                  <span className="v">
-                    lodgr-report-{selectedClient.id.slice(0, 8)}-{year}-{String(month + 1).padStart(2, '0')}.pdf
-                  </span>
+                  <span className="v">lodgr-report-{selectedClient.id.slice(0, 8)}-{from}-{to}.pdf</span>
                 </div>
                 <div className="row">
                   <span className="k">Client</span>
@@ -230,7 +193,7 @@ export function ReportsPage() {
                 </div>
                 <div className="row">
                   <span className="k">Period</span>
-                  <span className="v">{MONTH_NAMES[month]} {year}</span>
+                  <span className="v">{from} – {to}</span>
                 </div>
                 <div className="row">
                   <span className="k">Format</span>
@@ -248,7 +211,7 @@ export function ReportsPage() {
               <button
                 type="button"
                 className="lg-bt lg-bt--solid"
-                disabled={!selectedClient || downloadM.isPending}
+                disabled={!selectedClient || !rangeValid || downloadM.isPending}
                 onClick={() => downloadM.mutate()}
               >
                 {downloadM.isPending ? 'Generating…' : 'Download PDF'} <span className="arr">↓</span>

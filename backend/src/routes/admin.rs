@@ -267,6 +267,7 @@ pub async fn get_export_file(
 pub async fn create_full_magic_link(
     State(pool): State<SqlitePool>,
     State(config): State<Config>,
+    State(enc_key): State<EncryptionKey>,
     State(mailer): State<Option<Arc<SmtpMailer>>>,
     DeskUser(claims): DeskUser,
     Path(client_id): Path<String>,
@@ -274,6 +275,7 @@ pub async fn create_full_magic_link(
     let out = services::admin::generate_magic_link(
         &pool,
         &config,
+        &enc_key,
         mailer.as_deref(),
         &client_id,
         "full",

@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::{
     config::Config,
+    crypto::{self, EncryptionKey},
     db,
     email::SmtpMailer,
     error::{AppError, AppResult},
@@ -22,6 +23,7 @@ pub struct MagicLinkOutput {
 pub async fn create_magic_link(
     pool: &SqlitePool,
     config: &Config,
+    enc_key: &EncryptionKey,
     mailer: Option<&SmtpMailer>,
     target_user_id: &str,
     scope: &str,
@@ -81,13 +83,22 @@ pub async fn create_magic_link(
 
     // Fire-and-forget: email failure is non-fatal and already logged inside send_magic_link.
     if let Some(m) = mailer {
-        let m = m.clone();
-        let email = user.email.clone();
-        let name = user.name.clone();
-        let link = url.clone();
-        tokio::spawn(async move {
-            m.send_magic_link(&email, &name, &link).await;
-        });
+        match crypto::decrypt(enc_key, &user.email_nonce, &user.email) {
+            Ok(decrypted_email) => {
+                let m = m.clone();
+                let name = user.name.clone();
+                let link = url.clone();
+                tokio::spawn(async move {
+                    m.send_magic_link(&decrypted_email, &name, &link).await;
+                });
+            }
+            Err(err) => {
+                tracing::warn!(
+                    user_id = %target_user_id,
+                    "skipping magic link email — could not decrypt client email: {err}"
+                );
+            }
+        }
     }
 
     Ok(MagicLinkOutput { url })

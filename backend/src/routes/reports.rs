@@ -1,29 +1,39 @@
 use axum::{
-    extract::{Path, State},
-    http::{header, StatusCode},
+    extract::{Path, Query, State},
+    http::header,
     response::{IntoResponse, Response},
 };
+use serde::Deserialize;
 use sqlx::SqlitePool;
 
-use crate::{error::AppResult, middleware::DeskUser, services};
+use crate::{crypto::EncryptionKey, error::AppResult, middleware::DeskUser, services};
 
-/// GET /reports/monthly/:client_id/:year/:month
-pub async fn monthly(
+#[derive(Deserialize)]
+pub struct RangeQuery {
+    pub from: String, // YYYY-MM-DD
+    pub to: String,   // YYYY-MM-DD
+}
+
+/// GET /reports/range/:client_id?from=YYYY-MM-DD&to=YYYY-MM-DD
+pub async fn range(
     State(pool): State<SqlitePool>,
+    State(enc_key): State<EncryptionKey>,
     _: DeskUser,
-    Path((client_id, year, month)): Path<(String, i32, u32)>,
+    Path(client_id): Path<String>,
+    Query(q): Query<RangeQuery>,
 ) -> AppResult<Response> {
-    if month == 0 || month > 12 {
+    // Basic validation — dates must look like YYYY-MM-DD
+    if q.from.len() != 10 || q.to.len() != 10 || q.from > q.to {
         return Err(crate::error::AppError::BadRequest(
-            "month must be 1–12".into(),
+            "from/to must be YYYY-MM-DD and from ≤ to".into(),
         ));
     }
 
-    let report = services::reports::monthly_report(&pool, &client_id, year, month).await?;
+    let report =
+        services::reports::range_report(&pool, &enc_key, &client_id, &q.from, &q.to).await?;
 
-    let filename = format!("lodgr-report-{year}-{month:02}.pdf");
+    let filename = format!("lodgr-report-{}-{}.pdf", q.from, q.to);
     Ok((
-        StatusCode::OK,
         [
             (header::CONTENT_TYPE, "application/pdf".to_owned()),
             (

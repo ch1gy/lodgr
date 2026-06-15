@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use crate::{
     config::Config,
+    crypto::EncryptionKey,
     db,
     dto::{AccessTokenResponse, MagicLinkResponse},
     email::SmtpMailer,
@@ -40,6 +41,7 @@ pub async fn exchange(
 pub async fn create_ticket_scoped(
     State(pool): State<SqlitePool>,
     State(config): State<Config>,
+    State(enc_key): State<EncryptionKey>,
     State(mailer): State<Option<Arc<SmtpMailer>>>,
     DeskUser(claims): DeskUser,
     Path(ticket_id): Path<String>,
@@ -51,10 +53,11 @@ pub async fn create_ticket_scoped(
     let out = services::admin::generate_magic_link(
         &pool,
         &config,
+        &enc_key,
         mailer.as_deref(),
         &ticket.client_id,
         "ticket",
-        Some(&ticket_id),
+        Some(ticket_id.as_str()),
     )
     .await?;
 

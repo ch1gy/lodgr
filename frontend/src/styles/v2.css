@@ -812,15 +812,16 @@
 }
 .lg-rp__preview .row {
   display: flex; justify-content: space-between; align-items: baseline;
-  padding: 6px 0; border-bottom: 1px dashed var(--rule);
+  gap: 12px; padding: 6px 0; border-bottom: 1px dashed var(--rule);
 }
 .lg-rp__preview .row:last-child { border-bottom: none; }
 .lg-rp__preview .row .k {
   color: var(--mid); letter-spacing: .14em; text-transform: uppercase;
-  font-family: var(--mono); font-size: 9px;
+  font-family: var(--mono); font-size: 9px; flex-shrink: 0;
 }
 .lg-rp__preview .row .v {
   font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--ink);
+  text-align: right; word-break: break-all; min-width: 0;
 }
 
 /* ────────────────────────────────────────────────────────────────────── */

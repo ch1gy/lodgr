@@ -1,4 +1,4 @@
-// Lockout-specific integration tests.
+﻿// Lockout-specific integration tests.
 //
 // Covers the three new behaviours added alongside the auto-ticket feature:
 //   1. Permanent client lockout auto-creates a security_log ticket (urgent).
@@ -18,7 +18,7 @@ fn peer_ip() -> IpAddr {
     "127.0.0.1".parse().unwrap()
 }
 
-// ── 1. Auto-ticket on first permanent client lockout ──────────────────────────
+// â”€â”€ 1. Auto-ticket on first permanent client lockout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn permanent_lockout_auto_creates_urgent_security_log_ticket() {
@@ -33,7 +33,7 @@ async fn permanent_lockout_auto_creates_urgent_security_log_ticket() {
         .await
         .unwrap();
 
-    // 9th wrong attempt → permanent lock → auto-ticket.
+    // 9th wrong attempt â†’ permanent lock â†’ auto-ticket.
     let _ = auth::login(
         &pool,
         &config,
@@ -73,7 +73,7 @@ async fn permanent_lockout_auto_creates_urgent_security_log_ticket() {
     );
 }
 
-// ── 2. Deduplication — no second ticket within 24 h ──────────────────────────
+// â”€â”€ 2. Deduplication â€” no second ticket within 24 h â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn lockout_ticket_not_duplicated_within_24h() {
@@ -81,7 +81,7 @@ async fn lockout_ticket_not_duplicated_within_24h() {
     let config = common::test_config();
     let (client_id, email, _) = common::create_test_client(&pool).await;
 
-    // First lockout — ticket is created.
+    // First lockout â€” ticket is created.
     sqlx::query("UPDATE users SET failed_attempts = 8, locked_until = NULL WHERE id = ?")
         .bind(&client_id)
         .execute(&pool)
@@ -98,7 +98,7 @@ async fn lockout_ticket_not_duplicated_within_24h() {
     )
     .await;
 
-    // Simulate admin recovery (unlock without full reset — same scenario the desk
+    // Simulate admin recovery (unlock without full reset â€” same scenario the desk
     // would do via the unlock endpoint, which clears the lockout but the guard
     // window is still < 24 h).
     sqlx::query("UPDATE users SET failed_attempts = 8, locked_until = NULL WHERE id = ?")
@@ -107,7 +107,7 @@ async fn lockout_ticket_not_duplicated_within_24h() {
         .await
         .unwrap();
 
-    // Second lockout within 24 h — must NOT create a duplicate.
+    // Second lockout within 24 h â€” must NOT create a duplicate.
     let _ = auth::login(
         &pool,
         &config,
@@ -134,7 +134,7 @@ async fn lockout_ticket_not_duplicated_within_24h() {
     );
 }
 
-// ── 3. Magic link exchange clears the lockout counter ────────────────────────
+// â”€â”€ 3. Magic link exchange clears the lockout counter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn magic_link_exchange_resets_lockout() {
@@ -151,8 +151,8 @@ async fn magic_link_exchange_resets_lockout() {
         .await
         .unwrap();
 
-    // Exchange a magic link — the exchange itself must reset the lockout.
-    let out = magic::create_magic_link(&pool, &config, None, &client_id, "full", None)
+    // Exchange a magic link â€” the exchange itself must reset the lockout.
+    let out = magic::create_magic_link(&pool, &config, &common::test_enc_key(), None, &client_id, "full", None)
         .await
         .unwrap();
     let token = out.url.split("token=").nth(1).unwrap();
@@ -175,7 +175,7 @@ async fn magic_link_exchange_resets_lockout() {
     );
 }
 
-// ── 4. Desk lockout does NOT create a ticket ─────────────────────────────────
+// â”€â”€ 4. Desk lockout does NOT create a ticket â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn desk_permanent_lockout_does_not_create_ticket() {
@@ -189,7 +189,7 @@ async fn desk_permanent_lockout_does_not_create_ticket() {
         .await
         .unwrap();
 
-    // 9th wrong attempt — desk account hits permanent lockout.
+    // 9th wrong attempt â€” desk account hits permanent lockout.
     let _ = auth::login(
         &pool,
         &config,
@@ -212,3 +212,4 @@ async fn desk_permanent_lockout_does_not_create_ticket() {
         "desk lockout must not auto-create a security_log ticket"
     );
 }
+

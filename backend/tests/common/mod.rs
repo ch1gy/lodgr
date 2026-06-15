@@ -1,7 +1,13 @@
 #![allow(dead_code)]
 use std::sync::Arc;
 
-use backend::{config::Config, crypto, crypto::EncryptionKey, db, services::auth::hash_password};
+use backend::{
+    config::{Config, SmtpTls},
+    crypto,
+    crypto::EncryptionKey,
+    db,
+    services::auth::hash_password,
+};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
     SqlitePool,
@@ -43,6 +49,7 @@ pub fn test_config() -> Config {
         smtp_user: None,
         smtp_password: None,
         smtp_from: None,
+        smtp_tls: SmtpTls::Starttls,
         rate_limit_auth_rps: 5,
         rate_limit_auth_burst: 10,
         rate_limit_report_rps: 0.2,

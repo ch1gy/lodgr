@@ -1,4 +1,4 @@
-mod common;
+﻿mod common;
 
 use backend::{
     error::AppError,
@@ -10,7 +10,7 @@ use backend::{
 };
 use chrono::Utc;
 
-// ── Password strength ─────────────────────────────────────────────────────────
+// â”€â”€ Password strength â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn password_too_short_rejected() {
@@ -39,7 +39,7 @@ fn strong_password_accepted() {
     assert!(validate_password_strength("C0rrect_H0rse_Battery_Staple").is_ok());
 }
 
-// ── Email format (tested through create_client) ───────────────────────────────
+// â”€â”€ Email format (tested through create_client) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn email_missing_at_rejected() {
@@ -95,7 +95,7 @@ async fn email_leading_dot_in_domain_rejected() {
     assert!(r.is_err());
 }
 
-// ── Ticket field validation ───────────────────────────────────────────────────
+// â”€â”€ Ticket field validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn desk_claims(user_id: &str) -> Claims {
     Claims {
@@ -116,6 +116,7 @@ async fn ticket_date_format_yyyy_mm_dd_accepted() {
     let r = create(
         &pool,
         None,
+        &common::test_enc_key(),
         &desk_claims(&desk_id),
         CreateTicketInput {
             title: "Test",
@@ -144,6 +145,7 @@ async fn ticket_date_format_dd_mm_yyyy_rejected() {
     let r = create(
         &pool,
         None,
+        &common::test_enc_key(),
         &desk_claims(&desk_id),
         CreateTicketInput {
             title: "Test",
@@ -172,6 +174,7 @@ async fn recurring_interval_days_zero_rejected() {
     let r = create(
         &pool,
         None,
+        &common::test_enc_key(),
         &desk_claims(&desk_id),
         CreateTicketInput {
             title: "Test",
@@ -200,6 +203,7 @@ async fn recurring_interval_days_366_rejected() {
     let r = create(
         &pool,
         None,
+        &common::test_enc_key(),
         &desk_claims(&desk_id),
         CreateTicketInput {
             title: "Test",
@@ -228,6 +232,7 @@ async fn recurring_interval_days_1_accepted() {
     let r = create(
         &pool,
         None,
+        &common::test_enc_key(),
         &desk_claims(&desk_id),
         CreateTicketInput {
             title: "Test",
@@ -256,6 +261,7 @@ async fn recurring_interval_days_365_accepted() {
     let r = create(
         &pool,
         None,
+        &common::test_enc_key(),
         &desk_claims(&desk_id),
         CreateTicketInput {
             title: "Test",
@@ -285,6 +291,7 @@ async fn category_over_100_chars_rejected() {
     let r = create(
         &pool,
         None,
+        &common::test_enc_key(),
         &desk_claims(&desk_id),
         CreateTicketInput {
             title: "Test",
@@ -304,3 +311,5 @@ async fn category_over_100_chars_rejected() {
     .await;
     assert!(matches!(r, Err(AppError::BadRequest(_))));
 }
+
+

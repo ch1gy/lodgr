@@ -1,11 +1,11 @@
-// Negative-authorization tests — every check here is an attempt by the *wrong*
+﻿// Negative-authorization tests â€” every check here is an attempt by the *wrong*
 // principal to access data. The correct result is always rejection (404 or
 // Forbidden), never a successful read or a privilege escalation.
 //
 // Role set is currently DB-constrained to ('desk', 'client') via the CHECK
 // constraint in migrations/001_init.sql, so the "unknown role" cases below
 // cannot be triggered with a validly-issued JWT today. They are regression
-// guards against future role additions — if a new role is ever added, these
+// guards against future role additions â€” if a new role is ever added, these
 // tests will fail immediately, forcing an explicit authorization decision
 // rather than silent fail-open.
 
@@ -21,7 +21,7 @@ use backend::{
 };
 use chrono::Utc;
 
-// ── Claim builders ────────────────────────────────────────────────────────────
+// â”€â”€ Claim builders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn claims_for(user_id: &str, role: &str) -> Claims {
     Claims {
@@ -46,7 +46,7 @@ fn unknown_role(id: &str) -> Claims {
     claims_for(id, "superadmin")
 }
 
-// ── Shared ticket-creation helper ─────────────────────────────────────────────
+// â”€â”€ Shared ticket-creation helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async fn make_ticket(
     pool: &sqlx::SqlitePool,
@@ -56,6 +56,7 @@ async fn make_ticket(
     tickets::create(
         pool,
         None,
+        &common::test_enc_key(),
         &desk(desk_id),
         CreateTicketInput {
             title: "Auth test ticket",
@@ -76,7 +77,7 @@ async fn make_ticket(
     .unwrap()
 }
 
-// ── get_with_thread — IDOR ────────────────────────────────────────────────────
+// â”€â”€ get_with_thread â€” IDOR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn client_cannot_read_another_clients_ticket() {
@@ -110,7 +111,7 @@ async fn future_role_addition_falls_through_to_ownership_check_on_read() {
     let result =
         tickets::get_with_thread(&pool, &ticket.id, &unknown_role(&owner_id), &enc_key).await;
 
-    // Ownership matches (same sub) so this should succeed — the important thing
+    // Ownership matches (same sub) so this should succeed â€” the important thing
     // is that *different* sub would be denied.  Assert here that the unknown role
     // does NOT silently get desk-level access to a ticket it doesn't own.
     let (attacker_id, _, _) = common::create_test_client(&pool).await;
@@ -142,7 +143,7 @@ async fn desk_can_read_any_ticket() {
     );
 }
 
-// ── ticket create — client_id override attempt ────────────────────────────────
+// â”€â”€ ticket create â€” client_id override attempt â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn client_filing_ticket_with_another_clients_id_is_filed_as_self() {
@@ -155,6 +156,7 @@ async fn client_filing_ticket_with_another_clients_id_is_filed_as_self() {
     let ticket = tickets::create(
         &pool,
         None,
+        &common::test_enc_key(),
         &client(&client_a),
         CreateTicketInput {
             title: "Impersonation attempt",
@@ -181,7 +183,7 @@ async fn client_filing_ticket_with_another_clients_id_is_filed_as_self() {
     let _ = desk_id; // suppress unused
 }
 
-// ── post_message — IDOR ───────────────────────────────────────────────────────
+// â”€â”€ post_message â€” IDOR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn client_cannot_post_message_to_another_clients_ticket() {
@@ -249,7 +251,7 @@ async fn future_role_addition_falls_through_to_ownership_check_on_post_message()
     );
 }
 
-// ── desk still has full access ─────────────────────────────────────────────────
+// â”€â”€ desk still has full access â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn desk_can_post_message_to_any_ticket() {
@@ -281,3 +283,5 @@ async fn desk_can_post_message_to_any_ticket() {
         result
     );
 }
+
+

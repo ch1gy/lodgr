@@ -1,19 +1,19 @@
-// M8 — magic-link JWT revocation tests.
+﻿// M8 â€” magic-link JWT revocation tests.
 //
 // These tests cover the security-critical failure modes, not just happy path:
-//   • active jti           → allowed
-//   • revoked jti          → denied
-//   • jti present, no row  → denied (fail-closed — the entire point of the feature)
-//   • access token (no jti)→ allowed, no DB lookup needed
-//   • revoke_for_user      → marks all active rows for a user as revoked
-//   • scoped session       → jti is set; ticket_scope is preserved
-//   • cleanup              → removes expired rows only; active rows survive
+//   â€¢ active jti           â†’ allowed
+//   â€¢ revoked jti          â†’ denied
+//   â€¢ jti present, no row  â†’ denied (fail-closed â€” the entire point of the feature)
+//   â€¢ access token (no jti)â†’ allowed, no DB lookup needed
+//   â€¢ revoke_for_user      â†’ marks all active rows for a user as revoked
+//   â€¢ scoped session       â†’ jti is set; ticket_scope is preserved
+//   â€¢ cleanup              â†’ removes expired rows only; active rows survive
 
 mod common;
 
 use backend::{db, services::magic};
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn future_rfc3339(hours: i64) -> String {
     (chrono::Utc::now() + chrono::Duration::hours(hours)).to_rfc3339()
@@ -23,7 +23,7 @@ fn past_rfc3339(hours: i64) -> String {
     (chrono::Utc::now() - chrono::Duration::hours(hours)).to_rfc3339()
 }
 
-// ── db::jwt_revocations — fail-closed unit tests ──────────────────────────────
+// â”€â”€ db::jwt_revocations â€” fail-closed unit tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn active_jti_is_allowed() {
@@ -70,21 +70,21 @@ async fn revoked_jti_is_denied() {
 async fn missing_jti_is_denied_fail_closed() {
     let (pool, _dir) = common::setup_test_db().await;
 
-    // No row for this jti — must be denied, not allowed.
+    // No row for this jti â€” must be denied, not allowed.
     assert!(
         !db::jwt_revocations::is_active(&pool, "jti-does-not-exist")
             .await
             .unwrap(),
-        "missing row must be denied (fail-closed — could be forged jti)"
+        "missing row must be denied (fail-closed â€” could be forged jti)"
     );
 }
 
-// ── access token (no jti) ─────────────────────────────────────────────────────
+// â”€â”€ access token (no jti) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn access_token_without_jti_is_allowed_without_lookup() {
     // Password-login Claims have jti: None. The middleware skips the DB check
-    // entirely. Test this at the Claims level — if jti is None, is_active is
+    // entirely. Test this at the Claims level â€” if jti is None, is_active is
     // never called, so even an empty DB returns "allow" via the None branch.
     let claims = backend::models::Claims {
         sub: "some-user".into(),
@@ -102,7 +102,7 @@ async fn access_token_without_jti_is_allowed_without_lookup() {
     );
 }
 
-// ── revoke_for_user ───────────────────────────────────────────────────────────
+// â”€â”€ revoke_for_user â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn revoke_for_user_marks_all_active_rows() {
@@ -166,7 +166,7 @@ async fn revoke_for_user_does_not_affect_other_users() {
     );
 }
 
-// ── cleanup ───────────────────────────────────────────────────────────────────
+// â”€â”€ cleanup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn cleanup_removes_expired_rows_only() {
@@ -200,7 +200,7 @@ async fn cleanup_removes_expired_rows_only() {
     );
 }
 
-// ── full exchange flow — jti is created and scoped session is preserved ───────
+// â”€â”€ full exchange flow â€” jti is created and scoped session is preserved â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn exchange_magic_link_creates_jti_row_and_preserves_ticket_scope() {
@@ -227,7 +227,7 @@ async fn exchange_magic_link_creates_jti_row_and_preserves_ticket_scope() {
 
     // Generate and exchange a ticket-scoped magic link.
     let link_out =
-        magic::create_magic_link(&pool, &config, None, &client_id, "ticket", Some(&ticket_id))
+        magic::create_magic_link(&pool, &config, &common::test_enc_key(), None, &client_id, "ticket", Some(&ticket_id))
             .await
             .unwrap();
     let raw_token = link_out.url.split("token=").nth(1).unwrap();
@@ -264,7 +264,7 @@ async fn exchange_magic_link_creates_jti_row_and_preserves_ticket_scope() {
     );
 }
 
-// ── delete_client_sessions also revokes magic JTIs ───────────────────────────
+// â”€â”€ delete_client_sessions also revokes magic JTIs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn delete_client_sessions_revokes_magic_jtis() {
@@ -296,7 +296,7 @@ async fn delete_client_sessions_revokes_magic_jtis() {
     );
 }
 
-// ── magic_ok auth event ───────────────────────────────────────────────────────
+// â”€â”€ magic_ok auth event â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn exchange_magic_link_writes_magic_ok_auth_event() {
@@ -304,7 +304,7 @@ async fn exchange_magic_link_writes_magic_ok_auth_event() {
     let config = common::test_config();
     let (client_id, _, _) = common::create_test_client(&pool).await;
 
-    let out = magic::create_magic_link(&pool, &config, None, &client_id, "full", None)
+    let out = magic::create_magic_link(&pool, &config, &common::test_enc_key(), None, &client_id, "full", None)
         .await
         .unwrap();
     let token = out.url.split("token=").nth(1).unwrap().to_owned();
@@ -319,3 +319,4 @@ async fn exchange_magic_link_writes_magic_ok_auth_event() {
     assert_eq!(events.len(), 1, "one event must be written on exchange");
     assert_eq!(events[0].event_type, "magic_ok");
 }
+

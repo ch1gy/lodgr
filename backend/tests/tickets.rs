@@ -1,4 +1,4 @@
-mod common;
+﻿mod common;
 
 use backend::{
     db,
@@ -42,6 +42,7 @@ async fn create_ticket_for_client(
     tickets::create(
         pool,
         None,
+        &common::test_enc_key(),
         &desk_claims(desk_id),
         CreateTicketInput {
             title: "Test ticket",
@@ -62,7 +63,7 @@ async fn create_ticket_for_client(
     .unwrap()
 }
 
-// ── Create ────────────────────────────────────────────────────────────────────
+// â”€â”€ Create â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn create_ticket_succeeds_with_valid_input() {
@@ -85,6 +86,7 @@ async fn create_ticket_fails_with_empty_title() {
     let r = tickets::create(
         &pool,
         None,
+        &common::test_enc_key(),
         &desk_claims(&desk_id),
         CreateTicketInput {
             title: "",
@@ -115,6 +117,7 @@ async fn create_ticket_fails_with_title_over_200_chars() {
     let r = tickets::create(
         &pool,
         None,
+        &common::test_enc_key(),
         &desk_claims(&desk_id),
         CreateTicketInput {
             title: &long_title,
@@ -144,6 +147,7 @@ async fn create_ticket_fails_with_invalid_priority() {
     let r = tickets::create(
         &pool,
         None,
+        &common::test_enc_key(),
         &desk_claims(&desk_id),
         CreateTicketInput {
             title: "Test",
@@ -173,6 +177,7 @@ async fn create_ticket_fails_with_invalid_ticket_type() {
     let r = tickets::create(
         &pool,
         None,
+        &common::test_enc_key(),
         &desk_claims(&desk_id),
         CreateTicketInput {
             title: "Test",
@@ -202,6 +207,7 @@ async fn create_ticket_fails_with_invalid_date_format() {
     let r = tickets::create(
         &pool,
         None,
+        &common::test_enc_key(),
         &desk_claims(&desk_id),
         CreateTicketInput {
             title: "Test",
@@ -222,7 +228,7 @@ async fn create_ticket_fails_with_invalid_date_format() {
     assert!(matches!(r, Err(AppError::BadRequest(_))));
 }
 
-// ── Status transitions ────────────────────────────────────────────────────────
+// â”€â”€ Status transitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn status_transition_open_to_acknowledged_succeeds() {
@@ -249,7 +255,7 @@ async fn status_transition_open_to_closed_fails() {
     let (desk_id, _, _) = common::create_test_desk(&pool).await;
     let ticket = create_ticket_for_client(&pool, &desk_id, &client_id).await;
 
-    // open → close is not a valid transition; must go open → acknowledged → closed.
+    // open â†’ close is not a valid transition; must go open â†’ acknowledged â†’ closed.
     let r = tickets::transition_close(&pool, &ticket.id, None).await;
     assert!(matches!(r, Err(AppError::InvalidTransition { .. })));
 }
@@ -282,7 +288,7 @@ async fn status_transition_closed_to_open_fails() {
     let (desk_id, _, _) = common::create_test_desk(&pool).await;
     let ticket = create_ticket_for_client(&pool, &desk_id, &client_id).await;
 
-    // Reach closed state: open → acknowledged → closed.
+    // Reach closed state: open â†’ acknowledged â†’ closed.
     tickets::transition_ack(&pool, &ticket.id, None)
         .await
         .unwrap();
@@ -290,12 +296,12 @@ async fn status_transition_closed_to_open_fails() {
         .await
         .unwrap();
 
-    // Try to acknowledge (re-open) a closed ticket — invalid.
+    // Try to acknowledge (re-open) a closed ticket â€” invalid.
     let r = tickets::transition_ack(&pool, &ticket.id, None).await;
     assert!(matches!(r, Err(AppError::InvalidTransition { .. })));
 }
 
-// ── Soft delete ───────────────────────────────────────────────────────────────
+// â”€â”€ Soft delete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn soft_delete_hides_ticket_from_client_list() {
@@ -310,7 +316,7 @@ async fn soft_delete_hides_ticket_from_client_list() {
         .unwrap();
     assert_eq!(before.len(), 1);
 
-    // Soft-delete the client — cascades to all their tickets.
+    // Soft-delete the client â€” cascades to all their tickets.
     admin::soft_delete_client(&pool, &client_id).await.unwrap();
 
     // After soft-delete the client sees 0 tickets.
@@ -320,7 +326,7 @@ async fn soft_delete_hides_ticket_from_client_list() {
     assert_eq!(after.len(), 0);
 }
 
-// ── Hard delete ───────────────────────────────────────────────────────────────
+// â”€â”€ Hard delete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn hard_delete_requires_export_first() {
@@ -337,7 +343,7 @@ async fn hard_delete_requires_export_first() {
     );
 }
 
-// ── Upload directory cleanup ──────────────────────────────────────────────────
+// â”€â”€ Upload directory cleanup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn ticket_delete_cleans_up_upload_directory() {
@@ -386,7 +392,7 @@ async fn ticket_delete_cleans_up_upload_directory() {
     );
 }
 
-// ── post_message success path ─────────────────────────────────────────────────
+// â”€â”€ post_message success path â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tokio::test]
 async fn client_post_message_is_stored_and_appears_in_thread() {
@@ -426,3 +432,5 @@ async fn client_post_message_is_stored_and_appears_in_thread() {
     assert_eq!(with_thread.thread[0].body, "Hello from the client.");
     assert_eq!(with_thread.thread[0].sender_id, client_id);
 }
+
+

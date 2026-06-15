@@ -318,6 +318,7 @@ html,body{{background:var(--paper);padding:0;margin:0;height:100%;font-family:va
 .rp__det-sub-label{{color:var(--mid);font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;margin-right:10px}}
 .rp__det-rule{{height:1px;background:var(--ink);margin:28px 0}}
 .rp__det-desc{{font-family:var(--sans);font-weight:500;font-size:14px;line-height:1.75;color:var(--ink-soft);max-width:640px}}
+.rp__det-desc h1,.rp__det-desc h2,.rp__det-desc h3{{break-after:avoid;page-break-after:avoid}}
 .rp__det-desc h1,.rp__det-desc h2{{font-family:var(--display);font-weight:400;font-style:italic;color:var(--ink);margin:20px 0 6px;line-height:1.1}}
 .rp__det-desc h1{{font-size:28px}}
 .rp__det-desc h2{{font-size:22px}}

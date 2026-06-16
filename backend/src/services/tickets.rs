@@ -365,6 +365,24 @@ pub async fn transition_close(
     .await
 }
 
+pub async fn transition_reopen(
+    pool: &SqlitePool,
+    ticket_id: &str,
+    mailer: Option<&SmtpMailer>,
+    enc_key: &EncryptionKey,
+) -> AppResult<()> {
+    apply_transition(
+        pool,
+        ticket_id,
+        TransitionAction::Reopen,
+        TicketEvent::Reopened,
+        "Your ticket has been reopened.",
+        mailer,
+        enc_key,
+    )
+    .await
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 /// Spawn a fire-and-forget ticket notification email. Non-fatal: failures are

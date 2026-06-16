@@ -37,6 +37,9 @@ export const tickets = {
   close(id: string): Promise<void> {
     return api.patch<void>(`/tickets/${id}/close`).then(() => undefined);
   },
+  reopen(id: string): Promise<void> {
+    return api.patch<void>(`/tickets/${id}/reopen`).then(() => undefined);
+  },
 
   // ── Messages ────────────────────────────────────────────────────────────
   /** Post a message. `file` optional, multipart (max 100 MiB enforced server-side). */

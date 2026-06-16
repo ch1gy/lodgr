@@ -193,6 +193,17 @@ pub async fn close(
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub async fn reopen(
+    State(pool): State<SqlitePool>,
+    State(mailer): State<Option<Arc<SmtpMailer>>>,
+    State(enc_key): State<EncryptionKey>,
+    _: DeskUser,
+    Path(id): Path<String>,
+) -> AppResult<impl IntoResponse> {
+    services::tickets::transition_reopen(&pool, &id, mailer.as_deref(), &enc_key).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// DELETE /tickets/:id — desk only.
 /// Cascade-deletes all child rows then removes the ticket itself.
 pub async fn delete(

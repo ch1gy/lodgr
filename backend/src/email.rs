@@ -160,6 +160,7 @@ pub enum TicketEvent {
     Acknowledged,
     Pending,
     Closed,
+    Reopened,
     NewMessage,
 }
 
@@ -170,6 +171,7 @@ impl TicketEvent {
             Self::Acknowledged => format!("[Support] Ticket acknowledged: {title}"),
             Self::Pending => format!("[Support] Ticket awaiting your response: {title}"),
             Self::Closed => format!("[Support] Ticket resolved: {title}"),
+            Self::Reopened => format!("[Support] Ticket reopened: {title}"),
             Self::NewMessage => format!("[Support] New message on: {title}"),
         }
     }
@@ -182,6 +184,7 @@ impl TicketEvent {
             }
             Self::Pending => "Your ticket is awaiting additional information from you".to_owned(),
             Self::Closed => "Your ticket has been resolved".to_owned(),
+            Self::Reopened => "Your ticket has been reopened and is now active again".to_owned(),
             Self::NewMessage => "There is a new message on your ticket".to_owned(),
         };
         format!(

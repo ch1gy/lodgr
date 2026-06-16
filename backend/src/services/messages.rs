@@ -8,6 +8,7 @@ use crate::{
     error::{AppError, AppResult},
     models::ThreadEntry,
     notify,
+    ticket_status::{transition, TransitionAction},
 };
 
 pub struct PostMessageInput {
@@ -55,6 +56,18 @@ pub async fn post_message(
     // inline rather than routed through that helper.
     if input.sender_role != "desk" && ticket.client_id != input.sender_id {
         return Err(AppError::Forbidden);
+    }
+
+    // A message on a closed ticket reopens it through the state machine.
+    if ticket.status == "closed" {
+        // transition() validates the move; the only path here is Closed → Open.
+        let new_status = transition(&ticket.status, TransitionAction::Reopen)?;
+        db::tickets::update_status(pool, &input.ticket_id, new_status.as_str()).await?;
+        notify::notify(
+            &ticket.client_id,
+            &input.ticket_id,
+            "Your ticket has been reopened.",
+        );
     }
 
     let (nonce_hex, ciphertext_hex) = if input.body.is_empty() {

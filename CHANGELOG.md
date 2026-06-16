@@ -4,6 +4,76 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — Reopen flow (Commit 2)
+
+### Feature: ticket reopen flow
+
+Closed tickets can now be reopened — by desk staff via an explicit button, or
+automatically when a client replies to a closed thread.
+
+#### `backend/src/ticket_status.rs`
+
+- Added `TransitionAction::Reopen` variant; `target_str()` returns `"open"`.
+- Added arm `(TicketStatus::Closed, TransitionAction::Reopen) => Ok(TicketStatus::Open)`
+  to the `transition()` match; every other `Reopen` attempt returns
+  `InvalidTransition` — the state machine is the single gating point.
+- Updated module docstring to document the `closed → open (Reopen only)` edge.
+- **Unit tests** added:
+  - `closed_to_open_via_reopen_ok`
+  - `open_to_reopen_rejected`
+  - `pending_to_reopen_rejected`
+  - `acknowledged_to_reopen_rejected`
+
+#### `backend/src/email.rs`
+
+- Added `TicketEvent::Reopened` with subject `[Support] Ticket reopened: {title}`
+  and body copy `"Your ticket has been reopened and is now active again"`.
+
+#### `backend/src/services/tickets.rs`
+
+- Added `transition_reopen(pool, ticket_id, mailer, enc_key) -> AppResult<()>`;
+  delegates through the shared `apply_transition` helper (same pattern as
+  `transition_ack/pend/close`).
+
+#### `backend/src/services/messages.rs`
+
+- `add_message`: when the target ticket is `closed`, runs
+  `transition(current_status, TransitionAction::Reopen)` through the state
+  machine and calls `db::tickets::update_status` before inserting the message.
+  Client replies never bypass the state machine.
+
+#### `backend/src/routes/tickets.rs` + `backend/src/main.rs`
+
+- Added `reopen` handler (desk only, mirrors `close`).
+- Registered `PATCH /tickets/:id/reopen` in `main.rs`.
+
+#### `frontend/src/api/tickets.ts`
+
+- Added `reopen(id: string): Promise<void>` method calling
+  `PATCH /tickets/:id/reopen`.
+
+#### `frontend/src/pages/TicketDetailPage.tsx`
+
+- `transitionM` mutation extended to accept `'reopen'` kind.
+- `can.reopen` set to `s === 'closed'`.
+- **Composer always rendered** for closed tickets — the text input is never
+  hidden; a mono hint `"— Replying will reopen this ticket"` appears below the
+  composer when status is `closed`.
+- **Reopen button** added in `PropsContent` below Close, disabled when
+  `!can.reopen`.
+- Close confirm dialog copy updated: *"Clients can still reply to reopen it."*
+
+#### `backend/tests/tickets.rs`
+
+- Added 5 integration tests:
+  - `message_on_closed_ticket_reopens_it` — verifies auto-reopen on client reply
+  - `reopen_endpoint_works_from_closed` — `PATCH /tickets/:id/reopen` → 204
+  - `reopen_rejected_on_open_ticket` — state machine rejects invalid transition
+  - `scoped_session_message_on_closed_ticket_reopens_it` — magic-link session auto-reopen
+  - `scoped_session_cannot_message_other_ticket` — scoped session isolation
+
+---
+
 ## [Unreleased] — BUG-1: email enablement + mailer hardening
 
 ### Security fix — BUG-1: ciphertext emails passed to mailer / reports

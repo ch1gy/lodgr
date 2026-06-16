@@ -338,6 +338,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/tickets/:id/ack", patch(routes::tickets::ack))
         .route("/tickets/:id/pend", patch(routes::tickets::pend))
         .route("/tickets/:id/close", patch(routes::tickets::close))
+        .route("/tickets/:id/reopen", patch(routes::tickets::reopen))
         .route(
             "/tickets/:id/message",
             post(routes::messages::post_message).layer(DefaultBodyLimit::max(100 * 1024 * 1024)),

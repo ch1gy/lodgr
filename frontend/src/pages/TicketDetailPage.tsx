@@ -162,9 +162,10 @@ export function TicketDetailPage() {
   });
 
   const transitionM = useMutation({
-    mutationFn: (kind: 'ack' | 'pend' | 'close') =>
-      kind === 'ack' ? ticketsApi.ack(id) :
-      kind === 'pend' ? ticketsApi.pend(id) :
+    mutationFn: (kind: 'ack' | 'pend' | 'close' | 'reopen') =>
+      kind === 'ack'    ? ticketsApi.ack(id) :
+      kind === 'pend'   ? ticketsApi.pend(id) :
+      kind === 'reopen' ? ticketsApi.reopen(id) :
       ticketsApi.close(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['ticket', id] });
@@ -206,14 +207,14 @@ export function TicketDetailPage() {
   const thread: ThreadEntry[] = ticket?.thread ?? [];
   const notes: InternalNote[] = notesQ.data ?? [];
 
-  // What transitions are legal from the current status? Mirrors the diagram
-  // in the handoff:  open → ack → closed   |   open → pending → ack → closed
+  // What transitions are legal from the current status?
   const can = useMemo(() => {
     const s = ticket?.status;
     return {
-      ack: s === 'open' || s === 'pending',     // pend can be re-ack'd
-      pend: s === 'open' || s === 'acknowledged',
-      close: s === 'acknowledged',
+      ack:    s === 'open' || s === 'pending',
+      pend:   s === 'open' || s === 'acknowledged',
+      close:  s === 'acknowledged',
+      reopen: s === 'closed',
     };
   }, [ticket?.status]);
 
@@ -434,8 +435,12 @@ export function TicketDetailPage() {
           </div>
 
           {/* ── Composer ──────────────────────────────────────────── */}
-          {ticket.status !== 'closed' && (
-            <form className="lg-composer" onSubmit={submitComposer}>
+          {ticket.status === 'closed' && (
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.12em', color: 'var(--mid)', padding: '12px 0 4px', textTransform: 'uppercase' }}>
+              — Replying will reopen this ticket
+            </div>
+          )}
+          <form className="lg-composer" onSubmit={submitComposer}>
               <div className="lg-composer__tabs" role="tablist">
                 <button
                   type="button"
@@ -495,7 +500,6 @@ export function TicketDetailPage() {
                 </button>
               </div>
             </form>
-          )}
         </article>
 
         {/* ── Props rail (right) ───────────────────────────────────── */}
@@ -573,8 +577,8 @@ function PropsContent({
 }: {
   ticket: TicketResponse;
   notes: InternalNote[];
-  can: { ack: boolean; pend: boolean; close: boolean };
-  transition: (k: 'ack' | 'pend' | 'close') => void;
+  can: { ack: boolean; pend: boolean; close: boolean; reopen: boolean };
+  transition: (k: 'ack' | 'pend' | 'close' | 'reopen') => void;
   shareMagicLink: () => void;
   transitionPending: boolean;
   magicPending: boolean;
@@ -607,13 +611,22 @@ function PropsContent({
             className="lg-props__act is-danger"
             disabled={!can.close || transitionPending}
             onClick={() => {
-              if (confirm('Close this ticket? Clients can still read but not reply.')) {
+              if (confirm('Close this ticket? Clients can still reply to reopen it.')) {
                 transition('close');
               }
             }}
           >
             <span>Close ticket</span>
             <span className="arr">→ closed</span>
+          </button>
+          <button
+            type="button"
+            className="lg-props__act"
+            disabled={!can.reopen || transitionPending}
+            onClick={() => transition('reopen')}
+          >
+            <span>Reopen ticket</span>
+            <span className="arr">closed → open</span>
           </button>
         </div>
       </div>

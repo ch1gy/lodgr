@@ -36,6 +36,7 @@ pub enum TransitionAction {
     Acknowledge,
     Pend,
     Close,
+    Reopen,
 }
 
 impl TransitionAction {
@@ -44,6 +45,7 @@ impl TransitionAction {
             Self::Acknowledge => "acknowledged",
             Self::Pend => "pending",
             Self::Close => "closed",
+            Self::Reopen => "open",
         }
     }
 }
@@ -56,6 +58,7 @@ impl TransitionAction {
 ///   open → pending         (desk needs more info from client)
 ///   pending → acknowledged (desk has what they need)
 ///   acknowledged → closed  (desk resolves)
+///   closed → open          (Reopen only — explicit desk action or message on closed ticket)
 ///
 /// pending → open is intentionally not allowed — use acknowledge, then close.
 pub fn transition(current: &str, action: TransitionAction) -> AppResult<TicketStatus> {
@@ -65,6 +68,7 @@ pub fn transition(current: &str, action: TransitionAction) -> AppResult<TicketSt
         (TicketStatus::Open, TransitionAction::Pend) => Ok(TicketStatus::Pending),
         (TicketStatus::Pending, TransitionAction::Acknowledge) => Ok(TicketStatus::Acknowledged),
         (TicketStatus::Acknowledged, TransitionAction::Close) => Ok(TicketStatus::Closed),
+        (TicketStatus::Closed, TransitionAction::Reopen) => Ok(TicketStatus::Open),
         _ => Err(AppError::InvalidTransition {
             from: from.as_str().to_owned(),
             to: action.target_str().to_owned(),
@@ -175,5 +179,39 @@ mod tests {
     #[test]
     fn unknown_status_returns_error() {
         assert!(transition("flying", TransitionAction::Acknowledge).is_err());
+    }
+
+    #[test]
+    fn closed_to_open_via_reopen_ok() {
+        assert_eq!(
+            transition("closed", TransitionAction::Reopen)
+                .unwrap()
+                .as_str(),
+            "open"
+        );
+    }
+
+    #[test]
+    fn open_to_reopen_rejected() {
+        assert!(matches!(
+            transition("open", TransitionAction::Reopen),
+            Err(AppError::InvalidTransition { .. })
+        ));
+    }
+
+    #[test]
+    fn pending_to_reopen_rejected() {
+        assert!(matches!(
+            transition("pending", TransitionAction::Reopen),
+            Err(AppError::InvalidTransition { .. })
+        ));
+    }
+
+    #[test]
+    fn acknowledged_to_reopen_rejected() {
+        assert!(matches!(
+            transition("acknowledged", TransitionAction::Reopen),
+            Err(AppError::InvalidTransition { .. })
+        ));
     }
 }

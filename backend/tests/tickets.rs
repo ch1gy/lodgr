@@ -432,3 +432,160 @@ async fn client_post_message_is_stored_and_appears_in_thread() {
     assert_eq!(with_thread.thread[0].body, "Hello from the client.");
     assert_eq!(with_thread.thread[0].sender_id, client_id);
 }
+
+// ── Reopen flow ───────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn message_on_closed_ticket_reopens_it() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+    let ticket = create_ticket_for_client(&pool, &desk_id, &client_id).await;
+
+    // Reach closed state: open → acknowledged → closed.
+    tickets::transition_ack(&pool, &ticket.id, None, &enc_key)
+        .await
+        .unwrap();
+    tickets::transition_close(&pool, &ticket.id, None, &enc_key)
+        .await
+        .unwrap();
+
+    let before = db::tickets::find_by_id(&pool, &ticket.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(before.status, "closed");
+
+    // Posting a message on a closed ticket reopens it.
+    post_message(
+        &pool,
+        &enc_key,
+        None,
+        PostMessageInput {
+            ticket_id: ticket.id.clone(),
+            sender_id: client_id.clone(),
+            sender_role: "client".into(),
+            sender_session_type: "full".into(),
+            ticket_scope: None,
+            body: "Is this still broken?".into(),
+            attachment_path: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let after = db::tickets::find_by_id(&pool, &ticket.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        after.status, "open",
+        "ticket must be open after message on closed"
+    );
+}
+
+#[tokio::test]
+async fn reopen_endpoint_works_from_closed() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+    let ticket = create_ticket_for_client(&pool, &desk_id, &client_id).await;
+
+    tickets::transition_ack(&pool, &ticket.id, None, &enc_key)
+        .await
+        .unwrap();
+    tickets::transition_close(&pool, &ticket.id, None, &enc_key)
+        .await
+        .unwrap();
+
+    tickets::transition_reopen(&pool, &ticket.id, None, &enc_key)
+        .await
+        .unwrap();
+
+    let after = db::tickets::find_by_id(&pool, &ticket.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.status, "open");
+}
+
+#[tokio::test]
+async fn reopen_rejected_on_open_ticket() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+    let ticket = create_ticket_for_client(&pool, &desk_id, &client_id).await;
+
+    let r = tickets::transition_reopen(&pool, &ticket.id, None, &enc_key).await;
+    assert!(matches!(r, Err(AppError::InvalidTransition { .. })));
+}
+
+#[tokio::test]
+async fn scoped_session_message_on_closed_ticket_reopens_it() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+    let ticket = create_ticket_for_client(&pool, &desk_id, &client_id).await;
+
+    tickets::transition_ack(&pool, &ticket.id, None, &enc_key)
+        .await
+        .unwrap();
+    tickets::transition_close(&pool, &ticket.id, None, &enc_key)
+        .await
+        .unwrap();
+
+    // Scoped session may only message its own ticket.
+    post_message(
+        &pool,
+        &enc_key,
+        None,
+        PostMessageInput {
+            ticket_id: ticket.id.clone(),
+            sender_id: client_id.clone(),
+            sender_role: "client".into(),
+            sender_session_type: "scoped".into(),
+            ticket_scope: Some(ticket.id.clone()),
+            body: "Replying via scoped session.".into(),
+            attachment_path: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let after = db::tickets::find_by_id(&pool, &ticket.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.status, "open");
+}
+
+#[tokio::test]
+async fn scoped_session_cannot_message_other_ticket() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+    let ticket_a = create_ticket_for_client(&pool, &desk_id, &client_id).await;
+    let ticket_b = create_ticket_for_client(&pool, &desk_id, &client_id).await;
+
+    let r = post_message(
+        &pool,
+        &enc_key,
+        None,
+        PostMessageInput {
+            ticket_id: ticket_b.id.clone(),
+            sender_id: client_id.clone(),
+            sender_role: "client".into(),
+            sender_session_type: "scoped".into(),
+            ticket_scope: Some(ticket_a.id.clone()), // scoped to a, not b
+            body: "Should be rejected.".into(),
+            attachment_path: None,
+        },
+    )
+    .await;
+    assert!(matches!(r, Err(AppError::Forbidden)));
+}

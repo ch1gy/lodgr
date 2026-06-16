@@ -234,6 +234,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/auth/login", post(auth::login))
         .route("/auth/refresh", post(auth::refresh))
         .route("/auth/magic", post(routes::magic::exchange))
+        .route("/auth/magic-request", post(routes::magic::magic_request))
         .route_layer(from_fn(rate_limit_by_ip))
         .layer(Extension(auth_limiter));
 

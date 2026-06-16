@@ -4,7 +4,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
@@ -22,6 +22,34 @@ use crate::{
 #[derive(Deserialize)]
 pub struct MagicExchangeRequest {
     pub token: String,
+}
+
+#[derive(Deserialize)]
+pub struct MagicRequestBody {
+    pub email: String,
+}
+
+#[derive(Serialize)]
+struct MagicRequestResponse {
+    message: &'static str,
+}
+
+/// POST /auth/magic-request — self-serve magic link for clients.
+/// Always returns 200 with a generic body regardless of whether the email
+/// exists or is eligible — enumeration-safe by construction.
+pub async fn magic_request(
+    State(pool): State<SqlitePool>,
+    State(config): State<Config>,
+    State(enc_key): State<EncryptionKey>,
+    State(mailer): State<Option<Arc<SmtpMailer>>>,
+    Json(body): Json<MagicRequestBody>,
+) -> impl IntoResponse {
+    services::magic::magic_request(&pool, &config, &enc_key, mailer.as_deref(), &body.email)
+        .await
+        .ok();
+    Json(MagicRequestResponse {
+        message: "If this email is registered, a sign-in link has been sent.",
+    })
 }
 
 /// POST /auth/magic — exchange a one-time token for an access JWT.

@@ -5,10 +5,8 @@
 //
 // Password ⇄ magic-link is one inline switch (not two tabs):
 //   • Password : email + password → POST /auth/login (via useAuth().login).
-//   • Magic    : email-only. Self-serve magic-request isn't exposed by the
-//                backend yet (handoff "Known gaps"), so we show a friendly
-//                "ask your desk" message. Wire to POST /auth/magic-request
-//                when it ships.
+//   • Magic    : email-only → POST /auth/magic-request. Always shows the same
+//                "if registered, a link has been sent" message — enumeration-safe.
 //
 // Auth/error behaviour is unchanged from before:
 //   401 → inline "credentials didn't work"
@@ -21,6 +19,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
+import { auth as authApi } from '../api/auth';
 import type { ApiError } from '../api/types';
 import '../styles/login.css';
 
@@ -48,6 +47,7 @@ export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [magicSent, setMagicSent] = useState(false);
   const [error, setError] = useState<{ title: string; body: string } | null>(null);
   const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
 
@@ -67,6 +67,7 @@ export function LoginPage() {
   function swapMode(next: Mode) {
     setMode(next);
     setError(null);
+    setMagicSent(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -75,10 +76,18 @@ export function LoginPage() {
     setError(null);
 
     if (mode === 'magic') {
-      setError({
-        title: 'Magic link not yet available',
-        body: 'Ask the desk to generate one for you. When the self-serve endpoint ships, this button will do the rest.',
-      });
+      setSubmitting(true);
+      try {
+        await authApi.requestMagicLink(email);
+        setMagicSent(true);
+        setError(null);
+      } catch {
+        // Show the generic message even on network error — don't leak info.
+        setMagicSent(true);
+        setError(null);
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
 
@@ -173,14 +182,20 @@ export function LoginPage() {
               />
               <span className="lg-login__underline" />
             </div>
+          ) : magicSent ? (
+            <div className="lg-login__helper">
+              <b>Check your inbox.</b> If this email is registered, a sign-in link has been sent. It expires in <b>15 minutes</b> and works once.
+            </div>
           ) : (
             <div className="lg-login__helper">
               We&rsquo;ll email you a one-time sign-in link. It expires in <b>15 minutes</b> and works once.
             </div>
           )}
 
-          <button type="submit" className="lg-login__signin" disabled={submitting || locked}>
-            {mode === 'password' ? (submitting ? 'Signing in…' : 'Sign in') : 'Send the link'}{' '}
+          <button type="submit" className="lg-login__signin" disabled={submitting || locked || magicSent}>
+            {mode === 'password'
+              ? (submitting ? 'Signing in…' : 'Sign in')
+              : (submitting ? 'Sending…' : magicSent ? 'Link sent' : 'Send the link')}{' '}
             <span className="arr">&rarr;</span>
           </button>
         </div>

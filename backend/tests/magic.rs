@@ -1,6 +1,6 @@
 mod common;
 
-use backend::{error::AppError, models::Claims, services::magic};
+use backend::{db, error::AppError, models::Claims, services::magic};
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 
 fn extract_token(url: &str) -> String {
@@ -244,4 +244,139 @@ async fn ticket_scoped_link_creates_scoped_session() {
     let claims = decode_jwt(&jwt);
     assert_eq!(claims.session_type, "scoped");
     assert_eq!(claims.ticket_scope.as_deref(), Some(ticket_id.as_str()));
+}
+
+// ── magic_request (self-serve) tests ─────────────────────────────────────────
+
+#[tokio::test]
+async fn magic_request_known_client_creates_link_row() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let config = common::test_config();
+    let enc_key = common::test_enc_key();
+    let (client_id, client_email, _) = common::create_test_client(&pool).await;
+
+    magic::magic_request(&pool, &config, &enc_key, None, &client_email)
+        .await
+        .unwrap();
+
+    // A magic_link row must exist for this user.
+    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM magic_links WHERE user_id = ?")
+        .bind(&client_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(row.0, 1, "expected one magic link row for client");
+}
+
+#[tokio::test]
+async fn magic_request_unknown_email_returns_ok_no_row() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let config = common::test_config();
+    let enc_key = common::test_enc_key();
+
+    magic::magic_request(&pool, &config, &enc_key, None, "nobody@example.com")
+        .await
+        .unwrap();
+
+    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM magic_links")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(row.0, 0, "unknown email must create no magic link rows");
+}
+
+#[tokio::test]
+async fn magic_request_desk_email_returns_ok_no_row() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let config = common::test_config();
+    let enc_key = common::test_enc_key();
+    let (_, desk_email, _) = common::create_test_desk(&pool).await;
+
+    magic::magic_request(&pool, &config, &enc_key, None, &desk_email)
+        .await
+        .unwrap();
+
+    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM magic_links")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(row.0, 0, "desk user must create no magic link rows");
+}
+
+#[tokio::test]
+async fn magic_request_soft_deleted_client_returns_ok_no_row() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let config = common::test_config();
+    let enc_key = common::test_enc_key();
+    let (client_id, client_email, _) = common::create_test_client(&pool).await;
+
+    // Soft-delete the client.
+    sqlx::query("UPDATE users SET deleted_at = datetime('now') WHERE id = ?")
+        .bind(&client_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    magic::magic_request(&pool, &config, &enc_key, None, &client_email)
+        .await
+        .unwrap();
+
+    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM magic_links WHERE user_id = ?")
+        .bind(&client_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        row.0, 0,
+        "soft-deleted client must create no magic link rows"
+    );
+}
+
+#[tokio::test]
+async fn magic_request_throttled_when_recent_active_link_exists() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let config = common::test_config();
+    let enc_key = common::test_enc_key();
+    let (client_id, client_email, _) = common::create_test_client(&pool).await;
+
+    // First request — creates a link.
+    magic::magic_request(&pool, &config, &enc_key, None, &client_email)
+        .await
+        .unwrap();
+
+    // Second request — throttled, must not create a second row.
+    magic::magic_request(&pool, &config, &enc_key, None, &client_email)
+        .await
+        .unwrap();
+
+    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM magic_links WHERE user_id = ?")
+        .bind(&client_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        row.0, 1,
+        "throttle must prevent a second link being created"
+    );
+}
+
+#[tokio::test]
+async fn magic_request_writes_auth_event_for_known_client() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let config = common::test_config();
+    let enc_key = common::test_enc_key();
+    let (client_id, client_email, _) = common::create_test_client(&pool).await;
+
+    magic::magic_request(&pool, &config, &enc_key, None, &client_email)
+        .await
+        .unwrap();
+
+    let events = db::auth_events::list_recent_for_user(&pool, &client_id, 10)
+        .await
+        .unwrap();
+    assert!(
+        events.iter().any(|e| e.event_type == "magic_requested"),
+        "expected magic_requested auth event, got: {:?}",
+        events.iter().map(|e| &e.event_type).collect::<Vec<_>>()
+    );
 }

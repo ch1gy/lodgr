@@ -215,6 +215,78 @@ pub async fn exchange_magic_link(
     Ok(jwt)
 }
 
+/// POST /auth/magic-request — self-serve magic link for clients.
+///
+/// Enumeration-safe by construction: always returns `Ok(())` regardless of
+/// whether the email exists, the user is eligible, or the mailer is configured.
+/// Callers must always respond 200 with a generic body.
+pub async fn magic_request(
+    pool: &SqlitePool,
+    config: &Config,
+    enc_key: &EncryptionKey,
+    mailer: Option<&SmtpMailer>,
+    email: &str,
+) -> AppResult<()> {
+    // Always hash — Argon2 cost normalises timing across found/not-found paths.
+    let hash = match crypto::hash_email(email, &config.email_hash_salt) {
+        Ok(h) => h,
+        Err(e) => {
+            tracing::warn!(email = %crate::email::mask_email_pub(email), "magic_request: hash failed: {e:?}");
+            return Ok(());
+        }
+    };
+
+    let user = match db::users::find_by_email_hash(pool, &hash).await {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            tracing::info!(email = %crate::email::mask_email_pub(email), "magic_request: email not found — silent ok");
+            return Ok(());
+        }
+        Err(e) => {
+            tracing::warn!(email = %crate::email::mask_email_pub(email), "magic_request: db error: {e}");
+            return Ok(());
+        }
+    };
+
+    if user.role != "client" {
+        tracing::info!(user_id = %user.id, "magic_request: desk user — silent ok");
+        return Ok(());
+    }
+    if user.deleted_at.is_some() {
+        tracing::info!(user_id = %user.id, "magic_request: soft-deleted user — silent ok");
+        return Ok(());
+    }
+    if mailer.is_none() {
+        tracing::info!(user_id = %user.id, "magic_request: mailer not configured — silent ok");
+        return Ok(());
+    }
+    match db::magic_links::has_recent_active_for_user(pool, &user.id).await {
+        Ok(true) => {
+            tracing::info!(user_id = %user.id, "magic_request: recent active link exists — throttled");
+            return Ok(());
+        }
+        Err(e) => {
+            tracing::warn!(user_id = %user.id, "magic_request: throttle check failed: {e}");
+            return Ok(());
+        }
+        Ok(false) => {}
+    }
+
+    match create_magic_link(pool, config, enc_key, mailer, &user.id, "full", None).await {
+        Ok(_) => {
+            tracing::info!(user_id = %user.id, "magic_request: link created and email dispatched");
+            if let Err(e) = db::auth_events::create(pool, &user.id, "magic_requested").await {
+                tracing::warn!(user_id = %user.id, %e, "magic_request: failed to write auth event");
+            }
+        }
+        Err(e) => {
+            tracing::warn!(user_id = %user.id, "magic_request: create_magic_link failed: {e:?}");
+        }
+    }
+
+    Ok(())
+}
+
 /// Auto-send a recovery magic link when the desk account is permanently locked.
 /// Non-fatal — all errors are logged. Rate-limited to one email per 5 minutes.
 /// Only fires if SMTP is configured; otherwise the caller logs a manual-recovery

@@ -144,6 +144,10 @@ fn build_mailbox(name: &str, email: &str) -> Result<Mailbox, lettre::address::Ad
     format!("{name} <{email}>").parse()
 }
 
+pub fn mask_email_pub(email: &str) -> String {
+    mask_email(email)
+}
+
 fn mask_email(email: &str) -> String {
     match email.split_once('@') {
         Some((local, domain)) => {

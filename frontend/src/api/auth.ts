@@ -20,6 +20,11 @@ export const auth = {
     return r.data.access_token;
   },
 
+  /** Self-serve magic link request. Always resolves — server never reveals if email exists. */
+  async requestMagicLink(email: string): Promise<void> {
+    await api.post('/auth/magic-request', { email });
+  },
+
   /** Fetch the authenticated user's own profile (name, email, role). */
   async me(): Promise<MeResponse> {
     const r = await api.get<MeResponse>('/auth/me');

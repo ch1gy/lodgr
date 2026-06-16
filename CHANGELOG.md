@@ -4,6 +4,70 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — Self-serve magic-link request (Commit 3)
+
+### Feature: POST /auth/magic-request
+
+Clients can now request a sign-in link themselves from the login page
+without contacting the desk. The endpoint is enumeration-safe: it always
+returns 200 with a generic body regardless of whether the email exists.
+
+#### `backend/src/email.rs`
+
+- Added `pub fn mask_email_pub(email: &str) -> String` — thin public
+  re-export of the private `mask_email` helper so `services::magic` can
+  log masked addresses without duplicating the masking logic.
+
+#### `backend/src/services/magic.rs`
+
+- Added `magic_request(pool, config, enc_key, mailer, email) -> AppResult<()>`:
+  - Hashes the input email via `crypto::hash_email` (Argon2 — expensive,
+    normalises timing across found/not-found paths).
+  - Silently returns `Ok(())` for unknown emails, desk users, soft-deleted
+    clients, unconfigured mailer, or recent active link (throttle via
+    `has_recent_active_for_user`).
+  - On proceed: calls `create_magic_link(scope: "full")`, emits
+    `magic_requested` auth event. URL is never included in the HTTP response.
+  - All log lines use `mask_email_pub` — raw addresses never appear in logs.
+
+#### `backend/src/routes/magic.rs`
+
+- Added `magic_request` handler (`POST /auth/magic-request`): deserialises
+  `{ email }`, calls the service, **always** returns
+  `200 { message: "If this email is registered, a sign-in link has been sent." }`.
+
+#### `backend/src/main.rs`
+
+- Registered `POST /auth/magic-request` inside `auth_limited` (same
+  rate-limiter as `/auth/login`).
+
+#### `frontend/src/api/auth.ts`
+
+- Added `requestMagicLink(email: string): Promise<void>` calling
+  `POST /auth/magic-request`.
+
+#### `frontend/src/pages/LoginPage.tsx`
+
+- Magic mode "Send the link" button now calls `authApi.requestMagicLink`.
+- On response (success or network error): shows
+  *"Check your inbox. If this email is registered, a sign-in link has been
+  sent."* — same message regardless of outcome.
+- Submit button disabled and labelled "Link sent" after first send to
+  discourage hammering.
+- Removed the "not yet available / ask your desk" stub message.
+
+#### `backend/tests/magic.rs`
+
+- Added 6 integration tests for `magic_request`:
+  - `magic_request_known_client_creates_link_row` — happy path
+  - `magic_request_unknown_email_returns_ok_no_row` — no row, no error
+  - `magic_request_desk_email_returns_ok_no_row` — desk users excluded
+  - `magic_request_soft_deleted_client_returns_ok_no_row` — deleted users excluded
+  - `magic_request_throttled_when_recent_active_link_exists` — throttle works
+  - `magic_request_writes_auth_event_for_known_client` — audit trail
+
+---
+
 ## [Unreleased] — Reopen flow (Commit 2)
 
 ### Feature: ticket reopen flow

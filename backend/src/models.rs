@@ -204,6 +204,7 @@ pub struct Invoice {
     pub notes: String,
     pub editor_note: String,
     pub kra_number: Option<String>,
+    pub tax_rate: f64,
     pub recurring: i64,
     pub recur_interval: Option<String>,
     pub next_recur_date: Option<String>,

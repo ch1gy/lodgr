@@ -40,10 +40,37 @@ fn fmt_num(n: u64) -> String {
     out.chars().rev().collect()
 }
 
+// ── Tax math ─────────────────────────────────────────────────────────────────
+
+/// Thin pub wrapper for integration tests.
+pub fn render_invoice_html_pub(inv: &InvoiceResponse, desk: &DeskProfile) -> String {
+    render_invoice_html(inv, desk)
+}
+
+/// Compute VAT and grand total. Single authoritative location — frontend must
+/// mirror this rule: `vat = round(subtotal * rate / 100)`, half-up.
+pub fn compute_totals(subtotal: u64, tax_rate: f64) -> (u64, u64) {
+    if tax_rate <= 0.0 {
+        return (0, subtotal);
+    }
+    let vat = (subtotal as f64 * tax_rate / 100.0).round() as u64;
+    (vat, subtotal + vat)
+}
+
+/// Format a rate like 16.0 → "16", 8.1 → "8.1".
+fn fmt_rate(r: f64) -> String {
+    if r == r.trunc() {
+        format!("{}", r as u64)
+    } else {
+        format!("{r}")
+    }
+}
+
 // ── HTML renderer ─────────────────────────────────────────────────────────────
 
 fn render_invoice_html(inv: &InvoiceResponse, desk: &DeskProfile) -> String {
-    let total: u64 = inv.items.iter().map(|it| it.qty as u64 * it.rate).sum();
+    let subtotal: u64 = inv.items.iter().map(|it| it.qty as u64 * it.rate).sum();
+    let (vat, total) = compute_totals(subtotal, inv.tax_rate);
 
     let item_rows: String = inv
         .items
@@ -157,6 +184,21 @@ fn render_invoice_html(inv: &InvoiceResponse, desk: &DeskProfile) -> String {
         })
         .unwrap_or_default();
 
+    let subtotals_html = if inv.tax_rate > 0.0 {
+        format!(
+            "<div class=\"inv__subtotals\">\
+               <div class=\"row\"><span class=\"lbl\">Subtotal</span><span>{currency} {sub}</span></div>\
+               <div class=\"row\"><span class=\"lbl\">VAT ({rate}%)</span><span>{currency} {vat_amt}</span></div>\
+             </div>",
+            currency = html_esc(&inv.currency),
+            sub = fmt_num(subtotal),
+            rate = fmt_rate(inv.tax_rate),
+            vat_amt = fmt_num(vat),
+        )
+    } else {
+        String::new()
+    };
+
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -215,6 +257,9 @@ html,body{{background:#ece5d3;padding:0;margin:0;height:100%}}
 .inv__grand .metaCol em{{display:block;font-family:var(--display);font-style:italic;font-size:13px;color:var(--red);text-transform:none;letter-spacing:0;margin-top:4px}}
 .inv__grand .total{{font-family:var(--display);font-size:64px;line-height:.92;letter-spacing:-0.02em;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}}
 .inv__grand .total .ccy{{font-size:22px;font-style:italic;color:var(--mid);margin-right:4px;vertical-align:19px}}
+.inv__subtotals{{margin-top:14px;padding-top:14px;border-top:1px solid #14110d44}}
+.inv__subtotals .row{{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--ink-soft);padding:3px 0;letter-spacing:.04em}}
+.inv__subtotals .row .lbl{{color:var(--mid);text-transform:uppercase;letter-spacing:.14em;font-size:10px}}
 .inv__due{{margin-top:8px;text-align:right;font-family:var(--mono);font-weight:500;font-size:11px;color:var(--ink);letter-spacing:.04em}}
 .inv__due .lbl{{color:var(--mid);margin-right:8px;text-transform:uppercase;letter-spacing:.18em;font-size:10px}}
 .inv__notes{{margin-top:32px;padding-top:22px;border-top:1px solid var(--ink);page-break-inside:avoid}}
@@ -290,6 +335,7 @@ html,body{{background:#ece5d3;padding:0;margin:0;height:100%}}
     <div class="inv__totals">
       <div class="inv__editor">{editor_note}</div>
       <div>
+        {subtotals_html}
         <div class="inv__grand">
           <div class="metaCol">Total due<br/><em>{terms_lower}</em></div>
           <div class="total"><span class="ccy">{currency}</span>{total}</div>
@@ -330,6 +376,7 @@ html,body{{background:#ece5d3;padding:0;margin:0;height:100%}}
         kra_line = kra_line,
         item_rows = item_rows,
         editor_note = html_esc(&inv.editor_note),
+        subtotals_html = subtotals_html,
         total = fmt_num(total),
         vol_num = html_esc(vol_num),
         notes_section = if note_rows.is_empty() {
@@ -367,6 +414,7 @@ pub struct CreateInvoiceRequest {
     pub notes: Option<Vec<InvoiceNote>>,
     pub editor_note: Option<String>,
     pub kra_number: Option<String>,
+    pub tax_rate: Option<f64>,
     pub client_id: String,
     pub recurring: Option<bool>,
     pub recur_interval: Option<String>,
@@ -394,6 +442,7 @@ pub struct UpdateInvoiceRequest {
     pub notes: Option<Vec<InvoiceNote>>,
     pub editor_note: Option<String>,
     pub kra_number: Option<String>,
+    pub tax_rate: Option<f64>,
     pub recurring: Option<bool>,
     pub recur_interval: Option<String>,
     pub next_recur_date: Option<String>,
@@ -423,6 +472,13 @@ pub async fn create(
     if body.items.is_empty() {
         return Err(AppError::BadRequest(
             "at least one line item is required".into(),
+        ));
+    }
+
+    let tax_rate = body.tax_rate.unwrap_or(0.0);
+    if !tax_rate.is_finite() || tax_rate < 0.0 || tax_rate > 100.0 {
+        return Err(AppError::BadRequest(
+            "tax_rate must be a finite number between 0 and 100".into(),
         ));
     }
 
@@ -471,6 +527,7 @@ pub async fn create(
             notes_json: &notes_json,
             editor_note: body.editor_note.as_deref().unwrap_or(""),
             kra_number: body.kra_number.as_deref(),
+            tax_rate,
             recurring: body.recurring.unwrap_or(false),
             recur_interval: body.recur_interval.as_deref(),
             next_recur_date: body.next_recur_date.as_deref(),
@@ -513,6 +570,18 @@ pub async fn update(
             .map_err(|e| AppError::Internal(format!("notes serialization: {e}")))?
     } else {
         inv.notes.clone()
+    };
+
+    let tax_rate = match body.tax_rate {
+        Some(r) => {
+            if !r.is_finite() || r < 0.0 || r > 100.0 {
+                return Err(AppError::BadRequest(
+                    "tax_rate must be a finite number between 0 and 100".into(),
+                ));
+            }
+            r
+        }
+        None => inv.tax_rate,
     };
 
     // kra_number: explicit null in JSON clears it; omitting keeps current value.
@@ -564,6 +633,7 @@ pub async fn update(
             notes_json: &notes_json,
             editor_note: body.editor_note.as_deref().unwrap_or(&inv.editor_note),
             kra_number: kra,
+            tax_rate,
             recurring: body.recurring.unwrap_or(inv.recurring != 0),
             recur_interval: body
                 .recur_interval

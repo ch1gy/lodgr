@@ -155,6 +155,7 @@ export interface InvoiceResponse {
   notes: InvoiceNote[];
   editor_note: string;
   kra_number: string | null;
+  tax_rate: number;
   recurring: boolean;
   recur_interval: RecurInterval | null;
   next_recur_date: string | null;
@@ -181,6 +182,7 @@ export interface CreateInvoicePayload {
   notes?: InvoiceNote[];
   editor_note?: string;
   kra_number?: string;
+  tax_rate?: number;
   recurring?: boolean;
   recur_interval?: RecurInterval;
   next_recur_date?: string;

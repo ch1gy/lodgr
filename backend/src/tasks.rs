@@ -149,6 +149,7 @@ pub async fn recurring_invoices(pool: SqlitePool) {
                                 notes_json: &notes_json,
                                 editor_note: &t.editor_note,
                                 kra_number: None, // must be filled before sending
+                                tax_rate: t.tax_rate,
                                 recurring: false, // instances are not themselves recurring
                                 recur_interval: None,
                                 next_recur_date: None,

@@ -19,6 +19,12 @@ import '../styles/v2.css';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/** Mirror of backend compute_totals: vat = round(subtotal * rate / 100). */
+function computeTotals(subtotal: number, taxRate: number): { vat: number; grandTotal: number } {
+  if (taxRate <= 0) return { vat: 0, grandTotal: subtotal };
+  const vat = Math.round(subtotal * taxRate / 100);
+  return { vat, grandTotal: subtotal + vat };
+}
 
 function fmtDate(s: string): string {
   if (!s) return '—';
@@ -163,6 +169,7 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
   const [recurring, setRecurring] = useState(false);
   const [recurInterval, setRecurInterval] = useState<RecurInterval>('monthly');
   const [nextRecurDate, setNextRecurDate] = useState('');
+  const [taxRate, setTaxRate] = useState(16);
   const [items, setItems] = useState<InvoiceItem[]>([{ name: '', qty: 1, rate: 0 }]);
   const [notes, setNotes] = useState<InvoiceNote[]>([]);
   const [err, setErr] = useState('');
@@ -208,7 +215,8 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
     setNotes((p) => p.map((n, idx) => idx === i ? { ...n, [f]: v } : n));
   }
 
-  const total = items.reduce((acc, it) => acc + it.qty * it.rate, 0);
+  const subtotal = items.reduce((acc, it) => acc + it.qty * it.rate, 0);
+  const { grandTotal: total } = computeTotals(subtotal, taxRate);
 
   const createM = useMutation({
     mutationFn: (payload: CreateInvoicePayload) => admin.createInvoice(payload),
@@ -231,6 +239,7 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
       billed_to_email: billedToEmail || undefined, billed_to_phone: billedToPhone || undefined,
       items, notes: notes.filter((n) => n.k.trim()),
       editor_note: editorNote || undefined, kra_number: kraNumber || undefined,
+      tax_rate: taxRate,
       recurring, recur_interval: recurring ? recurInterval : undefined,
       next_recur_date: recurring && nextRecurDate ? nextRecurDate : undefined,
     });
@@ -305,6 +314,10 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
               </InvField>
               <InvField label="Currency">
                 <input className="inv-inp" value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="KES" />
+              </InvField>
+              <InvField label="VAT %">
+                <input className="inv-inp" type="number" min="0" max="100" step="0.1"
+                  value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value))} placeholder="0" />
               </InvField>
             </div>
 
@@ -423,6 +436,7 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
   const [billedToPhone, setBilledToPhone] = useState(invoice.billed_to_phone);
   const [editorNote, setEditorNote]       = useState(invoice.editor_note ?? '');
   const [kraNumber, setKraNumber]         = useState(invoice.kra_number ?? '');
+  const [taxRate, setTaxRate]             = useState(invoice.tax_rate ?? 0);
   const [recurring, setRecurring]         = useState(invoice.recurring);
   const [recurInterval, setRecurInterval] = useState<RecurInterval>((invoice.recur_interval as RecurInterval) ?? 'monthly');
   const [nextRecurDate, setNextRecurDate] = useState(invoice.next_recur_date ?? '');
@@ -443,7 +457,8 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
     setNotes((p) => p.map((n, idx) => idx === i ? { ...n, [f]: v } : n));
   }
 
-  const total = items.reduce((acc, it) => acc + it.qty * it.rate, 0);
+  const subtotal = items.reduce((acc, it) => acc + it.qty * it.rate, 0);
+  const { grandTotal: total } = computeTotals(subtotal, taxRate);
 
   const updateM = useMutation({
     mutationFn: (payload: UpdateInvoicePayload) => admin.updateInvoice(invoice.id, payload),
@@ -466,6 +481,7 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
       billed_to_email: billedToEmail || undefined, billed_to_phone: billedToPhone || undefined,
       items, notes: notes.filter((n) => n.k.trim()),
       editor_note: editorNote || undefined, kra_number: kraNumber || undefined,
+      tax_rate: taxRate,
       recurring, recur_interval: recurring ? recurInterval : undefined,
       next_recur_date: recurring && nextRecurDate ? nextRecurDate : undefined,
     });
@@ -516,6 +532,10 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
               </InvField>
               <InvField label="Currency">
                 <input className="inv-inp" value={currency} onChange={(e) => setCurrency(e.target.value)} />
+              </InvField>
+              <InvField label="VAT %">
+                <input className="inv-inp" type="number" min="0" max="100" step="0.1"
+                  value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value))} placeholder="0" />
               </InvField>
             </div>
 
@@ -619,7 +639,8 @@ interface InvoiceRowProps {
 
 function InvoiceRow({ invoice, clientName, onStatusChange, onDelete, onDownload, onPreview, onEdit }: InvoiceRowProps) {
   const [expanded, setExpanded] = useState(false);
-  const total = invoice.items.reduce((acc, it) => acc + it.qty * it.rate, 0);
+  const subtotal = invoice.items.reduce((acc, it) => acc + it.qty * it.rate, 0);
+  const { vat, grandTotal: total } = computeTotals(subtotal, invoice.tax_rate ?? 0);
 
   return (
     <div style={{ borderBottom: '1px solid var(--rule)' }}>
@@ -702,6 +723,12 @@ function InvoiceRow({ invoice, clientName, onStatusChange, onDelete, onDownload,
               <div style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 600 }}>{(it.qty * it.rate).toLocaleString('en-US')}</div>
             </div>
           ))}
+          {(invoice.tax_rate ?? 0) > 0 && (
+            <div style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--mid)', padding: '6px 0 2px' }}>
+              Subtotal: {invoice.currency} {subtotal.toLocaleString('en-US')}
+              {' · '}VAT ({invoice.tax_rate}%): {invoice.currency} {vat.toLocaleString('en-US')}
+            </div>
+          )}
           <div style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, padding: '8px 0', borderTop: '2px solid var(--ink)' }}>
             {invoice.currency} {total.toLocaleString('en-US')}
           </div>
@@ -801,7 +828,10 @@ export function InvoicesPage() {
   const totalPaid = useMemo(() =>
     invoices
       .filter((inv) => inv.status === 'paid')
-      .reduce((acc, inv) => acc + inv.items.reduce((s, it) => s + it.qty * it.rate, 0), 0),
+      .reduce((acc, inv) => {
+        const sub = inv.items.reduce((s, it) => s + it.qty * it.rate, 0);
+        return acc + computeTotals(sub, inv.tax_rate ?? 0).grandTotal;
+      }, 0),
     [invoices],
   );
 

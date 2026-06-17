@@ -7,7 +7,7 @@ const COLS: &str = "id, client_id, number, status, currency, terms, issued_date,
      project_type, project_location, billed_to_name, billed_to_role, \
      billed_to_addr1, billed_to_addr2, billed_to_pin, billed_to_email, billed_to_phone, \
      items, notes, editor_note, \
-     kra_number, recurring, recur_interval, next_recur_date, created_at";
+     kra_number, tax_rate, recurring, recur_interval, next_recur_date, created_at";
 
 pub struct NewInvoice<'a> {
     pub id: &'a str,
@@ -30,6 +30,7 @@ pub struct NewInvoice<'a> {
     pub notes_json: &'a str,
     pub editor_note: &'a str,
     pub kra_number: Option<&'a str>,
+    pub tax_rate: f64,
     pub recurring: bool,
     pub recur_interval: Option<&'a str>,
     pub next_recur_date: Option<&'a str>,
@@ -68,8 +69,8 @@ pub async fn create(pool: &SqlitePool, n: NewInvoice<'_>) -> AppResult<Invoice> 
          due_date, project_type, project_location, billed_to_name, billed_to_role, \
          billed_to_addr1, billed_to_addr2, billed_to_pin, billed_to_email, billed_to_phone, \
          items, notes, editor_note, \
-         kra_number, recurring, recur_interval, next_recur_date, created_at) \
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+         kra_number, tax_rate, recurring, recur_interval, next_recur_date, created_at) \
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     )
     .bind(n.id)
     .bind(n.client_id)
@@ -92,6 +93,7 @@ pub async fn create(pool: &SqlitePool, n: NewInvoice<'_>) -> AppResult<Invoice> 
     .bind(n.notes_json)
     .bind(n.editor_note)
     .bind(n.kra_number)
+    .bind(n.tax_rate)
     .bind(n.recurring as i64)
     .bind(n.recur_interval)
     .bind(n.next_recur_date)
@@ -121,6 +123,7 @@ pub async fn create(pool: &SqlitePool, n: NewInvoice<'_>) -> AppResult<Invoice> 
         notes: n.notes_json.to_owned(),
         editor_note: n.editor_note.to_owned(),
         kra_number: n.kra_number.map(|s| s.to_owned()),
+        tax_rate: n.tax_rate,
         recurring: n.recurring as i64,
         recur_interval: n.recur_interval.map(|s| s.to_owned()),
         next_recur_date: n.next_recur_date.map(|s| s.to_owned()),
@@ -148,6 +151,7 @@ pub struct UpdateInvoice<'a> {
     pub notes_json: &'a str,
     pub editor_note: &'a str,
     pub kra_number: Option<&'a str>,
+    pub tax_rate: f64,
     pub recurring: bool,
     pub recur_interval: Option<&'a str>,
     pub next_recur_date: Option<&'a str>,
@@ -159,7 +163,7 @@ pub async fn update(pool: &SqlitePool, id: &str, u: UpdateInvoice<'_>) -> AppRes
          project_type=?, project_location=?, billed_to_name=?, billed_to_role=?, \
          billed_to_addr1=?, billed_to_addr2=?, billed_to_pin=?, billed_to_email=?, billed_to_phone=?, \
          items=?, notes=?, \
-         editor_note=?, kra_number=?, recurring=?, recur_interval=?, next_recur_date=? \
+         editor_note=?, kra_number=?, tax_rate=?, recurring=?, recur_interval=?, next_recur_date=? \
          WHERE id=?",
     )
     .bind(u.number)
@@ -181,6 +185,7 @@ pub async fn update(pool: &SqlitePool, id: &str, u: UpdateInvoice<'_>) -> AppRes
     .bind(u.notes_json)
     .bind(u.editor_note)
     .bind(u.kra_number)
+    .bind(u.tax_rate)
     .bind(u.recurring as i64)
     .bind(u.recur_interval)
     .bind(u.next_recur_date)

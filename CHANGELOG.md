@@ -4,6 +4,82 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] — Per-invoice VAT (Commit 4)
+
+### Feature: editable VAT rate on each invoice
+
+Each invoice now carries a `tax_rate` field (percent, decimals allowed — e.g.
+16, 8.1, 0). Rate > 0 renders a Subtotal / VAT / Total breakdown on the PDF;
+rate 0 keeps the existing single-total layout unchanged.
+
+#### `backend/migrations/004_invoice_tax.sql`
+
+- `ALTER TABLE invoices ADD COLUMN tax_rate REAL NOT NULL DEFAULT 0` —
+  additive-only, no table rebuild. Existing invoices default to 0% and render
+  byte-identically.
+
+#### `backend/src/models.rs` + `backend/src/dto.rs`
+
+- `Invoice.tax_rate: f64` model field.
+- `InvoiceResponse.tax_rate: f64` DTO field; mapped in `From<Invoice>`.
+
+#### `backend/src/db/invoices.rs`
+
+- `tax_rate` added to `COLS`, `NewInvoice`, `UpdateInvoice`, INSERT statement,
+  UPDATE statement, and the returned `Invoice` struct in `create`.
+
+#### `backend/src/routes/invoices.rs`
+
+- `compute_totals(subtotal, tax_rate) -> (vat, grand_total)`: single
+  authoritative math function; `vat = round(subtotal * rate / 100)` (half-up).
+- `fmt_rate(r)`: formats rate without trailing zeros (16 → "16", 8.1 → "8.1").
+- `render_invoice_html`: when `tax_rate > 0`, inserts a `.inv__subtotals` block
+  with Subtotal and VAT rows above the grand total. When 0, output is unchanged.
+- `CreateInvoiceRequest.tax_rate: Option<f64>` (defaults 0); validates
+  `0 ≤ rate ≤ 100`, rejects NaN/infinite.
+- `UpdateInvoiceRequest.tax_rate: Option<f64>`; falls back to current value when
+  omitted; same validation.
+- `render_invoice_html_pub` + `compute_totals` are `pub` for integration tests.
+
+#### `backend/src/tasks.rs`
+
+- Recurring invoice creation copies `tax_rate` from the template.
+
+#### `backend/src/services/export.rs`
+
+- `ExportInvoice.tax_rate: f64` included in the client-data export JSON.
+
+#### `frontend/src/api/types.ts`
+
+- `InvoiceResponse.tax_rate: number`.
+- `CreateInvoicePayload.tax_rate?: number`.
+- `UpdateInvoicePayload` inherits `tax_rate` via `Partial<CreateInvoicePayload>`.
+
+#### `frontend/src/pages/InvoicesPage.tsx`
+
+- `computeTotals(subtotal, taxRate)` helper mirrors backend rounding rule.
+- **Create modal**: VAT % input (step=0.1, default 16) in the Dates & billing
+  section; `total` in the line-items editor shows grand total incl. VAT.
+- **Edit modal**: same input initialized from the stored `tax_rate`.
+- **Invoice row**: amount column shows grand total (incl. VAT); expanded detail
+  shows Subtotal · VAT breakdown when `tax_rate > 0`.
+- **"KES paid to date" KPI**: uses grand total for paid invoices.
+
+#### `backend/tests/invoices.rs`
+
+- `base_invoice` fixture gains `tax_rate: 0.0`; existing `UpdateInvoice` call
+  gains `tax_rate: 0.0`.
+- New tests:
+  - `create_invoice_with_tax_rate_persists_and_roundtrips` — 16% round-trips
+  - `create_invoice_without_tax_rate_defaults_to_zero`
+  - `compute_totals_subtotal_1000_at_8_1_percent` — VAT=81
+  - `compute_totals_subtotal_999_at_16_percent` — 159.84 rounds to 160
+  - `compute_totals_zero_rate_returns_no_vat`
+  - `render_html_contains_vat_row_when_rate_set` — HTML assertions
+  - `render_html_no_vat_row_when_rate_zero`
+
+---
+
 ## [Unreleased] — Self-serve magic-link request (Commit 3)
 
 ### Feature: POST /auth/magic-request

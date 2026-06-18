@@ -6,6 +6,7 @@ use backend::{
     crypto,
     crypto::EncryptionKey,
     db,
+    email::SmtpMailer,
     services::auth::hash_password,
 };
 use sqlx::{
@@ -63,6 +64,18 @@ pub fn test_config() -> Config {
 /// Fixed 32-byte key — avoids the 2-4 s Argon2 derivation in every test.
 pub fn test_enc_key() -> EncryptionKey {
     Arc::new([42u8; 32])
+}
+
+/// A `SmtpMailer` pointed at a dummy unreachable host. Building the transport
+/// never connects — only `.send()` would, and that's fire-and-forget in all
+/// callers, so this is safe to use wherever a test needs `Some(&mailer)` to
+/// exercise a "mailer configured" code path without a real SMTP server.
+pub fn test_mailer() -> SmtpMailer {
+    let mut config = test_config();
+    config.smtp_host = Some("127.0.0.1".into());
+    config.smtp_port = 1; // unused — never actually connected to in tests
+    config.smtp_tls = SmtpTls::None;
+    SmtpMailer::from_config(&config).unwrap().unwrap()
 }
 
 /// Create a client user with encrypted PII and return (id, plaintext_email, raw_password).

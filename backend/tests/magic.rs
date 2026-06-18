@@ -253,9 +253,10 @@ async fn magic_request_known_client_creates_link_row() {
     let (pool, _dir) = common::setup_test_db().await;
     let config = common::test_config();
     let enc_key = common::test_enc_key();
+    let mailer = common::test_mailer();
     let (client_id, client_email, _) = common::create_test_client(&pool).await;
 
-    magic::magic_request(&pool, &config, &enc_key, None, &client_email)
+    magic::magic_request(&pool, &config, &enc_key, Some(&mailer), &client_email)
         .await
         .unwrap();
 
@@ -337,15 +338,16 @@ async fn magic_request_throttled_when_recent_active_link_exists() {
     let (pool, _dir) = common::setup_test_db().await;
     let config = common::test_config();
     let enc_key = common::test_enc_key();
+    let mailer = common::test_mailer();
     let (client_id, client_email, _) = common::create_test_client(&pool).await;
 
     // First request — creates a link.
-    magic::magic_request(&pool, &config, &enc_key, None, &client_email)
+    magic::magic_request(&pool, &config, &enc_key, Some(&mailer), &client_email)
         .await
         .unwrap();
 
     // Second request — throttled, must not create a second row.
-    magic::magic_request(&pool, &config, &enc_key, None, &client_email)
+    magic::magic_request(&pool, &config, &enc_key, Some(&mailer), &client_email)
         .await
         .unwrap();
 
@@ -365,9 +367,10 @@ async fn magic_request_writes_auth_event_for_known_client() {
     let (pool, _dir) = common::setup_test_db().await;
     let config = common::test_config();
     let enc_key = common::test_enc_key();
+    let mailer = common::test_mailer();
     let (client_id, client_email, _) = common::create_test_client(&pool).await;
 
-    magic::magic_request(&pool, &config, &enc_key, None, &client_email)
+    magic::magic_request(&pool, &config, &enc_key, Some(&mailer), &client_email)
         .await
         .unwrap();
 

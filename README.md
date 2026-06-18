@@ -237,6 +237,8 @@ origin as the backend (already handled if you point `ServeDir` at the dist folde
 | `SMTP_USER` | no | — | SMTP username |
 | `SMTP_PASSWORD` | no | — | SMTP password |
 | `SMTP_FROM` | no | `SMTP_USER` | From address for outbound email |
+| `SMTP_TLS` | no | `starttls` | `starttls` (production) or `none` (plaintext SMTP — local dev only, e.g. Mailpit) |
+| `EMAIL_HASH_SALT` | **yes** | — | Hex salt for the Argon2id email blind-index, **fixed for the lifetime of the database** — changing it after first run makes all existing accounts unfindable by email. Generate once: `openssl rand -hex 32` |
 
 ---
 
@@ -275,10 +277,17 @@ PATCH /auth/password   (desk full-session only)
 POST /auth/magic
   body: { token }
   → { access_token }   (no refresh cookie — short-lived, stateless)
+
+POST /auth/magic-request   (self-serve, client-facing — no auth required)
+  body: { email }
+  → 200 { message: "If this email is registered, a sign-in link has been sent." }
+  → always the same response regardless of whether the email exists, the
+    role, soft-delete status, or mailer configuration — enumeration-safe by
+    construction. Throttled to one outstanding link per user at a time.
 ```
 
-`/auth/login`, `/auth/refresh`, and `/auth/magic` are rate-limited to 5 req/s per
-IP with a burst of 10.
+`/auth/login`, `/auth/refresh`, `/auth/magic`, and `/auth/magic-request` are
+rate-limited to 5 req/s per IP with a burst of 10.
 
 ### Session types
 
@@ -296,8 +305,10 @@ cannot reach any admin or management endpoint regardless of role.
 
 ```
 [open] ──(desk: acknowledge)──▶ [acknowledged] ──(desk: close)──▶ [closed]
-  │
-  └──(desk: pend)──▶ [pending] ──(desk: acknowledge)──▶ [acknowledged]
+  │                                                                   │
+  └──(desk: pend)──▶ [pending] ──(desk: acknowledge)──▶ [acknowledged]│
+                                                                       │
+  [open] ◀──(desk: reopen, or any reply while closed)── [closed] ◀────┘
 ```
 
 | From | Action | To | Who |
@@ -306,6 +317,7 @@ cannot reach any admin or management endpoint regardless of role.
 | `open` | pend | `pending` | desk only |
 | `pending` | acknowledge | `acknowledged` | desk only |
 | `acknowledged` | close | `closed` | desk only |
+| `closed` | reopen | `open` | desk (`PATCH /tickets/:id/reopen`), or automatically when **either party** posts a new message on a closed ticket |
 | any other combination | — | — | `400 Bad Request` |
 
 All transition logic lives exclusively in `src/ticket_status.rs::transition()`.
@@ -370,6 +382,15 @@ curl -X POST http://localhost:3000/auth/magic \
   -H 'Content-Type: application/json' \
   -d '{"token":"<64-char-hex-token-from-link>"}'
 # → { "access_token": "eyJ..." }
+```
+
+**Request a self-serve magic link** *(no auth required — client-facing)*
+```bash
+curl -X POST http://localhost:3000/auth/magic-request \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"client@example.com"}'
+# → 200 { "message": "If this email is registered, a sign-in link has been sent." }
+# identical response for unknown emails, desk accounts, and soft-deleted clients
 ```
 
 ---
@@ -507,6 +528,15 @@ curl -X PATCH http://localhost:3000/tickets/TICKET_ID/pend \
 ```bash
 curl -X PATCH http://localhost:3000/tickets/TICKET_ID/close \
   -H 'Authorization: Bearer TOKEN'
+```
+
+**Reopen** *(desk only — closed → open)*
+```bash
+curl -X PATCH http://localhost:3000/tickets/TICKET_ID/reopen \
+  -H 'Authorization: Bearer TOKEN'
+# a closed ticket also reopens automatically the moment anyone — desk or
+# client — posts a new message on it; this endpoint is for reopening
+# without sending a message
 ```
 
 **Generate ticket-scoped magic link** *(desk only)*

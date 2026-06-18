@@ -476,7 +476,7 @@ pub async fn create(
     }
 
     let tax_rate = body.tax_rate.unwrap_or(0.0);
-    if !tax_rate.is_finite() || tax_rate < 0.0 || tax_rate > 100.0 {
+    if !tax_rate.is_finite() || !(0.0..=100.0).contains(&tax_rate) {
         return Err(AppError::BadRequest(
             "tax_rate must be a finite number between 0 and 100".into(),
         ));
@@ -574,7 +574,7 @@ pub async fn update(
 
     let tax_rate = match body.tax_rate {
         Some(r) => {
-            if !r.is_finite() || r < 0.0 || r > 100.0 {
+            if !r.is_finite() || !(0.0..=100.0).contains(&r) {
                 return Err(AppError::BadRequest(
                     "tax_rate must be a finite number between 0 and 100".into(),
                 ));

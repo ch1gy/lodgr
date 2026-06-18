@@ -75,6 +75,7 @@ pub fn test_mailer() -> SmtpMailer {
     config.smtp_host = Some("127.0.0.1".into());
     config.smtp_port = 1; // unused — never actually connected to in tests
     config.smtp_tls = SmtpTls::None;
+    config.smtp_from = Some("desk@test.example".into());
     SmtpMailer::from_config(&config).unwrap().unwrap()
 }
 

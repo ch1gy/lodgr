@@ -44,10 +44,24 @@ pub async fn create(
     })
 }
 
+/// Deletes a sub-client. Tickets and invoices tagged with it are not
+/// cascade-deleted — their sub_client_id FK has no ON DELETE action, so we
+/// null the references first inside the same transaction to avoid a
+/// SQLITE_CONSTRAINT failure surfacing as a 500.
 pub async fn delete(pool: &SqlitePool, id: &str) -> AppResult<()> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("UPDATE tickets SET sub_client_id = NULL WHERE sub_client_id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE invoices SET sub_client_id = NULL WHERE sub_client_id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM sub_clients WHERE id = ?")
         .bind(id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     Ok(())
 }

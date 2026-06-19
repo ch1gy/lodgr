@@ -79,7 +79,7 @@ pub async fn create_magic_link(
         "magic link created"
     );
 
-    let url = format!("{}/auth/magic?token={}", config.base_url, raw_token);
+    let url = format!("{}/magic?token={}", config.base_url, raw_token);
 
     // Fire-and-forget: email failure is non-fatal and already logged inside send_magic_link.
     if let Some(m) = mailer {
@@ -346,7 +346,7 @@ pub async fn send_desk_recovery_link(
         return;
     }
 
-    let url = format!("{}/auth/magic?token={}", config.base_url, raw_token);
+    let url = format!("{}/magic?token={}", config.base_url, raw_token);
     tracing::warn!(user_id = %user_id, "desk account permanently locked — recovery link sent");
 
     let m = mailer.clone();

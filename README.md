@@ -461,7 +461,7 @@ curl http://localhost:3000/admin/exports/CLIENT_ID/EXPORT_FILE \
 ```bash
 curl -X POST http://localhost:3000/admin/clients/CLIENT_ID/magic-link \
   -H 'Authorization: Bearer TOKEN'
-# → { "url": "https://your-domain.com/auth/magic?token=..." }
+# → { "url": "https://your-domain.com/magic?token=..." }
 # deliver via any channel — email, WhatsApp, SMS
 # generating a new link revokes all prior unconsumed links for this client
 ```
@@ -543,7 +543,7 @@ curl -X PATCH http://localhost:3000/tickets/TICKET_ID/reopen \
 ```bash
 curl -X POST http://localhost:3000/tickets/TICKET_ID/magic-link \
   -H 'Authorization: Bearer TOKEN'
-# → { "url": "https://your-domain.com/auth/magic?token=..." }
+# → { "url": "https://your-domain.com/magic?token=..." }
 # client can view and reply to this ticket only
 # generating a new link revokes all prior unconsumed scoped links for this ticket
 ```

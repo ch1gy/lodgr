@@ -9,7 +9,7 @@
 // differs. The modal doesn't know or care about the JWT contents.
 //
 // Props:
-//   url          — The full magic link URL (e.g. https://…/auth/magic?token=…)
+//   url          — The full magic link URL (e.g. https://…/magic?token=…)
 //   scope        — 'ticket' | 'full' — drives the descriptive copy only
 //   ticketId     — Optional short ticket ID shown in scoped copy
 //   onClose      — Dismiss callback

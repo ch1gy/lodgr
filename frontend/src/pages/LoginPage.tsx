@@ -157,7 +157,7 @@ export function LoginPage() {
               type="email"
               autoComplete="username"
               value={email}
-              onChange={(ev) => setEmail(ev.target.value)}
+              onChange={(ev) => { setEmail(ev.target.value); setMagicSent(false); }}
               placeholder={mode === 'magic' ? 'you@company.com' : 'desk@local'}
               disabled={locked}
               required

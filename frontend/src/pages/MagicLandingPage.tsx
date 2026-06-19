@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// MagicLandingPage.tsx — handles /auth/magic?token=…
+// MagicLandingPage.tsx — handles /magic?token=…
 //
 // Desk generates a ticket-scoped link via POST /tickets/:id/magic-link OR a
 // full-session client link via POST /admin/clients/:id/magic-link. Either way

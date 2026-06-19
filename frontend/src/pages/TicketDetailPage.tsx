@@ -29,6 +29,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { tickets as ticketsApi } from '../api/tickets';
 import { admin } from '../api/admin';
+import { ConfirmModal } from '../components/ConfirmModal';
 import type {
   InternalNote,
   TicketResponse,
@@ -181,6 +182,7 @@ export function TicketDetailPage() {
       alert(`Magic link copied to clipboard:\n${data.url}`);
     },
   });
+  const [confirmMagic, setConfirmMagic] = useState(false);
 
   // ── Composer state ────────────────────────────────────────────────────
   const [composerTab, setComposerTab] = useState<ComposerTab>('reply');
@@ -526,7 +528,7 @@ export function TicketDetailPage() {
               notes={notes}
               can={can}
               transition={(k) => transitionM.mutate(k)}
-              shareMagicLink={() => magicM.mutate()}
+              shareMagicLink={() => setConfirmMagic(true)}
               transitionPending={transitionM.isPending}
               magicPending={magicM.isPending}
             />
@@ -549,7 +551,7 @@ export function TicketDetailPage() {
             notes={notes}
             can={can}
             transition={(k) => { transitionM.mutate(k); setSheetOpen(false); }}
-            shareMagicLink={() => magicM.mutate()}
+            shareMagicLink={() => setConfirmMagic(true)}
             transitionPending={transitionM.isPending}
             magicPending={magicM.isPending}
           />
@@ -557,6 +559,16 @@ export function TicketDetailPage() {
           <ReadOnlyProps ticket={ticket} />
         )}
       </div>
+
+      {confirmMagic && (
+        <ConfirmModal
+          title="Generate access link for this ticket?"
+          body="Anyone who opens this link can view and reply to this ticket as the client, for up to 24h. Only share it with the client themselves."
+          confirmLabel="Generate link"
+          onConfirm={() => { magicM.mutate(); setConfirmMagic(false); }}
+          onCancel={() => setConfirmMagic(false)}
+        />
+      )}
     </div>
   );
 }

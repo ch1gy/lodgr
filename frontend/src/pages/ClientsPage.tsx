@@ -602,7 +602,15 @@ export function ClientsPage() {
         exportM.mutate(id);
         break;
       case 'magic-link':
-        magicM.mutate(id);
+        showConfirm(
+          {
+            title: 'Generate full-session link?',
+            body: 'Anyone who opens this link is signed in as this client for 24h. Only share it with the client themselves.',
+            confirmLabel: 'Generate link',
+            danger: false,
+          },
+          () => { magicM.mutate(id); setConfirmOpts(null); }
+        );
         break;
       case 'hard-delete': {
         const email = client?.email ?? '';

@@ -234,19 +234,38 @@ pub async fn update_last_recurred(pool: &SqlitePool, id: &str, ts: &str) -> AppR
 }
 
 /// Returns all non-deleted recurring tickets whose interval has elapsed.
+///
+/// The due check is done in Rust rather than via SQLite's `datetime()` —
+/// `last_recurred_at` is stored as an RFC-3339 string (with a `+00:00`
+/// offset), which older SQLite builds don't parse, and even when parsed the
+/// result is compared against `datetime('now')`'s space-separated format,
+/// silently collapsing the comparison to day granularity.
 pub async fn list_due_for_recurrence(pool: &SqlitePool) -> AppResult<Vec<Ticket>> {
-    Ok(sqlx::query_as::<_, Ticket>(&format!(
+    let candidates = sqlx::query_as::<_, Ticket>(&format!(
         "SELECT {TICKET_COLS} FROM tickets
          WHERE recurring = 1
            AND deleted_at IS NULL
-           AND recurring_interval_days IS NOT NULL
-           AND (
-                 last_recurred_at IS NULL
-              OR datetime(last_recurred_at, '+' || recurring_interval_days || ' days') <= datetime('now')
-           )"
+           AND recurring_interval_days IS NOT NULL"
     ))
     .fetch_all(pool)
-    .await?)
+    .await?;
+
+    let now = Utc::now();
+    Ok(candidates
+        .into_iter()
+        .filter(|t| {
+            let Some(days) = t.recurring_interval_days else {
+                return false;
+            };
+            match &t.last_recurred_at {
+                None => true,
+                Some(s) => match chrono::DateTime::parse_from_rfc3339(s) {
+                    Ok(last) => last.with_timezone(&Utc) + chrono::Duration::days(days) <= now,
+                    Err(_) => true,
+                },
+            }
+        })
+        .collect())
 }
 
 /// Returns true if a non-deleted `security_log` ticket already exists for this
@@ -256,14 +275,16 @@ pub async fn has_recent_security_lockout_ticket(
     pool: &SqlitePool,
     client_id: &str,
 ) -> AppResult<bool> {
+    let cutoff = (Utc::now() - chrono::Duration::hours(24)).to_rfc3339();
     let row: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM tickets
          WHERE client_id = ?
            AND ticket_type = 'security_log'
            AND deleted_at IS NULL
-           AND created_at >= datetime('now', '-24 hours')",
+           AND created_at >= ?",
     )
     .bind(client_id)
+    .bind(&cutoff)
     .fetch_one(pool)
     .await?;
     Ok(row.0 > 0)

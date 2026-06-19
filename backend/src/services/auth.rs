@@ -16,7 +16,7 @@ use crate::{
     db,
     email::SmtpMailer,
     error::{AppError, AppResult},
-    models::Claims,
+    models::{Claims, User},
     services::magic,
 };
 
@@ -233,6 +233,9 @@ pub async fn login(
             if let Err(e) = db::auth_events::create(pool, &u.id, "login_ok").await {
                 tracing::warn!(user_id = %u.id, %e, "failed to write login_ok auth event");
             }
+            if let Some(m) = mailer {
+                spawn_login_alert(m, enc_key, &u, peer_ip);
+            }
             Ok(output)
         }
         (Some(u), true) => {
@@ -377,6 +380,29 @@ fn spawn_desk_recovery_link(
             user_id = %desk.id,
             %err,
             "failed to decrypt desk email — skipping recovery link dispatch"
+        ),
+    }
+}
+
+/// Decrypts the user's email and spawns a best-effort login-notification
+/// email. Logs an error and skips the dispatch if decryption fails.
+fn spawn_login_alert(mailer: &SmtpMailer, enc_key: &EncryptionKey, user: &User, peer_ip: IpAddr) {
+    match crypto::decrypt(enc_key, &user.email_nonce, &user.email) {
+        Ok(uemail) => {
+            let m2 = mailer.clone();
+            let uname = user.name.clone();
+            let role = user.role.clone();
+            let when = Utc::now().to_rfc3339();
+            let ip = peer_ip.to_string();
+            tokio::spawn(async move {
+                m2.send_login_alert(&uemail, &uname, &role, &ip, &when)
+                    .await;
+            });
+        }
+        Err(err) => tracing::error!(
+            user_id = %user.id,
+            %err,
+            "failed to decrypt user email — skipping login alert dispatch"
         ),
     }
 }

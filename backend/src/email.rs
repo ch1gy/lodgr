@@ -1,5 +1,5 @@
 use lettre::{
-    message::{header::ContentType, Mailbox},
+    message::{Mailbox, MultiPart, SinglePart},
     transport::smtp::authentication::Credentials,
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
 };
@@ -76,13 +76,21 @@ impl SmtpMailer {
             }
         };
 
+        let html = render_html(
+            event.heading(),
+            &event.html_paragraphs(to_name, ticket_title),
+            None,
+        );
+
         let email = match Message::builder()
             .from(self.from.clone())
             .to(to)
             .subject(subject)
-            .header(ContentType::TEXT_PLAIN)
-            .body(body)
-        {
+            .multipart(
+                MultiPart::alternative()
+                    .singlepart(SinglePart::plain(body))
+                    .singlepart(SinglePart::html(html)),
+            ) {
             Ok(m) => m,
             Err(e) => {
                 tracing::warn!("failed to build ticket notification email: {e}");
@@ -117,13 +125,27 @@ impl SmtpMailer {
             }
         };
 
+        let paragraphs = vec![
+            format!("Hello {to_name},"),
+            "A support access link has been generated for you.".to_owned(),
+            "This link expires in 1 hour and can only be used once.".to_owned(),
+            "If you did not request this, you can safely ignore it.".to_owned(),
+        ];
+        let html = render_html(
+            "Your support access link",
+            &paragraphs,
+            Some(("Open support link", magic_url)),
+        );
+
         let email = match Message::builder()
             .from(self.from.clone())
             .to(to)
             .subject("Your support access link")
-            .header(ContentType::TEXT_PLAIN)
-            .body(body)
-        {
+            .multipart(
+                MultiPart::alternative()
+                    .singlepart(SinglePart::plain(body))
+                    .singlepart(SinglePart::html(html)),
+            ) {
             Ok(m) => m,
             Err(e) => {
                 tracing::warn!("failed to build magic link email: {e}");
@@ -133,6 +155,67 @@ impl SmtpMailer {
 
         if let Err(e) = self.transport.send(email).await {
             tracing::warn!(recipient = %mask_email(to_email), "failed to send magic link email: {e}");
+        }
+    }
+
+    /// Notify a user (desk or client) of a successful password login on their
+    /// own account. Best-effort security alert — never blocks or fails the
+    /// login itself.
+    pub async fn send_login_alert(
+        &self,
+        to_email: &str,
+        to_name: &str,
+        role: &str,
+        ip: &str,
+        when: &str,
+    ) {
+        let body = format!(
+            "Hello {to_name},\n\n\
+             Your {role} account was just signed in to.\n\n\
+             Time: {when}\n\
+             IP address: {ip}\n\n\
+             If this wasn't you, change your password immediately and contact \
+             support."
+        );
+
+        let to = match build_mailbox(to_name, to_email) {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!(
+                    recipient = %mask_email(to_email),
+                    "skipping login alert — could not build recipient mailbox: {e}"
+                );
+                return;
+            }
+        };
+
+        let paragraphs = vec![
+            format!("Hello {to_name},"),
+            format!("Your {role} account was just signed in to."),
+            format!("Time: {when}"),
+            format!("IP address: {ip}"),
+            "If this wasn't you, change your password immediately and contact support.".to_owned(),
+        ];
+        let html = render_html("New sign-in", &paragraphs, None);
+
+        let email = match Message::builder()
+            .from(self.from.clone())
+            .to(to)
+            .subject(format!("New sign-in to your {role} account"))
+            .multipart(
+                MultiPart::alternative()
+                    .singlepart(SinglePart::plain(body))
+                    .singlepart(SinglePart::html(html)),
+            ) {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!("failed to build login alert email: {e}");
+                return;
+            }
+        };
+
+        if let Err(e) = self.transport.send(email).await {
+            tracing::warn!(recipient = %mask_email(to_email), "failed to send login alert: {e}");
         }
     }
 }
@@ -146,6 +229,82 @@ fn build_mailbox(name: &str, email: &str) -> Result<Mailbox, lettre::address::Ad
 
 pub fn mask_email_pub(email: &str) -> String {
     mask_email(email)
+}
+
+/// Render a branded HTML email matching the app's editorial cream/ink/red
+/// palette (see frontend/src/styles/tokens.css). Inline styles only — most
+/// mail clients strip <style> blocks.
+fn render_html(heading: &str, paragraphs: &[String], cta: Option<(&str, &str)>) -> String {
+    const CREAM: &str = "#f2ede4";
+    const INK: &str = "#0d0d0d";
+    const INK_SOFT: &str = "#3d3830";
+    const MID: &str = "#6a6560";
+    const RULE: &str = "#c8c2b8";
+    const RED: &str = "#c8322a";
+
+    let body_html = paragraphs
+        .iter()
+        .map(|p| {
+            format!(
+                "<p style=\"margin:0 0 16px;font-family:Georgia,'Times New Roman',serif;\
+                 font-size:15px;line-height:1.55;color:{INK_SOFT};\">{}</p>",
+                html_escape(p)
+            )
+        })
+        .collect::<String>();
+
+    let cta_html = match cta {
+        Some((label, url)) => format!(
+            "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:8px 0 24px;\">\
+               <tr><td style=\"background:{RED};\">\
+                 <a href=\"{url}\" style=\"display:inline-block;padding:12px 28px;font-family:Georgia,serif;\
+                    font-size:14px;font-weight:bold;color:{CREAM};text-decoration:none;letter-spacing:0.02em;\">\
+                   {label}\
+                 </a>\
+               </td></tr>\
+             </table>\
+             <p style=\"margin:0 0 24px;font-family:'Courier New',monospace;font-size:11px;\
+                color:{MID};word-break:break-all;\">{url}</p>",
+            label = html_escape(label),
+        ),
+        None => String::new(),
+    };
+
+    format!(
+        "<!doctype html>\
+        <html><body style=\"margin:0;padding:0;background:{CREAM};\">\
+        <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" \
+          style=\"background:{CREAM};padding:32px 16px;\">\
+          <tr><td align=\"center\">\
+            <table role=\"presentation\" width=\"560\" cellpadding=\"0\" cellspacing=\"0\" \
+              style=\"max-width:560px;background:{CREAM};\">\
+              <tr><td style=\"padding-bottom:24px;border-bottom:1px solid {RULE};\">\
+                <span style=\"font-family:Georgia,'Times New Roman',serif;font-style:italic;\
+                  font-size:22px;color:{INK};\">Lodgr<span style=\"color:{RED};\">.</span></span>\
+              </td></tr>\
+              <tr><td style=\"padding-top:28px;padding-bottom:4px;\">\
+                <h1 style=\"margin:0 0 20px;font-family:Georgia,'Times New Roman',serif;\
+                  font-size:20px;font-weight:normal;color:{INK};\">{heading}</h1>\
+                {body_html}\
+                {cta_html}\
+              </td></tr>\
+              <tr><td style=\"padding-top:8px;border-top:1px solid {RULE};\">\
+                <p style=\"margin:16px 0 0;font-family:'Courier New',monospace;font-size:10px;\
+                  letter-spacing:0.06em;text-transform:uppercase;color:{MID};\">Lodgr Support</p>\
+              </td></tr>\
+            </table>\
+          </td></tr>\
+        </table>\
+        </body></html>",
+        heading = html_escape(heading),
+    )
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn mask_email(email: &str) -> String {
@@ -178,6 +337,34 @@ impl TicketEvent {
             Self::Reopened => format!("[Support] Ticket reopened: {title}"),
             Self::NewMessage => format!("[Support] New message on: {title}"),
         }
+    }
+
+    fn heading(self) -> &'static str {
+        match self {
+            Self::Created => "New support ticket",
+            Self::Acknowledged => "Ticket acknowledged",
+            Self::Pending => "Awaiting your response",
+            Self::Closed => "Ticket resolved",
+            Self::Reopened => "Ticket reopened",
+            Self::NewMessage => "New message",
+        }
+    }
+
+    fn html_paragraphs(self, name: &str, title: &str) -> Vec<String> {
+        let action = match self {
+            Self::Created => "A new support ticket has been opened.",
+            Self::Acknowledged => "Your ticket has been acknowledged by the support team.",
+            Self::Pending => "Your ticket is awaiting additional information from you.",
+            Self::Closed => "Your ticket has been resolved.",
+            Self::Reopened => "Your ticket has been reopened and is now active again.",
+            Self::NewMessage => "There is a new message on your ticket.",
+        };
+        vec![
+            format!("Hello {name},"),
+            action.to_owned(),
+            format!("Ticket: {title}"),
+            "Log in to view the full details.".to_owned(),
+        ]
     }
 
     fn body(self, name: &str, title: &str) -> String {

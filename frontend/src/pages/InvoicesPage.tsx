@@ -5,6 +5,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { admin } from '../api/admin';
 import { api } from '../api/client';
 import { downloadBlob } from '../utils/format';
+import { useAuth } from '../auth/AuthContext';
 import type {
   Client,
   CreateInvoicePayload,
@@ -13,6 +14,7 @@ import type {
   InvoiceResponse,
   InvoiceStatus,
   RecurInterval,
+  SubClient,
   UpdateInvoicePayload,
 } from '../api/types';
 import '../styles/v2.css';
@@ -172,7 +174,15 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
   const [taxRate, setTaxRate] = useState(16);
   const [items, setItems] = useState<InvoiceItem[]>([{ name: '', qty: 1, rate: 0 }]);
   const [notes, setNotes] = useState<InvoiceNote[]>([]);
+  const [subClientId, setSubClientId] = useState('');
   const [err, setErr] = useState('');
+
+  const subClientsQ = useQuery({
+    queryKey: ['sub-clients', selectedClient?.id],
+    queryFn: () => admin.listSubClients(selectedClient!.id),
+    enabled: !!selectedClient,
+  });
+  const subClients: SubClient[] = subClientsQ.data ?? [];
 
   // Outside-click closes client dropdown
   useEffect(() => {
@@ -202,6 +212,7 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
     setBilledToPin(c.pin_number ?? '');
     setBilledToEmail(c.email ?? '');
     setBilledToPhone(c.phone ?? '');
+    setSubClientId('');
   }
 
   function addItem() { setItems((p) => [...p, { name: '', qty: 1, rate: 0 }]); }
@@ -242,6 +253,7 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
       tax_rate: taxRate,
       recurring, recur_interval: recurring ? recurInterval : undefined,
       next_recur_date: recurring && nextRecurDate ? nextRecurDate : undefined,
+      sub_client_id: subClientId || undefined,
     });
   }
 
@@ -298,6 +310,16 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
               <InvField label="Project type">
                 <input className="inv-inp" value={projectType} onChange={(e) => setProjectType(e.target.value)} placeholder="e.g. Website Maintenance" />
               </InvField>
+              {selectedClient && subClients.length > 0 && (
+                <InvField label="Sub-client">
+                  <select className="inv-inp" value={subClientId} onChange={(e) => setSubClientId(e.target.value)}>
+                    <option value="">— None —</option>
+                    {subClients.map((sc) => (
+                      <option key={sc.id} value={sc.id}>{sc.name}</option>
+                    ))}
+                  </select>
+                </InvField>
+              )}
             </div>
 
             {/* ── Dates & meta ──────────────────────────────────────────── */}
@@ -444,7 +466,15 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
     invoice.items.length ? invoice.items : [{ name: '', qty: 1, rate: 0 }],
   );
   const [notes, setNotes]                 = useState<InvoiceNote[]>(invoice.notes);
+  const [subClientId, setSubClientId]     = useState(invoice.sub_client_id ?? '');
   const [err, setErr]                     = useState('');
+
+  const subClientsQ = useQuery({
+    queryKey: ['sub-clients', invoice.client_id],
+    queryFn: () => admin.listSubClients(invoice.client_id!),
+    enabled: !!invoice.client_id,
+  });
+  const subClients: SubClient[] = subClientsQ.data ?? [];
 
   function addItem() { setItems((p) => [...p, { name: '', qty: 1, rate: 0 }]); }
   function removeItem(i: number) { setItems((p) => p.filter((_, idx) => idx !== i)); }
@@ -484,6 +514,7 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
       tax_rate: taxRate,
       recurring, recur_interval: recurring ? recurInterval : undefined,
       next_recur_date: recurring && nextRecurDate ? nextRecurDate : undefined,
+      sub_client_id: subClientId,
     });
   }
 
@@ -516,6 +547,16 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
               <InvField label="Location (for strap)">
                 <input className="inv-inp" value={projectLocation} onChange={(e) => setProjectLocation(e.target.value)} />
               </InvField>
+              {subClients.length > 0 && (
+                <InvField label="Sub-client">
+                  <select className="inv-inp" value={subClientId} onChange={(e) => setSubClientId(e.target.value)}>
+                    <option value="">— None —</option>
+                    {subClients.map((sc) => (
+                      <option key={sc.id} value={sc.id}>{sc.name}</option>
+                    ))}
+                  </select>
+                </InvField>
+              )}
             </div>
 
             {/* ── Dates & meta ──────────────────────────────────────────── */}
@@ -630,6 +671,7 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
 interface InvoiceRowProps {
   invoice: InvoiceResponse;
   clientName: string;
+  isDesk: boolean;
   onStatusChange: (id: string, status: InvoiceStatus) => void;
   onDelete: (id: string) => void;
   onDownload: (id: string) => void;
@@ -637,7 +679,7 @@ interface InvoiceRowProps {
   onEdit: (invoice: InvoiceResponse) => void;
 }
 
-function InvoiceRow({ invoice, clientName, onStatusChange, onDelete, onDownload, onPreview, onEdit }: InvoiceRowProps) {
+function InvoiceRow({ invoice, clientName, isDesk, onStatusChange, onDelete, onDownload, onPreview, onEdit }: InvoiceRowProps) {
   const [expanded, setExpanded] = useState(false);
   const subtotal = invoice.items.reduce((acc, it) => acc + it.qty * it.rate, 0);
   const { vat, grandTotal: total } = computeTotals(subtotal, invoice.tax_rate ?? 0);
@@ -654,7 +696,10 @@ function InvoiceRow({ invoice, clientName, onStatusChange, onDelete, onDownload,
               <span style={{ marginLeft: 8, color: 'var(--mid)', fontSize: 10 }}>· {invoice.kra_number}</span>
             )}
           </div>
-          <div style={{ color: 'var(--mid)', marginTop: 2 }}>{clientName}</div>
+          <div style={{ color: 'var(--mid)', marginTop: 2 }}>
+            {clientName}
+            {invoice.sub_client_name && <span> › {invoice.sub_client_name}</span>}
+          </div>
         </div>
         <div className="lg-inv-c-issued" style={{ color: 'var(--mid)' }}>{fmtDate(invoice.issued_date)}</div>
         <div className="lg-inv-c-due" style={{ color: invoice.status === 'paid' ? '#2a7a3b' : invoice.status === 'draft' ? 'var(--mid)' : 'var(--ink)' }}>
@@ -667,10 +712,12 @@ function InvoiceRow({ invoice, clientName, onStatusChange, onDelete, onDownload,
           {invoice.currency} {total.toLocaleString('en-US')}
         </div>
         <div className="lg-inv-c-acts" style={{ display: 'flex', gap: 8 }}>
-          <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(invoice); }}
-            style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--ink)' }}>
-            Edit ✎
-          </button>
+          {isDesk && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(invoice); }}
+              style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--ink)' }}>
+              Edit ✎
+            </button>
+          )}
           <button type="button" onClick={(e) => { e.stopPropagation(); void onPreview(invoice.id); }}
             style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--mid)' }}>
             Preview ↗
@@ -679,10 +726,12 @@ function InvoiceRow({ invoice, clientName, onStatusChange, onDelete, onDownload,
             style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--mid)' }}>
             Download ↓
           </button>
-          <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(invoice.id); }}
-            style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--red)' }}>
-            Del
-          </button>
+          {isDesk && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(invoice.id); }}
+              style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--red)' }}>
+              Del
+            </button>
+          )}
         </div>
       </div>
 
@@ -690,23 +739,29 @@ function InvoiceRow({ invoice, clientName, onStatusChange, onDelete, onDownload,
       {expanded && (
         <div className="lg-inv-exp">
           {/* Status control */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14, paddingTop: 14 }}>
-            {(['draft', 'sent', 'paid'] as InvoiceStatus[]).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => onStatusChange(invoice.id, s)}
-                style={{
-                  fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
-                  background: invoice.status === s ? 'var(--ink)' : 'none',
-                  color: invoice.status === s ? 'var(--cream)' : 'var(--mid)',
-                  border: '1px solid var(--rule)', padding: '3px 12px', cursor: 'pointer',
-                }}
-              >
-                {STATUS_LABEL[s]}
-              </button>
-            ))}
-          </div>
+          {isDesk ? (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14, paddingTop: 14 }}>
+              {(['draft', 'sent', 'paid'] as InvoiceStatus[]).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => onStatusChange(invoice.id, s)}
+                  style={{
+                    fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
+                    background: invoice.status === s ? 'var(--ink)' : 'none',
+                    color: invoice.status === s ? 'var(--cream)' : 'var(--mid)',
+                    border: '1px solid var(--rule)', padding: '3px 12px', cursor: 'pointer',
+                  }}
+                >
+                  {STATUS_LABEL[s]}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div style={{ paddingTop: 14, marginBottom: 14, fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: STATUS_COLOR[invoice.status] }}>
+              {STATUS_LABEL[invoice.status]}
+            </div>
+          )}
 
           {/* Items table */}
           <div style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--mid)', marginBottom: 6 }}>
@@ -760,9 +815,11 @@ function InvoiceRow({ invoice, clientName, onStatusChange, onDelete, onDownload,
 
 export function InvoicesPage() {
   const qc = useQueryClient();
+  const { isDesk } = useAuth();
   const [createOpen, setCreateOpen]         = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<InvoiceResponse | null>(null);
   const [filterStatus, setFilterStatus]     = useState<InvoiceStatus | 'all'>('all');
+  const [sortBy, setSortBy]                 = useState<'date' | 'sub_client'>('date');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const invoicesQ = useQuery({
@@ -773,6 +830,7 @@ export function InvoicesPage() {
   const clientsQ = useQuery({
     queryKey: ['clients'],
     queryFn: () => admin.listClients(),
+    enabled: isDesk,
   });
 
   const invoices = useMemo<InvoiceResponse[]>(() => invoicesQ.data ?? [], [invoicesQ.data]);
@@ -784,10 +842,13 @@ export function InvoicesPage() {
     return m;
   }, [clients]);
 
-  const visible = useMemo(() =>
-    filterStatus === 'all' ? invoices : invoices.filter((inv) => inv.status === filterStatus),
-    [invoices, filterStatus],
-  );
+  const visible = useMemo(() => {
+    const filtered = filterStatus === 'all' ? invoices : invoices.filter((inv) => inv.status === filterStatus);
+    if (sortBy !== 'sub_client') return filtered;
+    return [...filtered].sort((a, b) =>
+      (a.sub_client_name ?? '￿').localeCompare(b.sub_client_name ?? '￿'),
+    );
+  }, [invoices, filterStatus, sortBy]);
 
   const statusM = useMutation({
     mutationFn: ({ id, status }: { id: string; status: InvoiceStatus }) =>
@@ -873,13 +934,31 @@ export function InvoicesPage() {
             ))}
           </div>
           <div className="lg-list__filt-spacer" />
-          <button
-            type="button"
-            className="lg-list__filt-new"
-            onClick={() => setCreateOpen(true)}
-          >
-            + New invoice
-          </button>
+          <div className="lg-list__filt-group">
+            <button
+              type="button"
+              className={'lg-list__filt-tab' + (sortBy === 'date' ? ' is-active' : '')}
+              onClick={() => setSortBy('date')}
+            >
+              By date
+            </button>
+            <button
+              type="button"
+              className={'lg-list__filt-tab' + (sortBy === 'sub_client' ? ' is-active' : '')}
+              onClick={() => setSortBy('sub_client')}
+            >
+              By sub-client
+            </button>
+          </div>
+          {isDesk && (
+            <button
+              type="button"
+              className="lg-list__filt-new"
+              onClick={() => setCreateOpen(true)}
+            >
+              + New invoice
+            </button>
+          )}
         </div>
 
         {/* ── Column headers + rows (scroll on mobile) ─────────────────────── */}
@@ -912,10 +991,13 @@ export function InvoicesPage() {
             <InvoiceRow
               key={inv.id}
               invoice={inv}
+              isDesk={isDesk}
               clientName={
-                inv.client_id
-                  ? (clientMap[inv.client_id] ?? inv.client_id.slice(0, 8))
-                  : `${inv.billed_to_name || '—'} (former client)`
+                isDesk
+                  ? inv.client_id
+                    ? (clientMap[inv.client_id] ?? inv.client_id.slice(0, 8))
+                    : `${inv.billed_to_name || '—'} (former client)`
+                  : inv.billed_to_name || 'You'
               }
               onStatusChange={(id, status) => statusM.mutate({ id, status })}
               onEdit={(inv) => setEditingInvoice(inv)}

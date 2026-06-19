@@ -33,6 +33,7 @@ fn base_invoice<'a>(
         recurring: false,
         recur_interval: None,
         next_recur_date: None,
+        sub_client_id: None,
     }
 }
 
@@ -152,6 +153,7 @@ async fn update_invoice_changes_status_and_number() {
             recurring: false,
             recur_interval: None,
             next_recur_date: None,
+            sub_client_id: None,
         },
     )
     .await
@@ -305,6 +307,8 @@ fn render_html_contains_vat_row_when_rate_set() {
         recur_interval: None,
         next_recur_date: None,
         created_at: "2025-01-01T00:00:00Z".into(),
+        sub_client_id: None,
+        sub_client_name: None,
     };
 
     let html = backend::routes::invoices::render_invoice_html_pub(&inv, &desk);
@@ -360,6 +364,8 @@ fn render_html_no_vat_row_when_rate_zero() {
         recur_interval: None,
         next_recur_date: None,
         created_at: "2025-01-01T00:00:00Z".into(),
+        sub_client_id: None,
+        sub_client_name: None,
     };
 
     let html = backend::routes::invoices::render_invoice_html_pub(&inv, &desk);

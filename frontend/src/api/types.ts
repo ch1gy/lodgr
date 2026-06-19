@@ -160,6 +160,8 @@ export interface InvoiceResponse {
   recur_interval: RecurInterval | null;
   next_recur_date: string | null;
   created_at: string;
+  sub_client_id: string | null;
+  sub_client_name: string | null;
 }
 
 export interface CreateInvoicePayload {
@@ -186,6 +188,7 @@ export interface CreateInvoicePayload {
   recurring?: boolean;
   recur_interval?: RecurInterval;
   next_recur_date?: string;
+  sub_client_id?: string;
 }
 
 export type UpdateInvoicePayload = Partial<CreateInvoicePayload> & { status?: InvoiceStatus };

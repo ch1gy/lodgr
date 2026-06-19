@@ -329,6 +329,8 @@ pub struct InvoiceResponse {
     pub recur_interval: Option<String>,
     pub next_recur_date: Option<String>,
     pub created_at: String,
+    pub sub_client_id: Option<String>,
+    pub sub_client_name: Option<String>,
 }
 
 impl From<Invoice> for InvoiceResponse {
@@ -362,6 +364,8 @@ impl From<Invoice> for InvoiceResponse {
             recur_interval: inv.recur_interval,
             next_recur_date: inv.next_recur_date,
             created_at: inv.created_at,
+            sub_client_id: inv.sub_client_id,
+            sub_client_name: inv.sub_client_name,
         }
     }
 }

@@ -15,7 +15,7 @@ use crate::{
     db,
     dto::{InvoiceItem, InvoiceNote, InvoiceResponse},
     error::{AppError, AppResult},
-    middleware::DeskUser,
+    middleware::{AuthUser, DeskUser},
     models::DeskProfile,
 };
 
@@ -419,6 +419,7 @@ pub struct CreateInvoiceRequest {
     pub recurring: Option<bool>,
     pub recur_interval: Option<String>,
     pub next_recur_date: Option<String>,
+    pub sub_client_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -446,19 +447,26 @@ pub struct UpdateInvoiceRequest {
     pub recurring: Option<bool>,
     pub recur_interval: Option<String>,
     pub next_recur_date: Option<String>,
+    /// Explicit empty string clears the sub-client; omitting keeps current value.
+    pub sub_client_id: Option<String>,
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 pub async fn list(
     State(pool): State<SqlitePool>,
-    _: DeskUser,
+    AuthUser(claims): AuthUser,
     Query(q): Query<ListQuery>,
 ) -> AppResult<impl IntoResponse> {
-    let invoices = if let Some(cid) = q.client_id {
-        db::invoices::list_for_client(&pool, &cid).await?
+    let invoices = if claims.role == "desk" {
+        if let Some(cid) = q.client_id {
+            db::invoices::list_for_client(&pool, &cid).await?
+        } else {
+            db::invoices::list(&pool).await?
+        }
     } else {
-        db::invoices::list(&pool).await?
+        // Clients only ever see their own invoices, regardless of query params.
+        db::invoices::list_for_client(&pool, &claims.sub).await?
     };
     let dtos: Vec<InvoiceResponse> = invoices.into_iter().map(InvoiceResponse::from).collect();
     Ok(Json(dtos))
@@ -480,6 +488,18 @@ pub async fn create(
         return Err(AppError::BadRequest(
             "tax_rate must be a finite number between 0 and 100".into(),
         ));
+    }
+
+    if let Some(sc_id) = body.sub_client_id.as_deref().filter(|s| !s.is_empty()) {
+        match db::sub_clients::find_by_id(&pool, sc_id).await? {
+            Some(sc) if sc.client_id == body.client_id => {}
+            Some(_) => {
+                return Err(AppError::BadRequest(
+                    "sub_client does not belong to this client".into(),
+                ))
+            }
+            None => return Err(AppError::BadRequest("sub_client not found".into())),
+        }
     }
 
     // Auto-generate number if not provided.
@@ -531,6 +551,7 @@ pub async fn create(
             recurring: body.recurring.unwrap_or(false),
             recur_interval: body.recur_interval.as_deref(),
             next_recur_date: body.next_recur_date.as_deref(),
+            sub_client_id: body.sub_client_id.as_deref().filter(|s| !s.is_empty()),
         },
     )
     .await?;
@@ -540,12 +561,15 @@ pub async fn create(
 
 pub async fn get(
     State(pool): State<SqlitePool>,
-    _: DeskUser,
+    AuthUser(claims): AuthUser,
     Path(id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
     let inv = db::invoices::find_by_id(&pool, &id)
         .await?
         .ok_or(AppError::NotFound)?;
+    if claims.role != "desk" && inv.client_id.as_deref() != Some(claims.sub.as_str()) {
+        return Err(AppError::NotFound);
+    }
     Ok(Json(InvoiceResponse::from(inv)))
 }
 
@@ -588,6 +612,24 @@ pub async fn update(
     // Since serde Option<Option<String>> is complex, we just accept Option<String>
     // and use the provided value or fall back to current.
     let kra = body.kra_number.as_deref().or(inv.kra_number.as_deref());
+
+    let target_client_id = inv.client_id.as_deref();
+    let sub_client_id = match body.sub_client_id.as_deref() {
+        Some("") => None,
+        Some(sc_id) => {
+            match db::sub_clients::find_by_id(&pool, sc_id).await? {
+                Some(sc) if Some(sc.client_id.as_str()) == target_client_id => {}
+                Some(_) => {
+                    return Err(AppError::BadRequest(
+                        "sub_client does not belong to this client".into(),
+                    ))
+                }
+                None => return Err(AppError::BadRequest("sub_client not found".into())),
+            }
+            Some(sc_id)
+        }
+        None => inv.sub_client_id.as_deref(),
+    };
 
     db::invoices::update(
         &pool,
@@ -643,6 +685,7 @@ pub async fn update(
                 .next_recur_date
                 .as_deref()
                 .or(inv.next_recur_date.as_deref()),
+            sub_client_id,
         },
     )
     .await?;
@@ -668,12 +711,15 @@ pub async fn delete(
 /// Generates and streams a PDF download of the invoice via Puppeteer.
 pub async fn pdf_download(
     State(pool): State<SqlitePool>,
-    _: DeskUser,
+    AuthUser(claims): AuthUser,
     Path(id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
     let inv = db::invoices::find_by_id(&pool, &id)
         .await?
         .ok_or(AppError::NotFound)?;
+    if claims.role != "desk" && inv.client_id.as_deref() != Some(claims.sub.as_str()) {
+        return Err(AppError::NotFound);
+    }
     let desk = db::desk_profile::get(&pool).await?;
     let dto = InvoiceResponse::from(inv);
     let number = dto.number.clone();
@@ -727,12 +773,15 @@ pub async fn pdf_download(
 /// Sets a permissive CSP so Google Fonts loads correctly.
 pub async fn print_html(
     State(pool): State<SqlitePool>,
-    _: DeskUser,
+    AuthUser(claims): AuthUser,
     Path(id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
     let inv = db::invoices::find_by_id(&pool, &id)
         .await?
         .ok_or(AppError::NotFound)?;
+    if claims.role != "desk" && inv.client_id.as_deref() != Some(claims.sub.as_str()) {
+        return Err(AppError::NotFound);
+    }
     let desk = db::desk_profile::get(&pool).await?;
     let dto = InvoiceResponse::from(inv);
     let html = render_invoice_html(&dto, &desk);

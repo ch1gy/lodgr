@@ -24,7 +24,7 @@ type NavKey = Props['active'];
 const NAV: { key: NavKey; to: string; label: string; deskOnly: boolean }[] = [
   { key: 'tickets',  to: '/tickets',  label: 'Tickets',  deskOnly: false },
   { key: 'clients',  to: '/clients',  label: 'Clients',  deskOnly: true },
-  { key: 'invoices', to: '/invoices', label: 'Invoices', deskOnly: true },
+  { key: 'invoices', to: '/invoices', label: 'Invoices', deskOnly: false },
   { key: 'reports',  to: '/reports',  label: 'Reports',  deskOnly: true },
   { key: 'settings', to: '/settings', label: 'Settings', deskOnly: false },
 ];
@@ -97,17 +97,17 @@ export function Masthead({ active = 'tickets' }: Props) {
           Tickets
         </Link>
         {isDesk && (
-          <>
-            <Link to="/clients" className={'lg-mast-link' + (active === 'clients' ? ' active' : '')}>
-              Clients
-            </Link>
-            <Link to="/invoices" className={'lg-mast-link' + (active === 'invoices' ? ' active' : '')}>
-              Invoices
-            </Link>
-            <Link to="/reports" className={'lg-mast-link' + (active === 'reports' ? ' active' : '')}>
-              Reports
-            </Link>
-          </>
+          <Link to="/clients" className={'lg-mast-link' + (active === 'clients' ? ' active' : '')}>
+            Clients
+          </Link>
+        )}
+        <Link to="/invoices" className={'lg-mast-link' + (active === 'invoices' ? ' active' : '')}>
+          Invoices
+        </Link>
+        {isDesk && (
+          <Link to="/reports" className={'lg-mast-link' + (active === 'reports' ? ' active' : '')}>
+            Reports
+          </Link>
         )}
         <Link to="/settings" className={'lg-mast-link' + (active === 'settings' ? ' active' : '')}>
           Settings

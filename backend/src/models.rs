@@ -209,6 +209,10 @@ pub struct Invoice {
     pub recur_interval: Option<String>,
     pub next_recur_date: Option<String>,
     pub created_at: String,
+    pub sub_client_id: Option<String>,
+    /// Populated only when the query does a LEFT JOIN on sub_clients.
+    #[sqlx(default)]
+    pub sub_client_name: Option<String>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]

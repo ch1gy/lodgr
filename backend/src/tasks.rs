@@ -153,6 +153,7 @@ pub async fn recurring_invoices(pool: SqlitePool) {
                                 recurring: false, // instances are not themselves recurring
                                 recur_interval: None,
                                 next_recur_date: None,
+                                sub_client_id: t.sub_client_id.as_deref(),
                             },
                         )
                         .await?;

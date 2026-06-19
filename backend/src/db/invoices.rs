@@ -3,11 +3,15 @@ use sqlx::SqlitePool;
 
 use crate::{error::AppResult, models::Invoice};
 
-const COLS: &str = "id, client_id, number, status, currency, terms, issued_date, due_date, \
-     project_type, project_location, billed_to_name, billed_to_role, \
-     billed_to_addr1, billed_to_addr2, billed_to_pin, billed_to_email, billed_to_phone, \
-     items, notes, editor_note, \
-     kra_number, tax_rate, recurring, recur_interval, next_recur_date, created_at";
+const COLS: &str =
+    "i.id, i.client_id, i.number, i.status, i.currency, i.terms, i.issued_date, i.due_date, \
+     i.project_type, i.project_location, i.billed_to_name, i.billed_to_role, \
+     i.billed_to_addr1, i.billed_to_addr2, i.billed_to_pin, i.billed_to_email, i.billed_to_phone, \
+     i.items, i.notes, i.editor_note, \
+     i.kra_number, i.tax_rate, i.recurring, i.recur_interval, i.next_recur_date, i.created_at, \
+     i.sub_client_id, sc.name AS sub_client_name";
+
+const JOIN: &str = "FROM invoices i LEFT JOIN sub_clients sc ON sc.id = i.sub_client_id";
 
 pub struct NewInvoice<'a> {
     pub id: &'a str,
@@ -34,19 +38,20 @@ pub struct NewInvoice<'a> {
     pub recurring: bool,
     pub recur_interval: Option<&'a str>,
     pub next_recur_date: Option<&'a str>,
+    pub sub_client_id: Option<&'a str>,
 }
 
 pub async fn list(pool: &SqlitePool) -> AppResult<Vec<Invoice>> {
-    Ok(sqlx::query_as(&format!(
-        "SELECT {COLS} FROM invoices ORDER BY created_at DESC"
-    ))
-    .fetch_all(pool)
-    .await?)
+    Ok(
+        sqlx::query_as(&format!("SELECT {COLS} {JOIN} ORDER BY i.created_at DESC"))
+            .fetch_all(pool)
+            .await?,
+    )
 }
 
 pub async fn list_for_client(pool: &SqlitePool, client_id: &str) -> AppResult<Vec<Invoice>> {
     Ok(sqlx::query_as(&format!(
-        "SELECT {COLS} FROM invoices WHERE client_id = ? ORDER BY created_at DESC"
+        "SELECT {COLS} {JOIN} WHERE i.client_id = ? ORDER BY i.created_at DESC"
     ))
     .bind(client_id)
     .fetch_all(pool)
@@ -55,7 +60,7 @@ pub async fn list_for_client(pool: &SqlitePool, client_id: &str) -> AppResult<Ve
 
 pub async fn find_by_id(pool: &SqlitePool, id: &str) -> AppResult<Option<Invoice>> {
     Ok(
-        sqlx::query_as(&format!("SELECT {COLS} FROM invoices WHERE id = ?"))
+        sqlx::query_as(&format!("SELECT {COLS} {JOIN} WHERE i.id = ?"))
             .bind(id)
             .fetch_optional(pool)
             .await?,
@@ -69,8 +74,9 @@ pub async fn create(pool: &SqlitePool, n: NewInvoice<'_>) -> AppResult<Invoice> 
          due_date, project_type, project_location, billed_to_name, billed_to_role, \
          billed_to_addr1, billed_to_addr2, billed_to_pin, billed_to_email, billed_to_phone, \
          items, notes, editor_note, \
-         kra_number, tax_rate, recurring, recur_interval, next_recur_date, created_at) \
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+         kra_number, tax_rate, recurring, recur_interval, next_recur_date, created_at, \
+         sub_client_id) \
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     )
     .bind(n.id)
     .bind(n.client_id)
@@ -98,6 +104,7 @@ pub async fn create(pool: &SqlitePool, n: NewInvoice<'_>) -> AppResult<Invoice> 
     .bind(n.recur_interval)
     .bind(n.next_recur_date)
     .bind(&created_at)
+    .bind(n.sub_client_id)
     .execute(pool)
     .await?;
 
@@ -128,6 +135,8 @@ pub async fn create(pool: &SqlitePool, n: NewInvoice<'_>) -> AppResult<Invoice> 
         recur_interval: n.recur_interval.map(|s| s.to_owned()),
         next_recur_date: n.next_recur_date.map(|s| s.to_owned()),
         created_at,
+        sub_client_id: n.sub_client_id.map(|s| s.to_owned()),
+        sub_client_name: None,
     })
 }
 
@@ -155,6 +164,7 @@ pub struct UpdateInvoice<'a> {
     pub recurring: bool,
     pub recur_interval: Option<&'a str>,
     pub next_recur_date: Option<&'a str>,
+    pub sub_client_id: Option<&'a str>,
 }
 
 pub async fn update(pool: &SqlitePool, id: &str, u: UpdateInvoice<'_>) -> AppResult<()> {
@@ -163,7 +173,8 @@ pub async fn update(pool: &SqlitePool, id: &str, u: UpdateInvoice<'_>) -> AppRes
          project_type=?, project_location=?, billed_to_name=?, billed_to_role=?, \
          billed_to_addr1=?, billed_to_addr2=?, billed_to_pin=?, billed_to_email=?, billed_to_phone=?, \
          items=?, notes=?, \
-         editor_note=?, kra_number=?, tax_rate=?, recurring=?, recur_interval=?, next_recur_date=? \
+         editor_note=?, kra_number=?, tax_rate=?, recurring=?, recur_interval=?, next_recur_date=?, \
+         sub_client_id=? \
          WHERE id=?",
     )
     .bind(u.number)
@@ -189,6 +200,7 @@ pub async fn update(pool: &SqlitePool, id: &str, u: UpdateInvoice<'_>) -> AppRes
     .bind(u.recurring as i64)
     .bind(u.recur_interval)
     .bind(u.next_recur_date)
+    .bind(u.sub_client_id)
     .bind(id)
     .execute(pool)
     .await?;
@@ -222,9 +234,9 @@ pub async fn next_seq(pool: &SqlitePool) -> AppResult<i64> {
 pub async fn list_due_for_recurrence(pool: &SqlitePool) -> AppResult<Vec<Invoice>> {
     let today = Utc::now().format("%Y-%m-%d").to_string();
     Ok(sqlx::query_as(&format!(
-        "SELECT {COLS} FROM invoices \
-         WHERE recurring = 1 AND client_id IS NOT NULL \
-         AND next_recur_date IS NOT NULL AND next_recur_date <= ?"
+        "SELECT {COLS} {JOIN} \
+         WHERE i.recurring = 1 AND i.client_id IS NOT NULL \
+         AND i.next_recur_date IS NOT NULL AND i.next_recur_date <= ?"
     ))
     .bind(&today)
     .fetch_all(pool)

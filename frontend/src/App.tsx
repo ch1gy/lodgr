@@ -9,7 +9,9 @@
 //
 // Routes:
 //   /login                — public sign-in.
-//   /auth/magic           — one-shot token exchange landing.
+//   /magic                — one-shot token exchange landing (kept off /auth/*
+//                           so the dev proxy doesn't forward this GET to the
+//                           backend's POST-only /auth/magic exchange route).
 //   /tickets              — list (desk + client, both shapes).
 //   /tickets/:id          — detail + thread + composer.
 //   /clients              — admin client roster (desk only).
@@ -107,7 +109,7 @@ export function App() {
             <Routes>
               {/* Public */}
               <Route path="/login" element={<LoginPage />} />
-              <Route path="/auth/magic" element={<MagicLandingPage />} />
+              <Route path="/magic" element={<MagicLandingPage />} />
 
               {/* Authenticated */}
               <Route
@@ -138,7 +140,7 @@ export function App() {
               <Route
                 path="/invoices"
                 element={
-                  <ProtectedRoute deskOnly>
+                  <ProtectedRoute>
                     <PageTransition><InvoicesPage /></PageTransition>
                   </ProtectedRoute>
                 }

@@ -22,6 +22,7 @@ import {
   useMemo,
   useState,
   useCallback,
+  useRef,
   ReactNode,
 } from 'react';
 import { jwtDecode } from 'jwt-decode';
@@ -48,6 +49,8 @@ interface AuthState {
   redeemMagicLink(magicToken: string): Promise<string>;
   /** Clear server-side refresh cookie + local state. */
   logout(): Promise<void>;
+  /** Re-fetch GET /auth/me — call after the user edits their own profile. */
+  refreshProfile(): Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -91,25 +94,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [token]);
 
   // ── Silent refresh on first mount ─────────────────────────────────────────
+  // Refresh tokens rotate on every call — the old one is revoked the instant
+  // a new one is issued. StrictMode double-invokes this effect in dev, which
+  // without a guard fires two concurrent /auth/refresh requests; the second
+  // can race ahead of the browser applying the first response's Set-Cookie
+  // and replay the now-revoked old cookie, which the backend treats as token
+  // theft and wipes every session. The ref ensures only one request per app
+  // load actually fires.
+  // The ref (not a per-call `cancelled` flag) is what guards against the
+  // duplicate request — StrictMode's synthetic unmount still runs this
+  // effect's cleanup even though the fetch we kept is still in flight, so
+  // gating on a closure-local `cancelled` here would discard its own result.
+  const refreshStarted = useRef(false);
   useEffect(() => {
-    let cancelled = false;
+    if (refreshStarted.current) return;
+    refreshStarted.current = true;
     (async () => {
       try {
         const r = await fetch('/auth/refresh', {
           method: 'POST',
           credentials: 'include',
         });
-        if (!cancelled && r.ok) {
+        if (r.ok) {
           const j = (await r.json()) as { access_token: string };
           tokenStore.set(j.access_token);
         }
       } catch {
         /* no refresh cookie / network — stay signed out */
       } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -125,6 +140,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   }, []);
 
+  const refreshProfile = useCallback(async () => {
+    const data = await auth.me();
+    setProfile({ id: data.id, name: data.name, email: data.email });
+  }, []);
+
   const user = useMemo(() => safeDecode(token), [token]);
 
   const value = useMemo<AuthState>(
@@ -137,9 +157,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       login,
       redeemMagicLink,
+      refreshProfile,
       logout,
     }),
-    [token, user, profile, loading, login, redeemMagicLink, logout]
+    [token, user, profile, loading, login, redeemMagicLink, refreshProfile, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

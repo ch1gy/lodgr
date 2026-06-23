@@ -167,12 +167,14 @@ impl SmtpMailer {
         to_name: &str,
         role: &str,
         ip: &str,
-        when: &str,
+        date: &str,
+        time: &str,
     ) {
         let body = format!(
             "Hello {to_name},\n\n\
              Your {role} account was just signed in to.\n\n\
-             Time: {when}\n\
+             Date: {date}\n\
+             Time: {time}\n\
              IP address: {ip}\n\n\
              If this wasn't you, change your password immediately and contact \
              support."
@@ -192,7 +194,8 @@ impl SmtpMailer {
         let paragraphs = vec![
             format!("Hello {to_name},"),
             format!("Your {role} account was just signed in to."),
-            format!("Time: {when}"),
+            format!("Date: {date}"),
+            format!("Time: {time}"),
             format!("IP address: {ip}"),
             "If this wasn't you, change your password immediately and contact support.".to_owned(),
         ];

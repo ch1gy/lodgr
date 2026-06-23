@@ -105,24 +105,25 @@
   background: var(--cream);
   gap: 0;
 }
-.lg-list__filt-group { display: flex; gap: 18px; }
+.lg-list__filt-group { display: flex; gap: 8px; }
 .lg-list__filt-tab {
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--mid);
-  padding: 4px 0;
   background: none;
-  border: none;
+  border: 1px solid var(--rule);
+  padding: 8px 12px;
   cursor: pointer;
 }
 .lg-list__filt-tab b { color: var(--ink); }
 .lg-list__filt-tab.is-active {
-  color: var(--ink);
-  border-bottom: 1.5px solid var(--ink);
-  padding-bottom: 2px;
+  background: var(--ink);
+  color: var(--cream);
+  border-color: var(--ink);
 }
+.lg-list__filt-tab.is-active b { color: var(--cream); }
 .lg-list__filt-spacer { flex: 1; }
 .lg-list__filt-search {
   font-family: var(--mono);
@@ -383,16 +384,6 @@
   .lg-list__filt-new          { display: none; }
   /* Closed tickets are desk-only context — hide from mobile filter bar */
   .lg-list__filt-tab--desk    { display: none; }
-  /* Filter chips: boxed on mobile; active = inverted */
-  .lg-list__filt-tab {
-    border: 1px solid var(--rule);
-    padding: 8px 12px;
-  }
-  .lg-list__filt-tab.is-active {
-    background: var(--ink); color: var(--cream);
-    border-color: var(--ink); border-bottom-width: 1px; padding-bottom: 8px;
-  }
-  .lg-list__filt-tab.is-active b { color: var(--cream); }
 
   /* ── Draft A stacked card (mobile/Mobile Motion.html) ──────────────── */
   /* Grid areas: top (av · nm · sla) / title / bottom (status · cat) */

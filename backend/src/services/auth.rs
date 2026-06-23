@@ -392,10 +392,12 @@ fn spawn_login_alert(mailer: &SmtpMailer, enc_key: &EncryptionKey, user: &User, 
             let m2 = mailer.clone();
             let uname = user.name.clone();
             let role = user.role.clone();
-            let when = Utc::now().to_rfc3339();
+            let now = Utc::now();
+            let date = now.format("%d %b %Y").to_string();
+            let time = now.format("%H:%M UTC").to_string();
             let ip = peer_ip.to_string();
             tokio::spawn(async move {
-                m2.send_login_alert(&uemail, &uname, &role, &ip, &when)
+                m2.send_login_alert(&uemail, &uname, &role, &ip, &date, &time)
                     .await;
             });
         }

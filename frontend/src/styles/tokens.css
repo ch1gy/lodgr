@@ -470,6 +470,8 @@ a { color: inherit; }
   gap: 6px;
   background: none;
   border: none;
+  appearance: none;
+  -webkit-appearance: none;
   padding: 0;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -477,7 +479,7 @@ a { color: inherit; }
 .lg-theme-switch:focus-visible {
   outline: none;
 }
-.lg-theme-switch .seg {
+.lg-theme-switch__seg {
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.16em;
@@ -486,7 +488,7 @@ a { color: inherit; }
   line-height: 1;
   transition: color var(--dur-fast) var(--ease-out);
 }
-.lg-theme-switch .seg:hover { color: var(--ink); }
+.lg-theme-switch__seg:hover { color: var(--ink); }
 .lg-theme-switch .slash {
   font-family: var(--mono);
   font-size: 10px;
@@ -495,8 +497,8 @@ a { color: inherit; }
   line-height: 1;
   user-select: none;
 }
-[data-theme="light"] .lg-theme-switch .seg.light,
-[data-theme="dark"]  .lg-theme-switch .seg.dark {
+[data-theme="light"] .lg-theme-switch__seg.light,
+[data-theme="dark"]  .lg-theme-switch__seg.dark {
   color: var(--ink);
   text-decoration: underline;
   text-decoration-thickness: 1.5px;

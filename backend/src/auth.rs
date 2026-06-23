@@ -146,6 +146,44 @@ pub async fn list_sessions(
     Ok(Json(dtos))
 }
 
+#[derive(Deserialize)]
+pub struct UpdateMyProfileRequest {
+    pub name: Option<String>,
+    pub email: Option<String>,
+}
+
+/// PATCH /auth/profile — a client updates their own name/email.
+/// Desk identity lives in the desk-profile (invoice letterhead) settings instead.
+pub async fn update_my_profile(
+    State(pool): State<SqlitePool>,
+    State(enc_key): State<EncryptionKey>,
+    State(config): State<Config>,
+    FullSessionUser(claims): FullSessionUser,
+    Json(body): Json<UpdateMyProfileRequest>,
+) -> AppResult<impl IntoResponse> {
+    if claims.role != "client" {
+        return Err(AppError::Forbidden);
+    }
+    let user = services::admin::update_client_profile(
+        &pool,
+        &enc_key,
+        &config.email_hash_salt,
+        &claims.sub,
+        services::admin::UpdateClientProfileInput {
+            name: body.name,
+            email: body.email,
+            address_line1: None,
+            address_line2: None,
+            pin_number: None,
+            contact_person: None,
+            phone: None,
+        },
+    )
+    .await?;
+    let decrypted = services::admin::decrypt_user(user, &enc_key)?;
+    Ok(Json(MeResponse::from(decrypted)))
+}
+
 /// DELETE /auth/sessions/:id — revoke one of the caller's own sessions by id.
 /// Full sessions only. The caller can revoke any of their own sessions.
 pub async fn revoke_session(

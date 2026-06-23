@@ -22,10 +22,12 @@ import '../styles/v2.css';
 
 type NavItem = 'password' | 'desk-profile' | 'profile' | 'sessions' | 'notifications' | 'danger';
 
-const NAV_ITEMS: Array<{ key: NavItem; label: string; sub: string }> = [
+type NavItemDef = { key: NavItem; label: string; sub: string; deskOnly?: boolean; clientOnly?: boolean };
+
+const NAV_ITEMS: NavItemDef[] = [
   { key: 'password',      label: '— Password',       sub: 'Change your passphrase' },
-  { key: 'desk-profile',  label: '— Desk profile',   sub: 'Invoice "From" info' },
-  { key: 'profile',       label: '— Profile',        sub: 'Name and contact email' },
+  { key: 'desk-profile',  label: '— Desk profile',   sub: 'Invoice "From" info', deskOnly: true },
+  { key: 'profile',       label: '— Profile',        sub: 'Name and contact email', clientOnly: true },
   { key: 'sessions',      label: '— Sessions',       sub: 'Active device list' },
   { key: 'notifications', label: '— Notifications',  sub: 'Email and in-app alerts' },
   { key: 'danger',        label: '— Sign out everywhere', sub: 'Revoke every other session' },
@@ -43,11 +45,14 @@ function useIsPhone() {
 }
 
 export function SettingsPage() {
-  const { user, profile, logout } = useAuth();
+  const { user, profile, logout, isDesk } = useAuth();
   const { theme, toggle } = useTheme();
   const [section, setSection] = useState<NavItem>('password');
   const [mobileOpen, setMobileOpen] = useState(false);
   const isPhone = useIsPhone();
+  const navItems = NAV_ITEMS.filter(
+    (item) => (!item.deskOnly || isDesk) && (!item.clientOnly || !isDesk)
+  );
 
   function summaryFor(key: NavItem): string {
     switch (key) {
@@ -71,7 +76,7 @@ export function SettingsPage() {
               <div className="lg-set__eye">— The desk · Account</div>
               <div className="lg-set__h1" style={{ fontSize: 40, fontFamily: 'var(--serif)', fontStyle: 'italic', marginBottom: 24 }}>Settings</div>
               <nav className="lg-set__mlist">
-                {NAV_ITEMS.map((item) => (
+                {navItems.map((item) => (
                   <button
                     key={item.key}
                     type="button"
@@ -104,7 +109,7 @@ export function SettingsPage() {
               <button type="button" className="lg-set__mback" onClick={() => setMobileOpen(false)}>← Settings</button>
               {section === 'password' && <PasswordSection userEmail={profile?.email ?? user?.email} />}
               {section === 'desk-profile' && <DeskProfileSection />}
-              {section === 'profile' && <PlaceholderSection title="Profile" note="Profile editing is coming soon. Contact the desk to update your name or email." />}
+              {section === 'profile' && <ProfileSection />}
               {section === 'sessions' && <SessionsSection />}
               {section === 'notifications' && <PlaceholderSection title="Notifications" note="Notification preferences are coming soon." />}
               {section === 'danger' && <DangerSection />}
@@ -116,7 +121,7 @@ export function SettingsPage() {
             <nav className="lg-set__nav">
               <div className="lg-set__eye">— The desk · settings</div>
               <div className="lg-set__h1">Your<br /><i>account.</i></div>
-              {NAV_ITEMS.map((item) => (
+              {navItems.map((item) => (
                 <button
                   key={item.key}
                   type="button"
@@ -134,7 +139,7 @@ export function SettingsPage() {
             <div className="lg-set__body">
               {section === 'password' && <PasswordSection userEmail={profile?.email ?? user?.email} />}
               {section === 'desk-profile' && <DeskProfileSection />}
-              {section === 'profile' && <PlaceholderSection title="Profile" note="Profile editing is coming soon. Contact the desk to update your name or email." />}
+              {section === 'profile' && <ProfileSection />}
               {section === 'sessions' && <SessionsSection />}
               {section === 'notifications' && <PlaceholderSection title="Notifications" note="Notification preferences are coming soon." />}
               {section === 'danger' && <DangerSection />}
@@ -319,6 +324,68 @@ function DangerSection() {
           Sign out ✕
         </button>
       )}
+    </>
+  );
+}
+
+// ── Profile section (client self-service) ───────────────────────────────────
+function ProfileSection() {
+  const { profile, refreshProfile } = useAuth();
+
+  const [name, setName]     = useState('');
+  const [email, setEmail]   = useState('');
+  const [seeded, setSeeded] = useState(false);
+  const [saved, setSaved]   = useState(false);
+
+  if (profile && !seeded) {
+    setName(profile.name);
+    setEmail(profile.email);
+    setSeeded(true);
+  }
+
+  const updateM = useMutation({
+    mutationFn: () => authApi.updateMyProfile({ name, email }),
+    onSuccess: () => {
+      void refreshProfile();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    },
+  });
+
+  const err = updateM.error
+    ? extractApiError(updateM.error, 'Save failed.')
+    : null;
+
+  const canSubmit = name.trim().length > 0 && email.trim().length > 0 && !updateM.isPending;
+
+  return (
+    <>
+      <div className="lg-set__sec-eye">— Section 02 · Profile</div>
+      <h2 className="lg-set__h2">Your <em>info.</em></h2>
+      <div className="lg-set__dek">
+        Your name and email as the desk sees them. Changing email here does not
+        require re-verification — make sure it's an address you control.
+      </div>
+
+      <div style={{ display: 'grid', gap: '22px', maxWidth: 420, marginTop: 8 }}>
+        <div className="lg-f">
+          <div className="lg-f__lbl"><span>Name</span></div>
+          <input className="lg-f__inp" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="lg-f">
+          <div className="lg-f__lbl"><span>Email</span></div>
+          <input className="lg-f__inp" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+      </div>
+
+      {err && <div className="lg-f__err" style={{ marginTop: 12 }}>{err}</div>}
+      {saved && <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--green, #4f6f4a)', marginTop: 12 }}>✓ Saved</div>}
+
+      <div style={{ marginTop: 24 }}>
+        <button type="button" className="lg-bt lg-bt--solid" onClick={() => updateM.mutate()} disabled={!canSubmit}>
+          {updateM.isPending ? 'Saving…' : 'Save profile'} <span className="arr">↗</span>
+        </button>
+      </div>
     </>
   );
 }

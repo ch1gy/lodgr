@@ -252,6 +252,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/auth/logout", post(auth::logout))
         .route("/auth/password", patch(auth::change_password))
         .route("/auth/me", get(auth::me))
+        .route("/auth/profile", patch(auth::update_my_profile))
         .route("/auth/sessions", get(auth::list_sessions))
         .route("/auth/sessions/:id", delete(auth::revoke_session))
         // ── Admin ──────────────────────────────────────────────────────────

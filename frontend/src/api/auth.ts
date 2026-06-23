@@ -40,6 +40,12 @@ export const auth = {
     return r.data.access_token;
   },
 
+  /** Client self-service: update own name/email. */
+  async updateMyProfile(fields: { name?: string; email?: string }): Promise<MeResponse> {
+    const r = await api.patch<MeResponse>('/auth/profile', fields);
+    return r.data;
+  },
+
   async listSessions(): Promise<SessionResponse[]> {
     const r = await api.get<SessionResponse[]>('/auth/sessions');
     return r.data;

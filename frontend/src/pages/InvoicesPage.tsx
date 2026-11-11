@@ -38,13 +38,24 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
   draft: 'Draft',
   sent: 'Sent',
   paid: 'Paid',
+  void: 'Void',
 };
 
 const STATUS_COLOR: Record<InvoiceStatus, string> = {
   draft: 'var(--mid)',
   sent: 'var(--ink)',
   paid: '#2a7a3b',
+  void: 'var(--mid)',
 };
+
+function validTransitionsFor(status: InvoiceStatus): InvoiceStatus[] {
+  switch (status) {
+    case 'draft': return ['sent'];
+    case 'sent':  return ['draft', 'paid', 'void'];
+    case 'paid':  return ['void'];
+    case 'void':  return [];
+  }
+}
 
 // ── Shared invoice field helpers ──────────────────────────────────────────────
 
@@ -83,8 +94,8 @@ function LineItemsEditor({ items, currency, total, onSetItem, onAddItem, onRemov
             <input className="inv-inp" value={it.name} onChange={(e) => onSetItem(i, 'name', e.target.value)} placeholder="Item name" />
             <input className="inv-inp" style={{ marginTop: 3, fontSize: 10, color: 'var(--mid)' }} value={it.sub ?? ''} onChange={(e) => onSetItem(i, 'sub', e.target.value)} placeholder="Description (optional)" />
           </div>
-          <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="1" value={it.qty} onChange={(e) => onSetItem(i, 'qty', Number(e.target.value))} placeholder="1" />
-          <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="0" value={it.rate} onChange={(e) => onSetItem(i, 'rate', Number(e.target.value))} placeholder="0" />
+          <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="1" step="1" value={it.qty} onChange={(e) => onSetItem(i, 'qty', Number(e.target.value))} placeholder="1" />
+          <input className="inv-inp" style={{ textAlign: 'right' }} type="number" min="0" step="1" value={it.rate} onChange={(e) => onSetItem(i, 'rate', Number(e.target.value))} placeholder="0" />
           <button type="button" onClick={() => onRemoveItem(i)} disabled={items.length === 1}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 12, padding: 0, alignSelf: 'center' }}>✕</button>
         </div>
@@ -240,6 +251,8 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
     setErr('');
     if (!selectedClient) { setErr('Select a client'); return; }
     if (items.some((it) => !it.name.trim())) { setErr('All line items need a name'); return; }
+    if (items.some((it) => !Number.isInteger(it.qty) || it.qty < 1)) { setErr('Qty must be a whole number ≥ 1'); return; }
+    if (items.some((it) => !Number.isInteger(it.rate) || it.rate < 0)) { setErr('Rate must be a whole number ≥ 0'); return; }
     createM.mutate({
       client_id: selectedClient.id,
       currency, terms, issued_date: issuedDate, due_date: dueDate,
@@ -501,6 +514,8 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
     setErr('');
     if (!number.trim()) { setErr('Invoice number is required'); return; }
     if (items.some((it) => !it.name.trim())) { setErr('All line items need a name'); return; }
+    if (items.some((it) => !Number.isInteger(it.qty) || it.qty < 1)) { setErr('Qty must be a whole number ≥ 1'); return; }
+    if (items.some((it) => !Number.isInteger(it.rate) || it.rate < 0)) { setErr('Rate must be a whole number ≥ 0'); return; }
     updateM.mutate({
       number: number.trim(), currency, terms,
       issued_date: issuedDate, due_date: dueDate,
@@ -510,7 +525,7 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
       billed_to_pin: billedToPin || undefined,
       billed_to_email: billedToEmail || undefined, billed_to_phone: billedToPhone || undefined,
       items, notes: notes.filter((n) => n.k.trim()),
-      editor_note: editorNote || undefined, kra_number: kraNumber || undefined,
+      editor_note: editorNote || undefined, kra_number: kraNumber,
       tax_rate: taxRate,
       recurring, recur_interval: recurring ? recurInterval : undefined,
       next_recur_date: recurring && nextRecurDate ? nextRecurDate : undefined,
@@ -712,7 +727,7 @@ function InvoiceRow({ invoice, clientName, isDesk, onStatusChange, onDelete, onD
           {invoice.currency} {total.toLocaleString('en-US')}
         </div>
         <div className="lg-inv-c-acts" style={{ display: 'flex', gap: 8 }}>
-          {isDesk && (
+          {isDesk && invoice.status === 'draft' && (
             <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(invoice); }}
               style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--ink)' }}>
               Edit ✎
@@ -726,10 +741,16 @@ function InvoiceRow({ invoice, clientName, isDesk, onStatusChange, onDelete, onD
             style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--mid)' }}>
             Download ↓
           </button>
-          {isDesk && (
+          {isDesk && invoice.status === 'draft' && (
             <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(invoice.id); }}
               style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--red)' }}>
               Del
+            </button>
+          )}
+          {isDesk && (invoice.status === 'sent' || invoice.status === 'paid') && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); onStatusChange(invoice.id, 'void'); }}
+              style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--mid)' }}>
+              Void
             </button>
           )}
         </div>
@@ -741,7 +762,8 @@ function InvoiceRow({ invoice, clientName, isDesk, onStatusChange, onDelete, onD
           {/* Status control */}
           {isDesk ? (
             <div style={{ display: 'flex', gap: 8, marginBottom: 14, paddingTop: 14 }}>
-              {(['draft', 'sent', 'paid'] as InvoiceStatus[]).map((s) => (
+              {/* Always show current status as selected; show reachable transitions as buttons */}
+              {([invoice.status, ...validTransitionsFor(invoice.status)] as InvoiceStatus[]).map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -821,6 +843,7 @@ export function InvoicesPage() {
   const [filterStatus, setFilterStatus]     = useState<InvoiceStatus | 'all'>('all');
   const [sortBy, setSortBy]                 = useState<'date' | 'sub_client'>('date');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [mutationErr, setMutationErr]       = useState('');
 
   const invoicesQ = useQuery({
     queryKey: ['invoices'],
@@ -853,12 +876,14 @@ export function InvoicesPage() {
   const statusM = useMutation({
     mutationFn: ({ id, status }: { id: string; status: InvoiceStatus }) =>
       admin.updateInvoice(id, { status } as UpdateInvoicePayload),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['invoices'] }),
+    onSuccess: () => { setMutationErr(''); void qc.invalidateQueries({ queryKey: ['invoices'] }); },
+    onError: (e: Error) => setMutationErr(e.message),
   });
 
   const deleteM = useMutation({
     mutationFn: (id: string) => admin.deleteInvoice(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['invoices'] }),
+    onSuccess: () => { setMutationErr(''); void qc.invalidateQueries({ queryKey: ['invoices'] }); },
+    onError: (e: Error) => setMutationErr(e.message),
   });
 
   async function handlePreview(id: string) {
@@ -881,7 +906,7 @@ export function InvoicesPage() {
   }
 
   const counts = useMemo(() => {
-    const c = { all: invoices.length, draft: 0, sent: 0, paid: 0 };
+    const c: Record<InvoiceStatus | 'all', number> = { all: invoices.length, draft: 0, sent: 0, paid: 0, void: 0 };
     for (const inv of invoices) c[inv.status]++;
     return c;
   }, [invoices]);
@@ -908,7 +933,7 @@ export function InvoicesPage() {
               <span className="lg-list__title-count">/ {String(counts.all).padStart(3, '0')}</span>
             </h1>
             <div className="lg-list__sub">
-              {counts.draft} draft · {counts.sent} sent · {counts.paid} paid
+              {counts.draft} draft · {counts.sent} sent · {counts.paid} paid{counts.void > 0 ? ` · ${counts.void} void` : ''}
             </div>
           </div>
           <div className="lg-list__head-meta">
@@ -922,7 +947,7 @@ export function InvoicesPage() {
         {/* ── Filter + actions ────────────────────────────────────────────── */}
         <div className="lg-list__filt">
           <div className="lg-list__filt-group">
-            {(['all', 'draft', 'sent', 'paid'] as const).map((s) => (
+            {(['all', 'draft', 'sent', 'paid', 'void'] as const).map((s) => (
               <button
                 key={s}
                 type="button"
@@ -960,6 +985,10 @@ export function InvoicesPage() {
             </button>
           )}
         </div>
+
+        {mutationErr && (
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--red)', margin: '8px 0' }}>{mutationErr}</div>
+        )}
 
         {/* ── Column headers + rows (scroll on mobile) ─────────────────────── */}
         <div className="lg-inv-table-wrap">

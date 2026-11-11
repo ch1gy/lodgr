@@ -21,6 +21,28 @@ use crate::{
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+pub fn valid_status(s: &str) -> bool {
+    matches!(s, "draft" | "sent" | "paid" | "void")
+}
+
+pub fn valid_date(s: &str) -> bool {
+    NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok()
+}
+
+pub fn valid_transition(from: &str, to: &str) -> bool {
+    if from == to {
+        return true;
+    }
+    matches!(
+        (from, to),
+        ("draft", "sent")
+            | ("sent", "draft")
+            | ("sent", "paid")
+            | ("sent", "void")
+            | ("paid", "void")
+    )
+}
+
 fn html_esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -490,6 +512,20 @@ pub async fn create(
         ));
     }
 
+    if !valid_date(&body.issued_date) {
+        return Err(AppError::BadRequest("issued_date must be YYYY-MM-DD".into()));
+    }
+    if !valid_date(&body.due_date) {
+        return Err(AppError::BadRequest("due_date must be YYYY-MM-DD".into()));
+    }
+    let issued_nd = NaiveDate::parse_from_str(&body.issued_date, "%Y-%m-%d").unwrap();
+    let due_nd = NaiveDate::parse_from_str(&body.due_date, "%Y-%m-%d").unwrap();
+    if due_nd < issued_nd {
+        return Err(AppError::BadRequest(
+            "due_date must be on or after issued_date".into(),
+        ));
+    }
+
     if let Some(sc_id) = body.sub_client_id.as_deref().filter(|s| !s.is_empty()) {
         match db::sub_clients::find_by_id(&pool, sc_id).await? {
             Some(sc) if sc.client_id == body.client_id => {}
@@ -583,6 +619,117 @@ pub async fn update(
         .await?
         .ok_or(AppError::NotFound)?;
 
+    // Validate status value.
+    if let Some(ref s) = body.status {
+        if !valid_status(s) {
+            return Err(AppError::BadRequest(format!(
+                "invalid status '{s}'; must be draft, sent, paid, or void"
+            )));
+        }
+        if !valid_transition(&inv.status, s) {
+            return Err(AppError::BadRequest(format!(
+                "cannot transition from '{}' to '{s}'",
+                inv.status
+            )));
+        }
+    }
+
+    // Field lock: non-draft invoices may only update status/kra_number/recurring fields.
+    if inv.status != "draft" {
+        let locked = body
+            .number
+            .as_deref()
+            .filter(|&v| v != inv.number)
+            .is_some()
+            || body
+                .currency
+                .as_deref()
+                .filter(|&v| v != inv.currency)
+                .is_some()
+            || body
+                .terms
+                .as_deref()
+                .filter(|&v| v != inv.terms)
+                .is_some()
+            || body
+                .issued_date
+                .as_deref()
+                .filter(|&v| v != inv.issued_date)
+                .is_some()
+            || body
+                .due_date
+                .as_deref()
+                .filter(|&v| v != inv.due_date)
+                .is_some()
+            || body
+                .project_type
+                .as_deref()
+                .filter(|&v| v != inv.project_type)
+                .is_some()
+            || body
+                .project_location
+                .as_deref()
+                .filter(|&v| v != inv.project_location)
+                .is_some()
+            || body
+                .billed_to_name
+                .as_deref()
+                .filter(|&v| v != inv.billed_to_name)
+                .is_some()
+            || body
+                .billed_to_role
+                .as_deref()
+                .filter(|&v| v != inv.billed_to_role)
+                .is_some()
+            || body
+                .billed_to_addr1
+                .as_deref()
+                .filter(|&v| v != inv.billed_to_addr1)
+                .is_some()
+            || body
+                .billed_to_addr2
+                .as_deref()
+                .filter(|&v| v != inv.billed_to_addr2)
+                .is_some()
+            || body
+                .billed_to_pin
+                .as_deref()
+                .filter(|&v| v != inv.billed_to_pin)
+                .is_some()
+            || body
+                .billed_to_email
+                .as_deref()
+                .filter(|&v| v != inv.billed_to_email)
+                .is_some()
+            || body
+                .billed_to_phone
+                .as_deref()
+                .filter(|&v| v != inv.billed_to_phone)
+                .is_some()
+            || body.items.is_some()
+            || body.notes.is_some()
+            || body
+                .editor_note
+                .as_deref()
+                .filter(|&v| v != inv.editor_note)
+                .is_some()
+            || body
+                .tax_rate
+                .filter(|&v| (v - inv.tax_rate).abs() > f64::EPSILON)
+                .is_some()
+            || body
+                .sub_client_id
+                .as_deref()
+                .filter(|&v| v != inv.sub_client_id.as_deref().unwrap_or(""))
+                .is_some();
+
+        if locked {
+            return Err(AppError::BadRequest(
+                "only status, kra_number, and recurring fields may be changed on a non-draft invoice".into(),
+            ));
+        }
+    }
+
     let items_json = if let Some(ref items) = body.items {
         serde_json::to_string(items)
             .map_err(|e| AppError::Internal(format!("items serialization: {e}")))?
@@ -608,10 +755,51 @@ pub async fn update(
         None => inv.tax_rate,
     };
 
-    // kra_number: explicit null in JSON clears it; omitting keeps current value.
-    // Since serde Option<Option<String>> is complex, we just accept Option<String>
-    // and use the provided value or fall back to current.
-    let kra = body.kra_number.as_deref().or(inv.kra_number.as_deref());
+    // Date validation — only validate fields that are being changed.
+    if let Some(ref s) = body.issued_date {
+        if !valid_date(s) {
+            return Err(AppError::BadRequest("issued_date must be YYYY-MM-DD".into()));
+        }
+    }
+    if let Some(ref s) = body.due_date {
+        if !valid_date(s) {
+            return Err(AppError::BadRequest("due_date must be YYYY-MM-DD".into()));
+        }
+    }
+    let issued = body.issued_date.as_deref().unwrap_or(&inv.issued_date);
+    let due = body.due_date.as_deref().unwrap_or(&inv.due_date);
+    if (body.issued_date.is_some() || body.due_date.is_some())
+        && NaiveDate::parse_from_str(due, "%Y-%m-%d")
+            < NaiveDate::parse_from_str(issued, "%Y-%m-%d")
+    {
+        return Err(AppError::BadRequest(
+            "due_date must be on or after issued_date".into(),
+        ));
+    }
+
+    // kra_number: empty string clears to NULL; omitting keeps existing value.
+    let kra = match body.kra_number.as_deref() {
+        None => inv.kra_number.as_deref(),
+        Some("") => None,
+        Some(v) => Some(v),
+    };
+
+    // recurring=false clears recur_interval and next_recur_date.
+    let new_recurring = body.recurring.unwrap_or(inv.recurring != 0);
+    let recur_interval = if !new_recurring {
+        None
+    } else {
+        body.recur_interval
+            .as_deref()
+            .or(inv.recur_interval.as_deref())
+    };
+    let next_recur_date = if !new_recurring {
+        None
+    } else {
+        body.next_recur_date
+            .as_deref()
+            .or(inv.next_recur_date.as_deref())
+    };
 
     let target_client_id = inv.client_id.as_deref();
     let sub_client_id = match body.sub_client_id.as_deref() {
@@ -639,8 +827,8 @@ pub async fn update(
             status: body.status.as_deref().unwrap_or(&inv.status),
             currency: body.currency.as_deref().unwrap_or(&inv.currency),
             terms: body.terms.as_deref().unwrap_or(&inv.terms),
-            issued_date: body.issued_date.as_deref().unwrap_or(&inv.issued_date),
-            due_date: body.due_date.as_deref().unwrap_or(&inv.due_date),
+            issued_date: issued,
+            due_date: due,
             project_type: body.project_type.as_deref().unwrap_or(&inv.project_type),
             project_location: body
                 .project_location
@@ -676,15 +864,9 @@ pub async fn update(
             editor_note: body.editor_note.as_deref().unwrap_or(&inv.editor_note),
             kra_number: kra,
             tax_rate,
-            recurring: body.recurring.unwrap_or(inv.recurring != 0),
-            recur_interval: body
-                .recur_interval
-                .as_deref()
-                .or(inv.recur_interval.as_deref()),
-            next_recur_date: body
-                .next_recur_date
-                .as_deref()
-                .or(inv.next_recur_date.as_deref()),
+            recurring: new_recurring,
+            recur_interval,
+            next_recur_date,
             sub_client_id,
         },
     )
@@ -701,9 +883,14 @@ pub async fn delete(
     _: DeskUser,
     Path(id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
-    db::invoices::find_by_id(&pool, &id)
+    let inv = db::invoices::find_by_id(&pool, &id)
         .await?
         .ok_or(AppError::NotFound)?;
+    if inv.status != "draft" {
+        return Err(AppError::BadRequest(
+            "only draft invoices can be deleted".into(),
+        ));
+    }
     db::invoices::delete(&pool, &id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

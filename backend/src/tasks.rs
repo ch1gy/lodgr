@@ -1,4 +1,4 @@
-use chrono::{Months, NaiveDate, Utc};
+use chrono::{Duration, Months, NaiveDate, Utc};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -61,7 +61,7 @@ pub async fn recurring_tickets(pool: SqlitePool) {
     }
 }
 
-fn advance_recur_date(date_str: &str, interval: &str) -> Option<String> {
+pub fn advance_recur_date(date_str: &str, interval: &str) -> Option<String> {
     let d = NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()?;
     let months = match interval {
         "quarterly" => 3,
@@ -115,19 +115,31 @@ pub async fn recurring_invoices(pool: SqlitePool) {
                     };
 
                     let new_id = Uuid::new_v4().to_string();
-                    // Include a short UUID segment so the number is unique per auto-generation,
-                    // preventing UNIQUE constraint collisions on restart or template reuse.
-                    let suffix = &new_id[..8];
-                    let number = format!("{}-auto-{}", t.number, suffix);
                     let today = Utc::now().format("%Y-%m-%d").to_string();
+
+                    // Compute due date from the template's terms (e.g. "Net 14" → issued + 14 days).
+                    let due_days: i64 = t
+                        .terms
+                        .strip_prefix("Net ")
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(14);
+                    let issued_nd = NaiveDate::parse_from_str(&today, "%Y-%m-%d")
+                        .expect("today is always valid %Y-%m-%d");
+                    let due_date = (issued_nd + Duration::days(due_days))
+                        .format("%Y-%m-%d")
+                        .to_string();
+
                     let items_json = t.items.clone();
                     let notes_json = t.notes.clone();
 
-                    // Run create + date advance in a single transaction so a mid-flight
-                    // crash does not leave the template stuck at the old date.
+                    // Run next_seq + create + date advance in a single transaction so a
+                    // mid-flight crash cannot produce duplicate numbers or stuck templates.
                     let tx_result: crate::error::AppResult<()> = async {
-                        db::invoices::create(
-                            &pool,
+                        let mut tx = pool.begin().await?;
+                        let seq = db::invoices::next_seq_tx(&mut tx).await?;
+                        let number = format!("INV-{seq:04}");
+                        db::invoices::create_tx(
+                            &mut tx,
                             db::invoices::NewInvoice {
                                 id: &new_id,
                                 client_id,
@@ -135,7 +147,7 @@ pub async fn recurring_invoices(pool: SqlitePool) {
                                 currency: &t.currency,
                                 terms: &t.terms,
                                 issued_date: &today,
-                                due_date: &t.due_date,
+                                due_date: &due_date,
                                 project_type: &t.project_type,
                                 project_location: &t.project_location,
                                 billed_to_name: &t.billed_to_name,
@@ -157,7 +169,8 @@ pub async fn recurring_invoices(pool: SqlitePool) {
                             },
                         )
                         .await?;
-                        db::invoices::update_next_recur_date(&pool, &t.id, &next_date).await?;
+                        db::invoices::update_next_recur_date_tx(&mut tx, &t.id, &next_date).await?;
+                        tx.commit().await?;
                         Ok(())
                     }
                     .await;

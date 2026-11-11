@@ -117,7 +117,7 @@ export interface Client {
 }
 
 // ── Invoices ─────────────────────────────────────────────────────────────────
-export type InvoiceStatus = 'draft' | 'sent' | 'paid';
+export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'void';
 export type RecurInterval = 'monthly' | 'quarterly' | 'yearly';
 
 export interface InvoiceItem {

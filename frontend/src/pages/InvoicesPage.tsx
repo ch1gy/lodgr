@@ -4,7 +4,7 @@ import { Masthead } from '../components/Masthead';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { admin } from '../api/admin';
 import { api } from '../api/client';
-import { downloadBlob } from '../utils/format';
+import { addInterval, downloadBlob, extractApiError } from '../utils/format';
 import { useAuth } from '../auth/AuthContext';
 import type {
   Client,
@@ -57,6 +57,8 @@ function validTransitionsFor(status: InvoiceStatus): InvoiceStatus[] {
   }
 }
 
+const RECUR_INTERVALS: RecurInterval[] = ['monthly', 'quarterly', 'yearly'];
+
 // ── Shared invoice field helpers ──────────────────────────────────────────────
 
 function InvField({ label, children, span2 }: { label: string; children: React.ReactNode; span2?: boolean }) {
@@ -65,6 +67,50 @@ function InvField({ label, children, span2 }: { label: string; children: React.R
       <div className="inv-lbl">{label}</div>
       {children}
     </div>
+  );
+}
+
+interface RecurrenceFieldsProps {
+  recurring: boolean;
+  onToggle: () => void;
+  interval: RecurInterval;
+  onInterval: (v: RecurInterval) => void;
+  nextDate: string;
+  onNextDate: (v: string) => void;
+  dateLabel: string;
+}
+
+function RecurrenceFields({ recurring, onToggle, interval, onInterval, nextDate, onNextDate, dateLabel }: RecurrenceFieldsProps) {
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <button type="button" className={`lg-ck${recurring ? ' on' : ''}`} onClick={onToggle}>
+          <span className="lg-ck__b">{recurring ? '✓' : ''}</span>
+          <span className="lg-ck__l">Recurring invoice</span>
+        </button>
+      </div>
+      {recurring && (
+        <div className="inv-grid-3" style={{ marginTop: 10 }}>
+          <div>
+            <div className="inv-lbl">Interval</div>
+            <div className="lg-seg" style={{ marginTop: 4 }}>
+              {RECUR_INTERVALS.map((v) => (
+                <button key={v} type="button"
+                  className={`lg-seg__o${interval === v ? ' on' : ''}`}
+                  onClick={() => onInterval(v)}>
+                  {v[0].toUpperCase() + v.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ gridColumn: '2 / 4' }}>
+            <InvField label={`${dateLabel} *`}>
+              <input className="inv-inp" type="date" required value={nextDate} onChange={(e) => onNextDate(e.target.value)} />
+            </InvField>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -181,7 +227,9 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
   const [kraNumber] = useState('');
   const [recurring, setRecurring] = useState(false);
   const [recurInterval, setRecurInterval] = useState<RecurInterval>('monthly');
-  const [nextRecurDate, setNextRecurDate] = useState('');
+  // null = untouched: follows issued date + interval until the desk picks a date.
+  const [nextRecurDate, setNextRecurDate] = useState<string | null>(null);
+  const effectiveNextRecurDate = nextRecurDate ?? addInterval(issuedDate, recurInterval);
   const [taxRate, setTaxRate] = useState(16);
   const [items, setItems] = useState<InvoiceItem[]>([{ name: '', qty: 1, rate: 0 }]);
   const [notes, setNotes] = useState<InvoiceNote[]>([]);
@@ -243,7 +291,7 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
   const createM = useMutation({
     mutationFn: (payload: CreateInvoicePayload) => admin.createInvoice(payload),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['invoices'] }); onClose(); },
-    onError: (e: Error) => setErr(e.message),
+    onError: (e: Error) => setErr(extractApiError(e, 'Could not create the invoice')),
   });
 
   function handleSubmit(e: React.FormEvent) {
@@ -253,6 +301,7 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
     if (items.some((it) => !it.name.trim())) { setErr('All line items need a name'); return; }
     if (items.some((it) => !Number.isInteger(it.qty) || it.qty < 1)) { setErr('Qty must be a whole number ≥ 1'); return; }
     if (items.some((it) => !Number.isInteger(it.rate) || it.rate < 0)) { setErr('Rate must be a whole number ≥ 0'); return; }
+    if (recurring && !effectiveNextRecurDate) { setErr('Pick the date the next invoice is created'); return; }
     createM.mutate({
       client_id: selectedClient.id,
       currency, terms, issued_date: issuedDate, due_date: dueDate,
@@ -265,7 +314,7 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
       editor_note: editorNote || undefined, kra_number: kraNumber || undefined,
       tax_rate: taxRate,
       recurring, recur_interval: recurring ? recurInterval : undefined,
-      next_recur_date: recurring && nextRecurDate ? nextRecurDate : undefined,
+      next_recur_date: recurring ? effectiveNextRecurDate : undefined,
       sub_client_id: subClientId || undefined,
     });
   }
@@ -399,35 +448,14 @@ function CreateInvoiceModal({ clients, onClose }: CreateModalProps) {
 
             {/* ── Recurring ─────────────────────────────────────────────── */}
             <div className="inv-sec">Recurring</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <button type="button" className={`lg-ck${recurring ? ' on' : ''}`} onClick={() => setRecurring((v) => !v)}>
-                <span className="lg-ck__b">{recurring ? '✓' : ''}</span>
-                <span className="lg-ck__l">Recurring invoice</span>
-              </button>
-            </div>
-            {recurring && (
-              <div className="inv-grid-3" style={{ marginTop: 10 }}>
-                <div>
-                  <div className="inv-lbl">Interval</div>
-                  <div className="lg-seg" style={{ marginTop: 4 }}>
-                    {(['monthly', 'quarterly', 'yearly'] as RecurInterval[]).map((v) => (
-                      <button key={v} type="button"
-                        className={`lg-seg__o${recurInterval === v ? ' on' : ''}`}
-                        onClick={() => setRecurInterval(v)}>
-                        {v[0].toUpperCase() + v.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div style={{ gridColumn: '2 / 4' }}>
-                  <InvField label="First auto-create on">
-                    <input className="inv-inp" type="date" value={nextRecurDate} onChange={(e) => setNextRecurDate(e.target.value)} />
-                  </InvField>
-                </div>
-              </div>
-            )}
+            <RecurrenceFields
+              recurring={recurring} onToggle={() => setRecurring((v) => !v)}
+              interval={recurInterval} onInterval={setRecurInterval}
+              nextDate={effectiveNextRecurDate} onNextDate={setNextRecurDate}
+              dateLabel="First auto-create on"
+            />
 
-            {err && <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--red)', marginTop: 12 }}>{err}</div>}
+            {err && <div className="inv-err">{err}</div>}
           </div>
 
           <div className="lg-mdl__foot">
@@ -473,8 +501,10 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
   const [kraNumber, setKraNumber]         = useState(invoice.kra_number ?? '');
   const [taxRate, setTaxRate]             = useState(invoice.tax_rate ?? 0);
   const [recurring, setRecurring]         = useState(invoice.recurring);
-  const [recurInterval, setRecurInterval] = useState<RecurInterval>((invoice.recur_interval as RecurInterval) ?? 'monthly');
-  const [nextRecurDate, setNextRecurDate] = useState(invoice.next_recur_date ?? '');
+  const [recurInterval, setRecurInterval] = useState<RecurInterval>(invoice.recur_interval ?? 'monthly');
+  // null = no date yet: follows issued date + interval until the desk picks one.
+  const [nextRecurDate, setNextRecurDate] = useState<string | null>(invoice.next_recur_date);
+  const effectiveNextRecurDate = nextRecurDate ?? addInterval(issuedDate, recurInterval);
   const [items, setItems]                 = useState<InvoiceItem[]>(
     invoice.items.length ? invoice.items : [{ name: '', qty: 1, rate: 0 }],
   );
@@ -506,7 +536,7 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
   const updateM = useMutation({
     mutationFn: (payload: UpdateInvoicePayload) => admin.updateInvoice(invoice.id, payload),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['invoices'] }); onClose(); },
-    onError: (e: Error) => setErr(e.message),
+    onError: (e: Error) => setErr(extractApiError(e, 'Could not save the invoice')),
   });
 
   function handleSubmit(e: React.FormEvent) {
@@ -516,19 +546,22 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
     if (items.some((it) => !it.name.trim())) { setErr('All line items need a name'); return; }
     if (items.some((it) => !Number.isInteger(it.qty) || it.qty < 1)) { setErr('Qty must be a whole number ≥ 1'); return; }
     if (items.some((it) => !Number.isInteger(it.rate) || it.rate < 0)) { setErr('Rate must be a whole number ≥ 0'); return; }
+    if (recurring && !effectiveNextRecurDate) { setErr('Pick the date the next invoice is created'); return; }
+    // Text fields are sent as-is, empty strings included: the server treats "" as
+    // "clear this field" and an omitted key as "leave it alone".
     updateM.mutate({
       number: number.trim(), currency, terms,
       issued_date: issuedDate, due_date: dueDate,
-      project_type: projectType || undefined, project_location: projectLocation || undefined,
-      billed_to_name: billedToName, billed_to_role: billedToRole || undefined,
-      billed_to_addr1: billedToAddr1 || undefined, billed_to_addr2: billedToAddr2 || undefined,
-      billed_to_pin: billedToPin || undefined,
-      billed_to_email: billedToEmail || undefined, billed_to_phone: billedToPhone || undefined,
+      project_type: projectType, project_location: projectLocation,
+      billed_to_name: billedToName, billed_to_role: billedToRole,
+      billed_to_addr1: billedToAddr1, billed_to_addr2: billedToAddr2,
+      billed_to_pin: billedToPin,
+      billed_to_email: billedToEmail, billed_to_phone: billedToPhone,
       items, notes: notes.filter((n) => n.k.trim()),
-      editor_note: editorNote || undefined, kra_number: kraNumber,
+      editor_note: editorNote, kra_number: kraNumber,
       tax_rate: taxRate,
       recurring, recur_interval: recurring ? recurInterval : undefined,
-      next_recur_date: recurring && nextRecurDate ? nextRecurDate : undefined,
+      next_recur_date: recurring ? effectiveNextRecurDate : undefined,
       sub_client_id: subClientId,
     });
   }
@@ -635,35 +668,14 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
 
             {/* ── Recurring ─────────────────────────────────────────────── */}
             <div className="inv-sec">Recurring</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <button type="button" className={`lg-ck${recurring ? ' on' : ''}`} onClick={() => setRecurring((v) => !v)}>
-                <span className="lg-ck__b">{recurring ? '✓' : ''}</span>
-                <span className="lg-ck__l">Recurring invoice</span>
-              </button>
-            </div>
-            {recurring && (
-              <div className="inv-grid-3" style={{ marginTop: 10 }}>
-                <div>
-                  <div className="inv-lbl">Interval</div>
-                  <div className="lg-seg" style={{ marginTop: 4 }}>
-                    {(['monthly', 'quarterly', 'yearly'] as RecurInterval[]).map((v) => (
-                      <button key={v} type="button"
-                        className={`lg-seg__o${recurInterval === v ? ' on' : ''}`}
-                        onClick={() => setRecurInterval(v)}>
-                        {v[0].toUpperCase() + v.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div style={{ gridColumn: '2 / 4' }}>
-                  <InvField label="Next auto-create on">
-                    <input className="inv-inp" type="date" value={nextRecurDate} onChange={(e) => setNextRecurDate(e.target.value)} />
-                  </InvField>
-                </div>
-              </div>
-            )}
+            <RecurrenceFields
+              recurring={recurring} onToggle={() => setRecurring((v) => !v)}
+              interval={recurInterval} onInterval={setRecurInterval}
+              nextDate={effectiveNextRecurDate} onNextDate={setNextRecurDate}
+              dateLabel="Next auto-create on"
+            />
 
-            {err && <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--red)', marginTop: 12 }}>{err}</div>}
+            {err && <div className="inv-err">{err}</div>}
           </div>
 
           <div className="lg-mdl__foot">
@@ -672,6 +684,75 @@ function EditInvoiceModal({ invoice, onClose }: EditModalProps) {
               <button type="button" className="lg-bt lg-bt--text" onClick={onClose}>Cancel</button>
               <button type="submit" className="lg-bt lg-bt--solid" disabled={updateM.isPending}>
                 <span className="lbl">{updateM.isPending ? 'Saving…' : 'Save changes'}</span>
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Recurrence modal (non-draft templates) ────────────────────────────────────
+// A sent, paid or void invoice is locked apart from status, KRA number and
+// recurrence. This is the one place the desk can stop or reschedule a template.
+
+function RecurrenceModal({ invoice, onClose }: EditModalProps) {
+  const qc = useQueryClient();
+  const [recurring, setRecurring]         = useState(invoice.recurring);
+  const [recurInterval, setRecurInterval] = useState<RecurInterval>(invoice.recur_interval ?? 'monthly');
+  const [nextRecurDate, setNextRecurDate] = useState(invoice.next_recur_date ?? '');
+  const [err, setErr]                     = useState('');
+
+  const updateM = useMutation({
+    mutationFn: (payload: UpdateInvoicePayload) => admin.updateInvoice(invoice.id, payload),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['invoices'] }); onClose(); },
+    onError: (e: Error) => setErr(extractApiError(e, 'Could not save the recurrence settings')),
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr('');
+    if (recurring && !nextRecurDate) { setErr('Pick the date the next invoice is created'); return; }
+    updateM.mutate(
+      recurring
+        ? { recurring: true, recur_interval: recurInterval, next_recur_date: nextRecurDate }
+        : { recurring: false },
+    );
+  }
+
+  return (
+    <div className="lg-ov" role="dialog" aria-modal aria-label="Invoice recurrence">
+      <div className="lg-mdl invoice">
+        <div className="lg-mdl__top">
+          <span className="lg-mdl__eye">— Invoices — Recurrence</span>
+          <span className="lg-mdl__no"><i>Lodgr</i><span className="dot">.</span></span>
+          <button type="button" className="lg-mdl__x" onClick={onClose}>Close ✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="lg-mdl__body">
+            <div className="lg-mdl__h1">Recurrence <em>· {invoice.number}</em></div>
+            <div className="lg-mdl__dek">
+              This invoice is {STATUS_LABEL[invoice.status].toLowerCase()}, so its content is locked.
+              You can still change when and how often a new draft is created from it, or stop it.
+            </div>
+            <RecurrenceFields
+              recurring={recurring} onToggle={() => setRecurring((v) => !v)}
+              interval={recurInterval} onInterval={setRecurInterval}
+              nextDate={nextRecurDate} onNextDate={setNextRecurDate}
+              dateLabel="Next auto-create on"
+            />
+            {!recurring && <div className="inv-lbl">Saving will stop new drafts being created from this invoice.</div>}
+            {err && <div className="inv-err">{err}</div>}
+          </div>
+
+          <div className="lg-mdl__foot">
+            <div />
+            <div className="lg-mdl__btns">
+              <button type="button" className="lg-bt lg-bt--text" onClick={onClose}>Cancel</button>
+              <button type="submit" className="lg-bt lg-bt--solid" disabled={updateM.isPending}>
+                <span className="lbl">{updateM.isPending ? 'Saving…' : 'Save'}</span>
               </button>
             </div>
           </div>
@@ -692,9 +773,10 @@ interface InvoiceRowProps {
   onDownload: (id: string) => void;
   onPreview: (id: string) => void;
   onEdit: (invoice: InvoiceResponse) => void;
+  onEditRecurrence: (invoice: InvoiceResponse) => void;
 }
 
-function InvoiceRow({ invoice, clientName, isDesk, onStatusChange, onDelete, onDownload, onPreview, onEdit }: InvoiceRowProps) {
+function InvoiceRow({ invoice, clientName, isDesk, onStatusChange, onDelete, onDownload, onPreview, onEdit, onEditRecurrence }: InvoiceRowProps) {
   const [expanded, setExpanded] = useState(false);
   const subtotal = invoice.items.reduce((acc, it) => acc + it.qty * it.rate, 0);
   const { vat, grandTotal: total } = computeTotals(subtotal, invoice.tax_rate ?? 0);
@@ -731,6 +813,11 @@ function InvoiceRow({ invoice, clientName, isDesk, onStatusChange, onDelete, onD
             <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(invoice); }}
               style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.10em', textTransform: 'uppercase', background: 'none', border: '1px solid var(--rule)', padding: '3px 10px', cursor: 'pointer', color: 'var(--ink)' }}>
               Edit ✎
+            </button>
+          )}
+          {isDesk && invoice.status !== 'draft' && invoice.recurring && (
+            <button type="button" className="lg-inv-act" onClick={(e) => { e.stopPropagation(); onEditRecurrence(invoice); }}>
+              Recurrence ↻
             </button>
           )}
           <button type="button" onClick={(e) => { e.stopPropagation(); void onPreview(invoice.id); }}
@@ -840,9 +927,11 @@ export function InvoicesPage() {
   const { isDesk } = useAuth();
   const [createOpen, setCreateOpen]         = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<InvoiceResponse | null>(null);
+  const [recurrenceInvoice, setRecurrenceInvoice] = useState<InvoiceResponse | null>(null);
   const [filterStatus, setFilterStatus]     = useState<InvoiceStatus | 'all'>('all');
   const [sortBy, setSortBy]                 = useState<'date' | 'sub_client'>('date');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmVoidId, setConfirmVoidId]   = useState<string | null>(null);
   const [mutationErr, setMutationErr]       = useState('');
 
   const invoicesQ = useQuery({
@@ -877,14 +966,16 @@ export function InvoicesPage() {
     mutationFn: ({ id, status }: { id: string; status: InvoiceStatus }) =>
       admin.updateInvoice(id, { status } as UpdateInvoicePayload),
     onSuccess: () => { setMutationErr(''); void qc.invalidateQueries({ queryKey: ['invoices'] }); },
-    onError: (e: Error) => setMutationErr(e.message),
+    onError: (e: Error) => setMutationErr(extractApiError(e, 'Could not change the invoice status')),
   });
 
   const deleteM = useMutation({
     mutationFn: (id: string) => admin.deleteInvoice(id),
     onSuccess: () => { setMutationErr(''); void qc.invalidateQueries({ queryKey: ['invoices'] }); },
-    onError: (e: Error) => setMutationErr(e.message),
+    onError: (e: Error) => setMutationErr(extractApiError(e, 'Could not delete the invoice')),
   });
+
+  const voidTarget = invoices.find((i) => i.id === confirmVoidId);
 
   async function handlePreview(id: string) {
     const html = await api
@@ -1028,8 +1119,11 @@ export function InvoicesPage() {
                     : `${inv.billed_to_name || '—'} (former client)`
                   : inv.billed_to_name || 'You'
               }
-              onStatusChange={(id, status) => statusM.mutate({ id, status })}
+              onStatusChange={(id, status) =>
+                status === 'void' ? setConfirmVoidId(id) : statusM.mutate({ id, status })
+              }
               onEdit={(inv) => setEditingInvoice(inv)}
+              onEditRecurrence={(inv) => setRecurrenceInvoice(inv)}
               onDelete={(id) => setConfirmDeleteId(id)}
               onPreview={handlePreview}
               onDownload={handleDownload}
@@ -1051,6 +1145,12 @@ export function InvoicesPage() {
           onClose={() => setEditingInvoice(null)}
         />
       )}
+      {recurrenceInvoice && (
+        <RecurrenceModal
+          invoice={recurrenceInvoice}
+          onClose={() => setRecurrenceInvoice(null)}
+        />
+      )}
       {confirmDeleteId && (
         <ConfirmModal
           title="Delete this invoice?"
@@ -1059,6 +1159,16 @@ export function InvoicesPage() {
           danger
           onConfirm={() => { deleteM.mutate(confirmDeleteId); setConfirmDeleteId(null); }}
           onCancel={() => setConfirmDeleteId(null)}
+        />
+      )}
+      {confirmVoidId && (
+        <ConfirmModal
+          title={`Void ${voidTarget?.number ?? 'this invoice'}?`}
+          body="A void invoice stays on record but can no longer be edited, sent or paid. This cannot be undone."
+          confirmLabel="Void"
+          danger
+          onConfirm={() => { statusM.mutate({ id: confirmVoidId, status: 'void' }); setConfirmVoidId(null); }}
+          onCancel={() => setConfirmVoidId(null)}
         />
       )}
     </div>

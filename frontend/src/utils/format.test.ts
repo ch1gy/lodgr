@@ -1,5 +1,36 @@
 import { describe, it, expect } from 'vitest';
-import { extractApiError } from './format';
+import { addInterval, extractApiError } from './format';
+
+// These cases mirror backend/tests/invoices.rs::advance_recur_date_* so the form's
+// default "next date" agrees with what the scheduler will actually produce.
+describe('addInterval', () => {
+  it('adds one month', () => {
+    expect(addInterval('2025-03-15', 'monthly')).toBe('2025-04-15');
+  });
+
+  it('clamps to the end of a shorter month', () => {
+    expect(addInterval('2025-01-31', 'monthly')).toBe('2025-02-28');
+    expect(addInterval('2024-01-31', 'monthly')).toBe('2024-02-29');
+  });
+
+  it('adds three months for quarterly', () => {
+    expect(addInterval('2025-01-01', 'quarterly')).toBe('2025-04-01');
+  });
+
+  it('adds twelve months for yearly, including across a year boundary', () => {
+    expect(addInterval('2025-03-15', 'yearly')).toBe('2026-03-15');
+    expect(addInterval('2025-11-30', 'quarterly')).toBe('2026-02-28');
+  });
+
+  it('clamps a leap day when the next year has none', () => {
+    expect(addInterval('2024-02-29', 'yearly')).toBe('2025-02-28');
+  });
+
+  it('returns an empty string for input that is not a date', () => {
+    expect(addInterval('', 'monthly')).toBe('');
+    expect(addInterval('not-a-date', 'monthly')).toBe('');
+  });
+});
 
 describe('extractApiError', () => {
   it('returns the server error string when present', () => {

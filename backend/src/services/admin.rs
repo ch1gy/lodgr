@@ -146,7 +146,7 @@ pub async fn create_client(
     )
     .await
     .map_err(|e| match e {
-        AppError::Internal(ref msg) if msg.contains("UNIQUE") => {
+        AppError::Conflict(_) => {
             AppError::Conflict(format!("email '{email}' is already registered"))
         }
         other => other,
@@ -458,7 +458,7 @@ pub async fn update_client_profile(
     )
     .await
     .map_err(|e| match e {
-        AppError::Internal(ref msg) if msg.contains("UNIQUE") => {
+        AppError::Conflict(_) => {
             let email_plain = input.email.as_deref().unwrap_or("");
             AppError::Conflict(format!("email '{email_plain}' is already registered"))
         }

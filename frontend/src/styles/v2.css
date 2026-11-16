@@ -145,6 +145,7 @@
 .inv-inp::placeholder { color: var(--mid); }
 .inv-inp:focus { border-color: var(--ink); }
 .inv-lbl { font-family: var(--mono); font-size: 9px; letter-spacing: .16em; text-transform: uppercase; color: var(--mid); margin-bottom: 4px; }
+.inv-err { font-family: var(--mono); font-size: 10px; color: var(--red); margin-top: 12px; }
 @media (max-width: 600px) {
   .inv-grid-2, .inv-grid-4, .inv-grid-3 { grid-template-columns: 1fr; }
 }
@@ -1147,6 +1148,10 @@
 .lg-inv-row { padding: 12px 0; cursor: pointer; font-family: var(--mono); font-size: 10px; }
 .lg-inv-c-id { min-width: 0; }
 .lg-inv-exp { padding: 0 40px 16px; border-top: 1px dashed var(--rule); margin-top: -1px; }
+.lg-inv-act {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .10em; text-transform: uppercase;
+  background: none; border: 1px solid var(--rule); padding: 3px 10px; cursor: pointer; color: var(--ink);
+}
 
 @media (max-width: 1024px) {
   .lg-inv-table-wrap { padding: 0 28px; }

@@ -72,6 +72,24 @@ pub fn advance_recur_date(date_str: &str, interval: &str) -> Option<String> {
     Some(next.format("%Y-%m-%d").to_string())
 }
 
+/// Due date for a recurring invoice instance issued on `today`: the template's
+/// own issued→due gap, so "Net 30", "Due on receipt" and custom gaps all carry
+/// over. Falls back to 14 days when either template date fails to parse, the
+/// gap is negative, or the result would be out of range.
+pub fn recurring_due_date(
+    today: NaiveDate,
+    template_issued: &str,
+    template_due: &str,
+) -> NaiveDate {
+    NaiveDate::parse_from_str(template_due, "%Y-%m-%d")
+        .ok()
+        .zip(NaiveDate::parse_from_str(template_issued, "%Y-%m-%d").ok())
+        .map(|(due, issued)| due.signed_duration_since(issued))
+        .filter(|gap| *gap >= Duration::zero())
+        .and_then(|gap| today.checked_add_signed(gap))
+        .unwrap_or_else(|| today + Duration::days(14))
+}
+
 /// Runs every hour. Creates draft invoices from recurring templates whose
 /// next_recur_date has arrived. Desk must review and confirm before sending.
 pub async fn recurring_invoices(pool: SqlitePool) {
@@ -115,17 +133,9 @@ pub async fn recurring_invoices(pool: SqlitePool) {
                     };
 
                     let new_id = Uuid::new_v4().to_string();
-                    let today = Utc::now().format("%Y-%m-%d").to_string();
-
-                    // Compute due date from the template's terms (e.g. "Net 14" → issued + 14 days).
-                    let due_days: i64 = t
-                        .terms
-                        .strip_prefix("Net ")
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(14);
-                    let issued_nd = NaiveDate::parse_from_str(&today, "%Y-%m-%d")
-                        .expect("today is always valid %Y-%m-%d");
-                    let due_date = (issued_nd + Duration::days(due_days))
+                    let today_nd = Utc::now().date_naive();
+                    let today = today_nd.format("%Y-%m-%d").to_string();
+                    let due_date = recurring_due_date(today_nd, &t.issued_date, &t.due_date)
                         .format("%Y-%m-%d")
                         .to_string();
 
@@ -136,10 +146,10 @@ pub async fn recurring_invoices(pool: SqlitePool) {
                     // mid-flight crash cannot produce duplicate numbers or stuck templates.
                     let tx_result: crate::error::AppResult<()> = async {
                         let mut tx = pool.begin().await?;
-                        let seq = db::invoices::next_seq_tx(&mut tx).await?;
+                        let seq = db::invoices::next_seq(&mut *tx).await?;
                         let number = format!("INV-{seq:04}");
-                        db::invoices::create_tx(
-                            &mut tx,
+                        db::invoices::create(
+                            &mut *tx,
                             db::invoices::NewInvoice {
                                 id: &new_id,
                                 client_id,
@@ -169,7 +179,7 @@ pub async fn recurring_invoices(pool: SqlitePool) {
                             },
                         )
                         .await?;
-                        db::invoices::update_next_recur_date_tx(&mut tx, &t.id, &next_date).await?;
+                        db::invoices::update_next_recur_date(&mut *tx, &t.id, &next_date).await?;
                         tx.commit().await?;
                         Ok(())
                     }

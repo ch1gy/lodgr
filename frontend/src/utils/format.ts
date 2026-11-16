@@ -1,4 +1,4 @@
-import type { TicketType } from '../api/types';
+import type { RecurInterval, TicketType } from '../api/types';
 
 // ── File download helper ──────────────────────────────────────────────────
 
@@ -34,6 +34,19 @@ export function daysUntil(dueDate: string | null): number | null {
   today.setHours(0, 0, 0, 0);
   const due = new Date(dueDate + 'T00:00:00');
   return Math.round((+due - +today) / 86_400_000);
+}
+
+/**
+ * Add one recurrence interval to a YYYY-MM-DD date, clamping to the end of the
+ * target month. Mirrors the backend's advance_recur_date. Returns '' for input
+ * that is not a date.
+ */
+export function addInterval(isoDate: string, interval: RecurInterval): string {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  if (!y || !m || !d) return '';
+  const months = interval === 'monthly' ? 1 : interval === 'quarterly' ? 3 : 12;
+  const lastDay = new Date(Date.UTC(y, m + months, 0)).getUTCDate();
+  return new Date(Date.UTC(y, m - 1 + months, Math.min(d, lastDay))).toISOString().slice(0, 10);
 }
 
 /** Short locale date+time string for thread entry timestamps. */

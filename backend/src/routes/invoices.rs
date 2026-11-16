@@ -29,6 +29,31 @@ pub fn valid_date(s: &str) -> bool {
     NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok()
 }
 
+fn number_in_use() -> AppError {
+    AppError::Conflict("invoice number already in use".into())
+}
+
+fn parse_date(field: &str, s: &str) -> AppResult<NaiveDate> {
+    NaiveDate::parse_from_str(s, "%Y-%m-%d")
+        .map_err(|_| AppError::BadRequest(format!("{field} must be YYYY-MM-DD")))
+}
+
+/// A recurring invoice needs a known interval and a valid next date; without
+/// them the DB CHECK constraint would fail and surface as a 500.
+fn validate_recurrence(interval: Option<&str>, next_date: Option<&str>) -> AppResult<()> {
+    if !matches!(interval, Some("monthly" | "quarterly" | "yearly")) {
+        return Err(AppError::BadRequest(
+            "recur_interval must be monthly, quarterly, or yearly when recurring".into(),
+        ));
+    }
+    match next_date {
+        Some(d) if valid_date(d) => Ok(()),
+        _ => Err(AppError::BadRequest(
+            "next_recur_date (YYYY-MM-DD) is required when recurring".into(),
+        )),
+    }
+}
+
 pub fn valid_transition(from: &str, to: &str) -> bool {
     if from == to {
         return true;
@@ -512,18 +537,17 @@ pub async fn create(
         ));
     }
 
-    if !valid_date(&body.issued_date) {
-        return Err(AppError::BadRequest("issued_date must be YYYY-MM-DD".into()));
-    }
-    if !valid_date(&body.due_date) {
-        return Err(AppError::BadRequest("due_date must be YYYY-MM-DD".into()));
-    }
-    let issued_nd = NaiveDate::parse_from_str(&body.issued_date, "%Y-%m-%d").unwrap();
-    let due_nd = NaiveDate::parse_from_str(&body.due_date, "%Y-%m-%d").unwrap();
+    let issued_nd = parse_date("issued_date", &body.issued_date)?;
+    let due_nd = parse_date("due_date", &body.due_date)?;
     if due_nd < issued_nd {
         return Err(AppError::BadRequest(
             "due_date must be on or after issued_date".into(),
         ));
+    }
+
+    let is_recurring = body.recurring.unwrap_or(false);
+    if is_recurring {
+        validate_recurrence(body.recur_interval.as_deref(), body.next_recur_date.as_deref())?;
     }
 
     if let Some(sc_id) = body.sub_client_id.as_deref().filter(|s| !s.is_empty()) {
@@ -538,59 +562,71 @@ pub async fn create(
         }
     }
 
-    // Auto-generate number if not provided.
-    let auto_number;
-    let number = match body
-        .number
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        Some(n) => n,
-        None => {
-            let seq = db::invoices::next_seq(&pool).await?;
-            auto_number = format!("INV-{seq:04}");
-            &auto_number
-        }
-    };
-
     let id = Uuid::new_v4().to_string();
     let items_json = serde_json::to_string(&body.items)
         .map_err(|e| AppError::Internal(format!("items serialization: {e}")))?;
     let notes_json = serde_json::to_string(&body.notes.unwrap_or_default())
         .map_err(|e| AppError::Internal(format!("notes serialization: {e}")))?;
 
-    let inv = db::invoices::create(
-        &pool,
-        db::invoices::NewInvoice {
-            id: &id,
-            client_id: &body.client_id,
-            number,
-            currency: body.currency.as_deref().unwrap_or("KES"),
-            terms: body.terms.as_deref().unwrap_or("Net 14"),
-            issued_date: &body.issued_date,
-            due_date: &body.due_date,
-            project_type: body.project_type.as_deref().unwrap_or(""),
-            project_location: body.project_location.as_deref().unwrap_or(""),
-            billed_to_name: &body.billed_to_name,
-            billed_to_role: body.billed_to_role.as_deref().unwrap_or(""),
-            billed_to_addr1: body.billed_to_addr1.as_deref().unwrap_or(""),
-            billed_to_addr2: body.billed_to_addr2.as_deref().unwrap_or(""),
-            billed_to_pin: body.billed_to_pin.as_deref().unwrap_or(""),
-            billed_to_email: body.billed_to_email.as_deref().unwrap_or(""),
-            billed_to_phone: body.billed_to_phone.as_deref().unwrap_or(""),
-            items_json: &items_json,
-            notes_json: &notes_json,
-            editor_note: body.editor_note.as_deref().unwrap_or(""),
-            kra_number: body.kra_number.as_deref(),
-            tax_rate,
-            recurring: body.recurring.unwrap_or(false),
-            recur_interval: body.recur_interval.as_deref(),
-            next_recur_date: body.next_recur_date.as_deref(),
-            sub_client_id: body.sub_client_id.as_deref().filter(|s| !s.is_empty()),
-        },
-    )
-    .await?;
+    let supplied_number = body
+        .number
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    // An auto-generated number can collide with a concurrent create; retry once
+    // with a fresh sequence. A number the caller typed is never silently changed.
+    let mut retried = false;
+    let inv = loop {
+        let auto_number;
+        let number = match supplied_number {
+            Some(n) => n,
+            None => {
+                let seq = db::invoices::next_seq(&pool).await?;
+                auto_number = format!("INV-{seq:04}");
+                &auto_number
+            }
+        };
+
+        let created = db::invoices::create(
+            &pool,
+            db::invoices::NewInvoice {
+                id: &id,
+                client_id: &body.client_id,
+                number,
+                currency: body.currency.as_deref().unwrap_or("KES"),
+                terms: body.terms.as_deref().unwrap_or("Net 14"),
+                issued_date: &body.issued_date,
+                due_date: &body.due_date,
+                project_type: body.project_type.as_deref().unwrap_or(""),
+                project_location: body.project_location.as_deref().unwrap_or(""),
+                billed_to_name: &body.billed_to_name,
+                billed_to_role: body.billed_to_role.as_deref().unwrap_or(""),
+                billed_to_addr1: body.billed_to_addr1.as_deref().unwrap_or(""),
+                billed_to_addr2: body.billed_to_addr2.as_deref().unwrap_or(""),
+                billed_to_pin: body.billed_to_pin.as_deref().unwrap_or(""),
+                billed_to_email: body.billed_to_email.as_deref().unwrap_or(""),
+                billed_to_phone: body.billed_to_phone.as_deref().unwrap_or(""),
+                items_json: &items_json,
+                notes_json: &notes_json,
+                editor_note: body.editor_note.as_deref().unwrap_or(""),
+                kra_number: body.kra_number.as_deref(),
+                tax_rate,
+                recurring: is_recurring,
+                recur_interval: body.recur_interval.as_deref(),
+                next_recur_date: body.next_recur_date.as_deref(),
+                sub_client_id: body.sub_client_id.as_deref().filter(|s| !s.is_empty()),
+            },
+        )
+        .await;
+
+        match created {
+            Ok(inv) => break inv,
+            Err(AppError::Conflict(_)) if supplied_number.is_none() && !retried => retried = true,
+            Err(AppError::Conflict(_)) => return Err(number_in_use()),
+            Err(e) => return Err(e),
+        }
+    };
 
     Ok((StatusCode::CREATED, Json(InvoiceResponse::from(inv))))
 }
@@ -755,26 +791,18 @@ pub async fn update(
         None => inv.tax_rate,
     };
 
-    // Date validation — only validate fields that are being changed.
-    if let Some(ref s) = body.issued_date {
-        if !valid_date(s) {
-            return Err(AppError::BadRequest("issued_date must be YYYY-MM-DD".into()));
-        }
-    }
-    if let Some(ref s) = body.due_date {
-        if !valid_date(s) {
-            return Err(AppError::BadRequest("due_date must be YYYY-MM-DD".into()));
-        }
-    }
+    // Date validation — only when a date is being changed. A stored value that
+    // no longer parses is reported as a 400 rather than compared.
     let issued = body.issued_date.as_deref().unwrap_or(&inv.issued_date);
     let due = body.due_date.as_deref().unwrap_or(&inv.due_date);
-    if (body.issued_date.is_some() || body.due_date.is_some())
-        && NaiveDate::parse_from_str(due, "%Y-%m-%d")
-            < NaiveDate::parse_from_str(issued, "%Y-%m-%d")
-    {
-        return Err(AppError::BadRequest(
-            "due_date must be on or after issued_date".into(),
-        ));
+    if body.issued_date.is_some() || body.due_date.is_some() {
+        let issued_nd = parse_date("issued_date", issued)?;
+        let due_nd = parse_date("due_date", due)?;
+        if due_nd < issued_nd {
+            return Err(AppError::BadRequest(
+                "due_date must be on or after issued_date".into(),
+            ));
+        }
     }
 
     // kra_number: empty string clears to NULL; omitting keeps existing value.
@@ -800,6 +828,9 @@ pub async fn update(
             .as_deref()
             .or(inv.next_recur_date.as_deref())
     };
+    if new_recurring {
+        validate_recurrence(recur_interval, next_recur_date)?;
+    }
 
     let target_client_id = inv.client_id.as_deref();
     let sub_client_id = match body.sub_client_id.as_deref() {
@@ -870,7 +901,11 @@ pub async fn update(
             sub_client_id,
         },
     )
-    .await?;
+    .await
+    .map_err(|e| match e {
+        AppError::Conflict(_) => number_in_use(),
+        other => other,
+    })?;
 
     let updated = db::invoices::find_by_id(&pool, &id)
         .await?

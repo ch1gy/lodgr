@@ -58,6 +58,11 @@ impl std::error::Error for AppError {}
 
 impl From<sqlx::Error> for AppError {
     fn from(e: sqlx::Error) -> Self {
+        if let sqlx::Error::Database(ref db_err) = e {
+            if db_err.is_unique_violation() {
+                return AppError::Conflict("already exists".into());
+            }
+        }
         AppError::Internal(e.to_string())
     }
 }

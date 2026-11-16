@@ -1,5 +1,5 @@
 use chrono::Utc;
-use sqlx::{Sqlite, SqlitePool, Transaction};
+use sqlx::{Executor, Sqlite, SqlitePool};
 
 use crate::{error::AppResult, models::Invoice};
 
@@ -67,7 +67,10 @@ pub async fn find_by_id(pool: &SqlitePool, id: &str) -> AppResult<Option<Invoice
     )
 }
 
-pub async fn create(pool: &SqlitePool, n: NewInvoice<'_>) -> AppResult<Invoice> {
+pub async fn create<'e>(
+    executor: impl Executor<'e, Database = Sqlite>,
+    n: NewInvoice<'_>,
+) -> AppResult<Invoice> {
     let created_at = Utc::now().to_rfc3339();
     sqlx::query(
         "INSERT INTO invoices (id, client_id, number, status, currency, terms, issued_date, \
@@ -105,7 +108,7 @@ pub async fn create(pool: &SqlitePool, n: NewInvoice<'_>) -> AppResult<Invoice> 
     .bind(n.next_recur_date)
     .bind(&created_at)
     .bind(n.sub_client_id)
-    .execute(pool)
+    .execute(executor)
     .await?;
 
     Ok(Invoice {
@@ -217,111 +220,16 @@ pub async fn delete(pool: &SqlitePool, id: &str) -> AppResult<()> {
 
 /// Returns the next invoice sequence number based on the current maximum.
 /// Uses MAX instead of COUNT so deletions never cause number collisions.
-pub async fn next_seq(pool: &SqlitePool) -> AppResult<i64> {
+/// Accepts any sqlx executor so it works with both a pool and an open transaction.
+pub async fn next_seq<'e>(
+    executor: impl Executor<'e, Database = Sqlite>,
+) -> AppResult<i64> {
     let (max,): (Option<i64>,) = sqlx::query_as(
         "SELECT MAX(CAST(SUBSTR(number, 5) AS INTEGER)) FROM invoices WHERE number LIKE 'INV-%'",
     )
-    .fetch_one(pool)
+    .fetch_one(executor)
     .await?;
     Ok(max.unwrap_or(0) + 1)
-}
-
-/// Transaction-aware variant of `next_seq` for use inside a sqlx transaction.
-pub async fn next_seq_tx(tx: &mut Transaction<'_, Sqlite>) -> AppResult<i64> {
-    let (max,): (Option<i64>,) = sqlx::query_as(
-        "SELECT MAX(CAST(SUBSTR(number, 5) AS INTEGER)) FROM invoices WHERE number LIKE 'INV-%'",
-    )
-    .fetch_one(&mut *tx)
-    .await?;
-    Ok(max.unwrap_or(0) + 1)
-}
-
-/// Transaction-aware variant of `create` for use inside a sqlx transaction.
-pub async fn create_tx(tx: &mut Transaction<'_, Sqlite>, n: NewInvoice<'_>) -> AppResult<Invoice> {
-    let created_at = Utc::now().to_rfc3339();
-    sqlx::query(
-        "INSERT INTO invoices (id, client_id, number, status, currency, terms, issued_date, \
-         due_date, project_type, project_location, billed_to_name, billed_to_role, \
-         billed_to_addr1, billed_to_addr2, billed_to_pin, billed_to_email, billed_to_phone, \
-         items, notes, editor_note, \
-         kra_number, tax_rate, recurring, recur_interval, next_recur_date, created_at, \
-         sub_client_id) \
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-    )
-    .bind(n.id)
-    .bind(n.client_id)
-    .bind(n.number)
-    .bind("draft")
-    .bind(n.currency)
-    .bind(n.terms)
-    .bind(n.issued_date)
-    .bind(n.due_date)
-    .bind(n.project_type)
-    .bind(n.project_location)
-    .bind(n.billed_to_name)
-    .bind(n.billed_to_role)
-    .bind(n.billed_to_addr1)
-    .bind(n.billed_to_addr2)
-    .bind(n.billed_to_pin)
-    .bind(n.billed_to_email)
-    .bind(n.billed_to_phone)
-    .bind(n.items_json)
-    .bind(n.notes_json)
-    .bind(n.editor_note)
-    .bind(n.kra_number)
-    .bind(n.tax_rate)
-    .bind(n.recurring as i64)
-    .bind(n.recur_interval)
-    .bind(n.next_recur_date)
-    .bind(&created_at)
-    .bind(n.sub_client_id)
-    .execute(&mut *tx)
-    .await?;
-
-    Ok(Invoice {
-        id: n.id.to_owned(),
-        client_id: Some(n.client_id.to_owned()),
-        number: n.number.to_owned(),
-        status: "draft".to_owned(),
-        currency: n.currency.to_owned(),
-        terms: n.terms.to_owned(),
-        issued_date: n.issued_date.to_owned(),
-        due_date: n.due_date.to_owned(),
-        project_type: n.project_type.to_owned(),
-        project_location: n.project_location.to_owned(),
-        billed_to_name: n.billed_to_name.to_owned(),
-        billed_to_role: n.billed_to_role.to_owned(),
-        billed_to_addr1: n.billed_to_addr1.to_owned(),
-        billed_to_addr2: n.billed_to_addr2.to_owned(),
-        billed_to_pin: n.billed_to_pin.to_owned(),
-        billed_to_email: n.billed_to_email.to_owned(),
-        billed_to_phone: n.billed_to_phone.to_owned(),
-        items: n.items_json.to_owned(),
-        notes: n.notes_json.to_owned(),
-        editor_note: n.editor_note.to_owned(),
-        kra_number: n.kra_number.map(|s| s.to_owned()),
-        tax_rate: n.tax_rate,
-        recurring: n.recurring as i64,
-        recur_interval: n.recur_interval.map(|s| s.to_owned()),
-        next_recur_date: n.next_recur_date.map(|s| s.to_owned()),
-        created_at,
-        sub_client_id: n.sub_client_id.map(|s| s.to_owned()),
-        sub_client_name: None,
-    })
-}
-
-/// Transaction-aware variant of `update_next_recur_date`.
-pub async fn update_next_recur_date_tx(
-    tx: &mut Transaction<'_, Sqlite>,
-    id: &str,
-    next_date: &str,
-) -> AppResult<()> {
-    sqlx::query("UPDATE invoices SET next_recur_date = ? WHERE id = ?")
-        .bind(next_date)
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
-    Ok(())
 }
 
 /// Returns recurring invoice templates whose next_recur_date <= today.
@@ -339,11 +247,16 @@ pub async fn list_due_for_recurrence(pool: &SqlitePool) -> AppResult<Vec<Invoice
     .await?)
 }
 
-pub async fn update_next_recur_date(pool: &SqlitePool, id: &str, next_date: &str) -> AppResult<()> {
+/// Accepts any sqlx executor so it works with both a pool and an open transaction.
+pub async fn update_next_recur_date<'e>(
+    executor: impl Executor<'e, Database = Sqlite>,
+    id: &str,
+    next_date: &str,
+) -> AppResult<()> {
     sqlx::query("UPDATE invoices SET next_recur_date = ? WHERE id = ?")
         .bind(next_date)
         .bind(id)
-        .execute(pool)
+        .execute(executor)
         .await?;
     Ok(())
 }

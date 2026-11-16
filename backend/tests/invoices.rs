@@ -1,6 +1,22 @@
 mod common;
 
-use backend::{db, routes::invoices as inv_routes, tasks::advance_recur_date};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
+use backend::{
+    db,
+    error::{AppError, AppResult},
+    middleware::DeskUser,
+    models::Claims,
+    routes::invoices as inv_routes,
+    tasks::{advance_recur_date, recurring_due_date},
+};
+use chrono::NaiveDate;
+use serde_json::{json, Value};
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
 fn base_invoice<'a>(
@@ -401,20 +417,61 @@ fn advance_recur_date_invalid_input_returns_none() {
     assert!(advance_recur_date("not-a-date", "monthly").is_none());
 }
 
+fn d(s: &str) -> NaiveDate {
+    NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
+}
+
+#[test]
+fn recurring_due_date_keeps_the_templates_own_gap() {
+    // Template issued 2025-01-01, due 2025-01-31: a 30-day gap.
+    assert_eq!(
+        recurring_due_date(d("2025-06-10"), "2025-01-01", "2025-01-31"),
+        d("2025-07-10")
+    );
+}
+
+#[test]
+fn recurring_due_date_zero_gap_is_due_on_receipt() {
+    assert_eq!(
+        recurring_due_date(d("2025-06-10"), "2025-01-01", "2025-01-01"),
+        d("2025-06-10")
+    );
+}
+
+#[test]
+fn recurring_due_date_falls_back_to_14_days_on_unparseable_dates() {
+    assert_eq!(
+        recurring_due_date(d("2025-06-10"), "garbage", "2025-01-31"),
+        d("2025-06-24")
+    );
+    assert_eq!(
+        recurring_due_date(d("2025-06-10"), "2025-01-01", ""),
+        d("2025-06-24")
+    );
+}
+
+#[test]
+fn recurring_due_date_falls_back_to_14_days_on_negative_gap() {
+    assert_eq!(
+        recurring_due_date(d("2025-06-10"), "2025-01-31", "2025-01-01"),
+        d("2025-06-24")
+    );
+}
+
 #[tokio::test]
-async fn next_seq_tx_matches_pool_next_seq() {
+async fn next_seq_in_tx_matches_pool_next_seq() {
     let (pool, _dir) = common::setup_test_db().await;
     let (client_id, _, _) = common::create_test_client(&pool).await;
 
     let pool_seq = db::invoices::next_seq(&pool).await.unwrap();
 
     let mut tx = pool.begin().await.unwrap();
-    let tx_seq = db::invoices::next_seq_tx(&mut tx).await.unwrap();
+    let tx_seq = db::invoices::next_seq(&mut *tx).await.unwrap();
     tx.rollback().await.unwrap();
 
-    assert_eq!(pool_seq, tx_seq, "tx variant must yield the same seq as pool variant");
+    assert_eq!(pool_seq, tx_seq, "tx executor must yield the same seq as the pool");
 
-    // Create one invoice and verify both variants see it.
+    // Create one invoice and verify both executors see it.
     let id = Uuid::new_v4().to_string();
     db::invoices::create(&pool, base_invoice(&id, &client_id, "INV-0001"))
         .await
@@ -422,7 +479,7 @@ async fn next_seq_tx_matches_pool_next_seq() {
 
     let pool_seq2 = db::invoices::next_seq(&pool).await.unwrap();
     let mut tx2 = pool.begin().await.unwrap();
-    let tx_seq2 = db::invoices::next_seq_tx(&mut tx2).await.unwrap();
+    let tx_seq2 = db::invoices::next_seq(&mut *tx2).await.unwrap();
     tx2.rollback().await.unwrap();
 
     assert_eq!(pool_seq2, tx_seq2);
@@ -430,20 +487,17 @@ async fn next_seq_tx_matches_pool_next_seq() {
 }
 
 #[tokio::test]
-async fn create_tx_stores_invoice_with_correct_number() {
+async fn create_in_tx_stores_invoice_with_correct_number() {
     let (pool, _dir) = common::setup_test_db().await;
     let (client_id, _, _) = common::create_test_client(&pool).await;
     let new_id = Uuid::new_v4().to_string();
 
     let mut tx = pool.begin().await.unwrap();
-    let seq = db::invoices::next_seq_tx(&mut tx).await.unwrap();
+    let seq = db::invoices::next_seq(&mut *tx).await.unwrap();
     let number = format!("INV-{seq:04}");
-    db::invoices::create_tx(
-        &mut tx,
-        base_invoice(&new_id, &client_id, &number),
-    )
-    .await
-    .unwrap();
+    db::invoices::create(&mut *tx, base_invoice(&new_id, &client_id, &number))
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 
     let stored = db::invoices::find_by_id(&pool, &new_id)
@@ -451,6 +505,71 @@ async fn create_tx_stores_invoice_with_correct_number() {
         .unwrap()
         .unwrap();
     assert_eq!(stored.number, "INV-0001");
+}
+
+#[tokio::test]
+async fn create_in_tx_is_discarded_on_rollback() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let id = Uuid::new_v4().to_string();
+
+    let mut tx = pool.begin().await.unwrap();
+    db::invoices::create(&mut *tx, base_invoice(&id, &client_id, "INV-ROLLBACK"))
+        .await
+        .unwrap();
+    tx.rollback().await.unwrap();
+
+    assert!(db::invoices::find_by_id(&pool, &id).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn update_next_recur_date_works_on_pool_and_tx() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let id = Uuid::new_v4().to_string();
+    db::invoices::create(
+        &pool,
+        db::invoices::NewInvoice {
+            recurring: true,
+            recur_interval: Some("monthly"),
+            next_recur_date: Some("2025-02-01"),
+            ..base_invoice(&id, &client_id, "INV-REC-02")
+        },
+    )
+    .await
+    .unwrap();
+
+    db::invoices::update_next_recur_date(&pool, &id, "2025-03-01")
+        .await
+        .unwrap();
+    let after_pool = db::invoices::find_by_id(&pool, &id).await.unwrap().unwrap();
+    assert_eq!(after_pool.next_recur_date.as_deref(), Some("2025-03-01"));
+
+    let mut tx = pool.begin().await.unwrap();
+    db::invoices::update_next_recur_date(&mut *tx, &id, "2025-04-01")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let after_tx = db::invoices::find_by_id(&pool, &id).await.unwrap().unwrap();
+    assert_eq!(after_tx.next_recur_date.as_deref(), Some("2025-04-01"));
+}
+
+#[tokio::test]
+async fn create_duplicate_number_maps_to_conflict() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let id1 = Uuid::new_v4().to_string();
+    let id2 = Uuid::new_v4().to_string();
+
+    db::invoices::create(&pool, base_invoice(&id1, &client_id, "INV-DUP"))
+        .await
+        .unwrap();
+    let second = db::invoices::create(&pool, base_invoice(&id2, &client_id, "INV-DUP")).await;
+
+    assert!(
+        matches!(second, Err(AppError::Conflict(_))),
+        "a unique-constraint violation must surface as Conflict, not Internal"
+    );
 }
 
 // ── Clearing fields via update ────────────────────────────────────────────────
@@ -613,4 +732,350 @@ fn valid_date_rejects_bad_formats() {
     assert!(!inv_routes::valid_date("2025-13-01")); // invalid month
     assert!(!inv_routes::valid_date(""));
     assert!(!inv_routes::valid_date("2025-02-30")); // Feb 30 never exists
+}
+
+// ── Route handlers (called directly as the desk user) ────────────────────────
+
+fn desk_user() -> DeskUser {
+    DeskUser(Claims {
+        sub: "desk-test".into(),
+        role: "desk".into(),
+        exp: i64::MAX,
+        session_type: "full".into(),
+        ticket_scope: None,
+        jti: None,
+    })
+}
+
+/// Turns a handler result into (status, JSON body) the way axum would.
+async fn respond(res: AppResult<impl IntoResponse>) -> (StatusCode, Value) {
+    let resp = match res {
+        Ok(r) => r.into_response(),
+        Err(e) => e.into_response(),
+    };
+    let status = resp.status();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+}
+
+async fn route_create(pool: &SqlitePool, client_id: &str, extra: Value) -> (StatusCode, Value) {
+    let mut body = json!({
+        "client_id": client_id,
+        "issued_date": "2025-01-01",
+        "due_date": "2025-01-31",
+        "billed_to_name": "Acme Corp",
+        "project_type": "IT Support",
+        "billed_to_phone": "+254-700-000000",
+        "items": [{"name": "Support hour", "qty": 2, "rate": 5000}],
+    });
+    body.as_object_mut()
+        .unwrap()
+        .extend(extra.as_object().unwrap().clone());
+    let req = serde_json::from_value(body).unwrap();
+    respond(inv_routes::create(State(pool.clone()), desk_user(), Json(req)).await).await
+}
+
+async fn route_patch(pool: &SqlitePool, id: &str, body: Value) -> (StatusCode, Value) {
+    let req = serde_json::from_value(body).unwrap();
+    respond(
+        inv_routes::update(
+            State(pool.clone()),
+            desk_user(),
+            Path(id.to_owned()),
+            Json(req),
+        )
+        .await,
+    )
+    .await
+}
+
+async fn route_delete(pool: &SqlitePool, id: &str) -> StatusCode {
+    respond(inv_routes::delete(State(pool.clone()), desk_user(), Path(id.to_owned())).await)
+        .await
+        .0
+}
+
+/// Creates a draft through the route and returns its id.
+async fn new_draft(pool: &SqlitePool, client_id: &str, extra: Value) -> String {
+    let (status, body) = route_create(pool, client_id, extra).await;
+    assert_eq!(status, StatusCode::CREATED, "setup create failed: {body}");
+    body["id"].as_str().unwrap().to_owned()
+}
+
+async fn fetch(pool: &SqlitePool, id: &str) -> backend::models::Invoice {
+    db::invoices::find_by_id(pool, id).await.unwrap().unwrap()
+}
+
+#[tokio::test]
+async fn route_create_recurring_without_next_date_is_400() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+
+    let (status, body) = route_create(
+        &pool,
+        &client_id,
+        json!({"recurring": true, "recur_interval": "monthly"}),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("next_recur_date"));
+    assert!(
+        db::invoices::list(&pool).await.unwrap().is_empty(),
+        "a rejected invoice must not be stored"
+    );
+}
+
+#[tokio::test]
+async fn route_create_recurring_without_a_valid_interval_is_400() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+
+    for extra in [
+        json!({"recurring": true, "next_recur_date": "2025-02-01"}),
+        json!({"recurring": true, "recur_interval": "weekly", "next_recur_date": "2025-02-01"}),
+        json!({"recurring": true, "recur_interval": "monthly", "next_recur_date": "soon"}),
+    ] {
+        let (status, _) = route_create(&pool, &client_id, extra.clone()).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{extra} must be rejected");
+    }
+}
+
+#[tokio::test]
+async fn route_create_recurring_with_interval_and_date_is_201() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+
+    let id = new_draft(
+        &pool,
+        &client_id,
+        json!({"recurring": true, "recur_interval": "quarterly", "next_recur_date": "2025-04-01"}),
+    )
+    .await;
+
+    let stored = fetch(&pool, &id).await;
+    assert_eq!(stored.recurring, 1);
+    assert_eq!(stored.recur_interval.as_deref(), Some("quarterly"));
+    assert_eq!(stored.next_recur_date.as_deref(), Some("2025-04-01"));
+}
+
+#[tokio::test]
+async fn route_create_rejects_bad_or_inverted_dates() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+
+    for extra in [
+        json!({"issued_date": "01/01/2025"}),
+        json!({"due_date": "2025-02-30"}),
+        json!({"due_date": "2024-12-31"}),
+    ] {
+        let (status, _) = route_create(&pool, &client_id, extra.clone()).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{extra} must be rejected");
+    }
+}
+
+#[tokio::test]
+async fn route_create_duplicate_number_is_409() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+
+    let (first, _) = route_create(&pool, &client_id, json!({"number": "INV-DUP"})).await;
+    assert_eq!(first, StatusCode::CREATED);
+
+    let (second, body) = route_create(&pool, &client_id, json!({"number": "INV-DUP"})).await;
+    assert_eq!(second, StatusCode::CONFLICT);
+    assert_eq!(body["error"], "invoice number already in use");
+    assert_eq!(db::invoices::list(&pool).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn route_create_auto_number_follows_the_highest_existing() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+
+    new_draft(&pool, &client_id, json!({"number": "INV-0007"})).await;
+    let auto_id = new_draft(&pool, &client_id, json!({})).await;
+
+    assert_eq!(fetch(&pool, &auto_id).await.number, "INV-0008");
+}
+
+#[tokio::test]
+async fn route_update_number_collision_is_409() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    new_draft(&pool, &client_id, json!({"number": "INV-A"})).await;
+    let b = new_draft(&pool, &client_id, json!({"number": "INV-B"})).await;
+
+    let (status, body) = route_patch(&pool, &b, json!({"number": "INV-A"})).await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"], "invoice number already in use");
+    assert_eq!(fetch(&pool, &b).await.number, "INV-B");
+}
+
+#[tokio::test]
+async fn route_update_turning_recurrence_on_needs_interval_and_date() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let id = new_draft(&pool, &client_id, json!({})).await;
+
+    for patch in [
+        json!({"recurring": true}),
+        json!({"recurring": true, "recur_interval": "monthly"}),
+        json!({"recurring": true, "next_recur_date": "2025-02-01"}),
+    ] {
+        let (status, _) = route_patch(&pool, &id, patch.clone()).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{patch} must be rejected");
+    }
+    assert_eq!(fetch(&pool, &id).await.recurring, 0, "row must be untouched");
+
+    let (status, _) = route_patch(
+        &pool,
+        &id,
+        json!({"recurring": true, "recur_interval": "monthly", "next_recur_date": "2025-02-01"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(fetch(&pool, &id).await.recurring, 1);
+}
+
+#[tokio::test]
+async fn route_update_recurrence_stays_editable_after_sending() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let id = new_draft(
+        &pool,
+        &client_id,
+        json!({"recurring": true, "recur_interval": "monthly", "next_recur_date": "2025-02-01"}),
+    )
+    .await;
+    let (sent, _) = route_patch(&pool, &id, json!({"status": "sent"})).await;
+    assert_eq!(sent, StatusCode::OK);
+
+    let (status, _) = route_patch(
+        &pool,
+        &id,
+        json!({"recur_interval": "yearly", "next_recur_date": "2026-02-01"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "interval/date are not locked fields");
+    let changed = fetch(&pool, &id).await;
+    assert_eq!(changed.recur_interval.as_deref(), Some("yearly"));
+    assert_eq!(changed.next_recur_date.as_deref(), Some("2026-02-01"));
+
+    let (status, _) = route_patch(&pool, &id, json!({"recurring": false})).await;
+    assert_eq!(status, StatusCode::OK, "a sent template must be stoppable");
+    let stopped = fetch(&pool, &id).await;
+    assert_eq!(stopped.recurring, 0);
+    assert!(stopped.recur_interval.is_none());
+    assert!(stopped.next_recur_date.is_none());
+}
+
+#[tokio::test]
+async fn route_update_empty_string_clears_a_text_field_and_omission_keeps_others() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let id = new_draft(&pool, &client_id, json!({})).await;
+    assert_eq!(fetch(&pool, &id).await.project_type, "IT Support");
+
+    let (status, _) = route_patch(&pool, &id, json!({"project_type": ""})).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let stored = fetch(&pool, &id).await;
+    assert_eq!(stored.project_type, "", "empty string must clear the field");
+    assert_eq!(
+        stored.billed_to_phone, "+254-700-000000",
+        "fields absent from the PATCH must keep their value"
+    );
+}
+
+#[tokio::test]
+async fn route_update_rejects_content_changes_once_sent() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let id = new_draft(&pool, &client_id, json!({})).await;
+    let (sent, _) = route_patch(&pool, &id, json!({"status": "sent"})).await;
+    assert_eq!(sent, StatusCode::OK);
+
+    for patch in [
+        json!({"billed_to_name": "Someone Else"}),
+        json!({"due_date": "2025-03-01"}),
+        json!({"items": [{"name": "x", "qty": 1, "rate": 1}]}),
+    ] {
+        let (status, _) = route_patch(&pool, &id, patch.clone()).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{patch} must be locked");
+    }
+    assert_eq!(fetch(&pool, &id).await.billed_to_name, "Acme Corp");
+
+    let (same, _) = route_patch(&pool, &id, json!({"billed_to_name": "Acme Corp"})).await;
+    assert_eq!(same, StatusCode::OK, "resending an unchanged value is not an edit");
+
+    let (kra, _) = route_patch(&pool, &id, json!({"kra_number": "KRA-1"})).await;
+    assert_eq!(kra, StatusCode::OK);
+    assert_eq!(fetch(&pool, &id).await.kra_number.as_deref(), Some("KRA-1"));
+}
+
+#[tokio::test]
+async fn route_update_enforces_status_transitions() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let id = new_draft(&pool, &client_id, json!({})).await;
+
+    let (status, _) = route_patch(&pool, &id, json!({"status": "paid"})).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "draft -> paid is not allowed");
+
+    let (status, _) = route_patch(&pool, &id, json!({"status": "sent"})).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = route_patch(&pool, &id, json!({"status": "void"})).await;
+    assert_eq!(status, StatusCode::OK);
+
+    for back in ["draft", "sent", "paid"] {
+        let (status, _) = route_patch(&pool, &id, json!({"status": back})).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "void -> {back} must be blocked");
+    }
+    assert_eq!(fetch(&pool, &id).await.status, "void");
+}
+
+#[tokio::test]
+async fn route_update_rejects_due_before_issued_and_unparseable_dates() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let id = new_draft(&pool, &client_id, json!({})).await;
+
+    for patch in [
+        json!({"due_date": "2024-12-31"}),
+        json!({"issued_date": "2025-02-15"}),
+        json!({"issued_date": "not-a-date"}),
+        json!({"due_date": "2025-02-30"}),
+    ] {
+        let (status, _) = route_patch(&pool, &id, patch.clone()).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{patch} must be rejected");
+    }
+    let untouched = fetch(&pool, &id).await;
+    assert_eq!(untouched.issued_date, "2025-01-01");
+    assert_eq!(untouched.due_date, "2025-01-31");
+
+    let (status, _) = route_patch(&pool, &id, json!({"due_date": "2025-03-01"})).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn route_delete_rejects_a_sent_invoice_and_removes_a_draft() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let sent_id = new_draft(&pool, &client_id, json!({})).await;
+    let draft_id = new_draft(&pool, &client_id, json!({})).await;
+    let (sent, _) = route_patch(&pool, &sent_id, json!({"status": "sent"})).await;
+    assert_eq!(sent, StatusCode::OK);
+
+    assert_eq!(route_delete(&pool, &sent_id).await, StatusCode::BAD_REQUEST);
+    assert!(
+        db::invoices::find_by_id(&pool, &sent_id).await.unwrap().is_some(),
+        "a sent invoice must survive a delete attempt"
+    );
+
+    assert_eq!(route_delete(&pool, &draft_id).await, StatusCode::NO_CONTENT);
+    assert!(db::invoices::find_by_id(&pool, &draft_id).await.unwrap().is_none());
 }

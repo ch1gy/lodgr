@@ -42,29 +42,29 @@ pub struct NewInvoice<'a> {
 }
 
 pub async fn list(pool: &SqlitePool) -> AppResult<Vec<Invoice>> {
-    Ok(
-        sqlx::query_as(&format!("SELECT {COLS} {JOIN} ORDER BY i.created_at DESC"))
-            .fetch_all(pool)
-            .await?,
-    )
+    Ok(sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT {COLS} {JOIN} ORDER BY i.created_at DESC"
+    )))
+    .fetch_all(pool)
+    .await?)
 }
 
 pub async fn list_for_client(pool: &SqlitePool, client_id: &str) -> AppResult<Vec<Invoice>> {
-    Ok(sqlx::query_as(&format!(
+    Ok(sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT {COLS} {JOIN} WHERE i.client_id = ? ORDER BY i.created_at DESC"
-    ))
+    )))
     .bind(client_id)
     .fetch_all(pool)
     .await?)
 }
 
 pub async fn find_by_id(pool: &SqlitePool, id: &str) -> AppResult<Option<Invoice>> {
-    Ok(
-        sqlx::query_as(&format!("SELECT {COLS} {JOIN} WHERE i.id = ?"))
-            .bind(id)
-            .fetch_optional(pool)
-            .await?,
-    )
+    Ok(sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT {COLS} {JOIN} WHERE i.id = ?"
+    )))
+    .bind(id)
+    .fetch_optional(pool)
+    .await?)
 }
 
 pub async fn create<'e>(
@@ -235,11 +235,11 @@ pub async fn next_seq<'e>(executor: impl Executor<'e, Database = Sqlite>) -> App
 /// cascade_delete_user_data, but belt-and-braces guard in case of direct DB edits.
 pub async fn list_due_for_recurrence(pool: &SqlitePool) -> AppResult<Vec<Invoice>> {
     let today = Utc::now().format("%Y-%m-%d").to_string();
-    Ok(sqlx::query_as(&format!(
+    Ok(sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT {COLS} {JOIN} \
          WHERE i.recurring = 1 AND i.status != 'void' AND i.client_id IS NOT NULL \
          AND i.next_recur_date IS NOT NULL AND i.next_recur_date <= ?"
-    ))
+    )))
     .bind(&today)
     .fetch_all(pool)
     .await?)

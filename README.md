@@ -720,3 +720,15 @@ across three passes. Current open findings are in PLANNED.md.
 
 See [PLANNED.md](PLANNED.md) for upcoming features including Tauri desktop
 wrapper, multi-desk support, and the remaining security hardening items.
+
+---
+
+## Licence
+
+Lodgr is free software, released under the **GNU Affero General Public
+License, version 3** (AGPL-3.0-only). See [LICENSE](LICENSE) for the full text.
+
+In short: you may use, study, change and share it, including commercially.
+If you run a modified version as a service that other people use over a
+network, you must offer them the source of your modified version under the
+same licence.

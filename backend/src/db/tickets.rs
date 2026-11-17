@@ -55,11 +55,11 @@ pub async fn list_all_paginated(
         .fetch_one(pool)
         .await?;
 
-    let tickets = sqlx::query_as::<_, Ticket>(&format!(
+    let tickets = sqlx::query_as::<_, Ticket>(sqlx::AssertSqlSafe(format!(
         "SELECT {TICKET_COLS_J} {TICKET_JOIN}
          WHERE t.deleted_at IS NULL
          ORDER BY t.created_at DESC LIMIT ? OFFSET ?"
-    ))
+    )))
     .bind(limit)
     .bind(offset)
     .fetch_all(pool)
@@ -81,11 +81,11 @@ pub async fn list_for_client_paginated(
             .fetch_one(pool)
             .await?;
 
-    let tickets = sqlx::query_as::<_, Ticket>(&format!(
+    let tickets = sqlx::query_as::<_, Ticket>(sqlx::AssertSqlSafe(format!(
         "SELECT {TICKET_COLS_J} {TICKET_JOIN}
          WHERE t.client_id = ? AND t.deleted_at IS NULL
          ORDER BY t.created_at DESC LIMIT ? OFFSET ?"
-    ))
+    )))
     .bind(client_id)
     .bind(limit)
     .bind(offset)
@@ -96,9 +96,9 @@ pub async fn list_for_client_paginated(
 }
 
 pub async fn find_by_id(pool: &SqlitePool, id: &str) -> AppResult<Option<Ticket>> {
-    Ok(sqlx::query_as::<_, Ticket>(&format!(
+    Ok(sqlx::query_as::<_, Ticket>(sqlx::AssertSqlSafe(format!(
         "SELECT {TICKET_COLS_J} {TICKET_JOIN} WHERE t.id = ?"
-    ))
+    )))
     .bind(id)
     .fetch_optional(pool)
     .await?)
@@ -198,7 +198,7 @@ pub async fn update_fields(pool: &SqlitePool, id: &str, f: UpdateFields<'_>) -> 
     }
 
     let sql = format!("UPDATE tickets SET {} WHERE id = ?", parts.join(", "));
-    let mut q = sqlx::query(&sql);
+    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql));
     if let Some(v) = f.priority {
         q = q.bind(v);
     }
@@ -241,12 +241,12 @@ pub async fn update_last_recurred(pool: &SqlitePool, id: &str, ts: &str) -> AppR
 /// result is compared against `datetime('now')`'s space-separated format,
 /// silently collapsing the comparison to day granularity.
 pub async fn list_due_for_recurrence(pool: &SqlitePool) -> AppResult<Vec<Ticket>> {
-    let candidates = sqlx::query_as::<_, Ticket>(&format!(
+    let candidates = sqlx::query_as::<_, Ticket>(sqlx::AssertSqlSafe(format!(
         "SELECT {TICKET_COLS} FROM tickets
          WHERE recurring = 1
            AND deleted_at IS NULL
            AND recurring_interval_days IS NOT NULL"
-    ))
+    )))
     .fetch_all(pool)
     .await?;
 
@@ -292,9 +292,9 @@ pub async fn has_recent_security_lockout_ticket(
 
 /// Fetch all tickets for a client, including deleted — used for export.
 pub async fn list_all_for_client(pool: &SqlitePool, client_id: &str) -> AppResult<Vec<Ticket>> {
-    Ok(sqlx::query_as::<_, Ticket>(&format!(
+    Ok(sqlx::query_as::<_, Ticket>(sqlx::AssertSqlSafe(format!(
         "SELECT {TICKET_COLS} FROM tickets WHERE client_id = ? ORDER BY created_at DESC"
-    ))
+    )))
     .bind(client_id)
     .fetch_all(pool)
     .await?)

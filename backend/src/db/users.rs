@@ -10,27 +10,27 @@ const USER_COLS: &str = "id, name, email, email_nonce, email_hash, password_hash
     phone, phone_nonce";
 
 pub async fn find_by_email_hash(pool: &SqlitePool, hash: &str) -> AppResult<Option<User>> {
-    Ok(sqlx::query_as::<_, User>(&format!(
+    Ok(sqlx::query_as::<_, User>(sqlx::AssertSqlSafe(format!(
         "SELECT {USER_COLS} FROM users WHERE email_hash = ?"
-    ))
+    )))
     .bind(hash)
     .fetch_optional(pool)
     .await?)
 }
 
 pub async fn find_by_id(pool: &SqlitePool, id: &str) -> AppResult<Option<User>> {
-    Ok(
-        sqlx::query_as::<_, User>(&format!("SELECT {USER_COLS} FROM users WHERE id = ?"))
-            .bind(id)
-            .fetch_optional(pool)
-            .await?,
-    )
+    Ok(sqlx::query_as::<_, User>(sqlx::AssertSqlSafe(format!(
+        "SELECT {USER_COLS} FROM users WHERE id = ?"
+    )))
+    .bind(id)
+    .fetch_optional(pool)
+    .await?)
 }
 
 pub async fn find_all_clients(pool: &SqlitePool) -> AppResult<Vec<User>> {
-    Ok(sqlx::query_as::<_, User>(&format!(
+    Ok(sqlx::query_as::<_, User>(sqlx::AssertSqlSafe(format!(
         "SELECT {USER_COLS} FROM users WHERE role = 'client' ORDER BY created_at DESC"
-    ))
+    )))
     .fetch_all(pool)
     .await?)
 }
@@ -103,9 +103,9 @@ pub async fn reset_lockout(pool: &SqlitePool, user_id: &str) -> AppResult<()> {
 }
 
 pub async fn find_desk_user(pool: &SqlitePool) -> AppResult<Option<User>> {
-    Ok(sqlx::query_as::<_, User>(&format!(
+    Ok(sqlx::query_as::<_, User>(sqlx::AssertSqlSafe(format!(
         "SELECT {USER_COLS} FROM users WHERE role = 'desk' LIMIT 1"
-    ))
+    )))
     .fetch_optional(pool)
     .await?)
 }
@@ -165,9 +165,9 @@ pub async fn update_profile(
 
 /// Returns users whose `deleted_at` is older than the given cutoff (RFC-3339).
 pub async fn find_expired_soft_deleted(pool: &SqlitePool, cutoff: &str) -> AppResult<Vec<User>> {
-    Ok(sqlx::query_as::<_, User>(&format!(
+    Ok(sqlx::query_as::<_, User>(sqlx::AssertSqlSafe(format!(
         "SELECT {USER_COLS} FROM users WHERE deleted_at IS NOT NULL AND deleted_at < ?"
-    ))
+    )))
     .bind(cutoff)
     .fetch_all(pool)
     .await?)

@@ -174,17 +174,35 @@ openssl rand -hex 32   # → ENCRYPTION_SALT (set once, never change after first
 cargo run -p backend
 ```
 
-Must be run from the workspace root so `data/`, `uploads/`, `exports/`, and `logs/`
-are created relative to the working directory.
+Where your data lives is decided once, at startup, and written to the log
+(`data directory`, `database file`, `frontend directory`):
+
+- **`DATA_DIR` set (recommended):** the database is `DATA_DIR/support.db`, and
+  `uploads/`, `exports/` and `logs/` live inside `DATA_DIR`. It does not matter
+  which folder you start the server from.
+- **`DATA_DIR` unset (legacy):** everything is relative to the folder you start
+  the server from (`data/support.db`, `uploads/`, `exports/`, `logs/`), as in
+  earlier versions. The server logs a warning, because starting it from a
+  different folder would silently create a second, empty database. If the
+  database file does not exist, it says so loudly before creating one.
+- **Moving an existing install to `DATA_DIR`:** stop the server, then move
+  `data/support.db*` (all three files: `.db`, `-wal`, `-shm`) to
+  `DATA_DIR/support.db*`, and `uploads/`, `exports/`, `logs/` into `DATA_DIR/`.
+  Then set `DATA_DIR` in `.env`.
+- **Frontend:** the server serves the built app from `STATIC_DIR`. If unset it
+  looks for `frontend/dist` next to the working directory, one level up, and next
+  to the checkout the binary was built from. With `COOKIE_SECURE=true`
+  (production) a missing `index.html` stops the server at startup; in
+  development it only warns, because Vite serves the app.
 
 **First-run behaviour:**
-1. Creates `logs/` for structured log files (daily rotation, 30-day retention)
-2. Creates `data/support.db` and runs all migrations
+1. Creates `logs/` for structured log files (daily rotation; files older than 30 days are deleted)
+2. Creates the database file (see above) and runs all migrations
 3. Creates `uploads/` and `exports/` directories
 4. Derives the AES-256-GCM encryption key (~2–4 s, Argon2id 64 MiB)
 5. Cleans up expired and revoked sessions
 6. Seeds `desk@local` with the password from `DESK_INITIAL_PASSWORD` (default: `changeme`)
-7. Starts background tasks: recurring ticket spawner, expired-user cleanup, hourly stale export cleanup
+7. Starts background tasks: recurring ticket spawner, expired-user cleanup, hourly stale export cleanup. Housekeeping (expired sessions, log retention, stale exports, the 30-day account purge) first runs about a minute after start, so it also happens on short uptimes
 
 **Change the desk password immediately** (or set `DESK_INITIAL_PASSWORD` in `.env`
 before first run):
@@ -214,13 +232,35 @@ backend at `:3000` — no CORS configuration needed in development.
 For production, build with `npm run build` and serve `frontend/dist/` from the same
 origin as the backend (already handled if you point `ServeDir` at the dist folder).
 
+### Stopping the server and backing up
+
+Stop the server with **Ctrl-C** (or SIGTERM; closing the console window also
+works on Windows). It finishes in-flight requests (up to 10 s), writes the
+database's write-ahead log back into `support.db`, and closes cleanly. A daily
+job does the same checkpoint while the server runs.
+
+While the server is running, recent changes live in `support.db-wal`, so
+**copying `support.db` alone can lose them**. Take a consistent backup with
+SQLite itself, which is safe while the server is running:
+
+```bash
+sqlite3 /path/to/support.db "VACUUM INTO '/path/to/backups/support-2026-11-17.db'"
+```
+
+Back up `uploads/` as well, and keep `.env` (with `ENCRYPTION_PASSPHRASE` and
+`ENCRYPTION_SALT`) somewhere separate: without it the encrypted fields in the
+database cannot be read. If you cannot run `sqlite3`, stop the server with
+Ctrl-C first and copy the whole data folder.
+
 ---
 
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `DATABASE_URL` | no | `sqlite://./data/support.db` | SQLite file path |
+| `DATA_DIR` | no | the folder the server is started from | Where the database (`support.db`), `uploads/`, `exports/` and `logs/` live. Relative paths resolve against the starting folder. See "Run the backend" |
+| `STATIC_DIR` | no | auto-detected `frontend/dist` | Built frontend served at `/`. Required to contain `index.html` when `COOKIE_SECURE=true` |
+| `DATABASE_URL` | no | `DATA_DIR/support.db` (legacy: `data/support.db`) | Explicit SQLite URL. Overrides the database location only; `uploads/`, `exports/` and `logs/` still follow `DATA_DIR` |
 | `BIND_ADDR` | no | `127.0.0.1:3000` | TCP bind address |
 | `BASE_URL` | no | `http://{BIND_ADDR}` | Public base URL for magic link construction. **Must be `https://...` in any HTTPS deployment** — server panics at startup if `COOKIE_SECURE=true` and this starts with `http://` |
 | `JWT_SECRET` | **yes** | — | HS256 signing key, ≥ 32 bytes. Generate: `openssl rand -hex 32` |

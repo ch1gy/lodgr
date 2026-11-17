@@ -1,5 +1,118 @@
+use std::path::{Path, PathBuf};
+
 use jsonwebtoken::{DecodingKey, EncodingKey};
 use zeroize::Zeroizing;
+
+/// Where the SQLite database lives.
+#[derive(Clone, Debug)]
+pub enum Database {
+    /// A database file chosen by Lodgr itself (from `DATA_DIR`, or the legacy
+    /// working-directory layout). Opened by path, so spaces and other URL
+    /// metacharacters in the path are harmless.
+    File(PathBuf),
+    /// An explicit `DATABASE_URL`.
+    Url(String),
+}
+
+/// Absolute locations resolved once at startup. See `resolve_paths`.
+#[derive(Clone, Debug)]
+pub struct Paths {
+    /// Working directory the process runs in. `uploads/`, `exports/` and
+    /// `logs/` are created beneath it and every relative path in the code
+    /// resolves against it.
+    pub data_dir: PathBuf,
+    /// True when `DATA_DIR` was set; false for the legacy layout where
+    /// `data_dir` is simply the directory the process was started from.
+    pub data_dir_explicit: bool,
+    pub database: Database,
+    /// Built React app served at `/`.
+    pub static_dir: PathBuf,
+}
+
+/// Joins `p` onto `base` when relative, and resolves `.` / `..` lexically so
+/// the logged path is readable. (No filesystem access, so it works for
+/// directories that do not exist yet.)
+fn absolute(base: &Path, p: &str) -> PathBuf {
+    let p = Path::new(p);
+    let joined = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        base.join(p)
+    };
+    normalize(&joined)
+}
+
+fn normalize(p: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for c in p.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    out.push("..");
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// Decide where data and the built frontend live, independent of where the
+/// server happens to be started from.
+///
+/// * `DATA_DIR` set: the database is `DATA_DIR/support.db` and `uploads/`,
+///   `exports/` and `logs/` live inside it.
+/// * `DATA_DIR` unset (legacy): everything is relative to the starting
+///   directory (`data/support.db`, `uploads/`, `exports/`, `logs/`), exactly as
+///   before, but now resolved to absolute paths so they can be logged.
+/// * `DATABASE_URL`, when set, always wins for the database.
+/// * `STATIC_DIR`, when set, always wins for the frontend. Otherwise the first
+///   of `./frontend/dist`, `../frontend/dist` and the checkout the binary was
+///   built in that contains an `index.html`.
+pub fn resolve_paths(
+    cwd: &Path,
+    exe_dir: Option<&Path>,
+    data_dir: Option<&str>,
+    database_url: Option<&str>,
+    static_dir: Option<&str>,
+) -> Paths {
+    let data_dir_set = data_dir.map(str::trim).filter(|s| !s.is_empty());
+    let resolved_data_dir = data_dir_set.map_or_else(|| cwd.to_path_buf(), |d| absolute(cwd, d));
+
+    let database = match database_url.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(url) => Database::Url(url.to_owned()),
+        None if data_dir_set.is_some() => Database::File(resolved_data_dir.join("support.db")),
+        None => Database::File(cwd.join("data").join("support.db")),
+    };
+
+    let resolved_static = match static_dir.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(s) => absolute(cwd, s),
+        None => {
+            let mut candidates = vec![
+                cwd.join("frontend").join("dist"),
+                cwd.join("..").join("frontend").join("dist"),
+            ];
+            if let Some(exe) = exe_dir {
+                // target/debug/backend -> <repo>/frontend/dist
+                candidates.push(exe.join("..").join("..").join("frontend").join("dist"));
+            }
+            let found = candidates
+                .iter()
+                .find(|c| c.join("index.html").is_file())
+                .cloned();
+            normalize(&found.unwrap_or_else(|| cwd.join("..").join("frontend").join("dist")))
+        }
+    };
+
+    Paths {
+        data_dir: resolved_data_dir,
+        data_dir_explicit: data_dir_set.is_some(),
+        database,
+        static_dir: resolved_static,
+    }
+}
 
 /// How to connect to the SMTP server.
 #[derive(Clone, Debug, Default)]
@@ -11,7 +124,10 @@ pub enum SmtpTls {
 
 #[derive(Clone)]
 pub struct Config {
-    pub database_url: String,
+    pub database: Database,
+    pub data_dir: PathBuf,
+    pub data_dir_explicit: bool,
+    pub static_dir: PathBuf,
     pub jwt_secret: Zeroizing<String>,
     pub access_token_ttl_secs: i64,
     pub refresh_token_ttl_secs: i64,
@@ -49,8 +165,17 @@ impl Config {
     pub fn from_env() -> anyhow::Result<Self> {
         dotenvy::dotenv().ok();
 
-        let database_url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "sqlite://data/support.db".to_string());
+        let cwd = std::env::current_dir()?;
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().map(Path::to_path_buf));
+        let paths = resolve_paths(
+            &cwd,
+            exe_dir.as_deref(),
+            std::env::var("DATA_DIR").ok().as_deref(),
+            std::env::var("DATABASE_URL").ok().as_deref(),
+            std::env::var("STATIC_DIR").ok().as_deref(),
+        );
 
         let jwt_secret = Zeroizing::new(std::env::var("JWT_SECRET").unwrap_or_else(|_| {
             panic!(
@@ -150,7 +275,10 @@ impl Config {
         }
 
         Ok(Config {
-            database_url,
+            database: paths.database,
+            data_dir: paths.data_dir,
+            data_dir_explicit: paths.data_dir_explicit,
+            static_dir: paths.static_dir,
             jwt_secret,
             access_token_ttl_secs,
             refresh_token_ttl_secs,

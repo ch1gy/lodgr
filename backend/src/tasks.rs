@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use chrono::{Duration, Months, NaiveDate, Utc};
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -145,7 +147,7 @@ pub async fn recurring_invoices(pool: SqlitePool) {
                     // Run next_seq + create + date advance in a single transaction so a
                     // mid-flight crash cannot produce duplicate numbers or stuck templates.
                     let tx_result: crate::error::AppResult<()> = async {
-                        let mut tx = pool.begin().await?;
+                        let mut tx = crate::db::begin_write(&pool).await?;
                         let seq = db::invoices::next_seq(&mut *tx).await?;
                         let number = format!("INV-{seq:04}");
                         db::invoices::create(
@@ -202,12 +204,98 @@ pub async fn recurring_invoices(pool: SqlitePool) {
     }
 }
 
-/// Runs every 24 h. Hard-deletes users soft-deleted more than 30 days ago.
-/// Mirrors the manual path: ensures a pre-deletion export exists, generating
-/// one if none has been taken, before cascading the delete.
-pub async fn hard_delete_expired_users(pool: SqlitePool, enc_key: EncryptionKey) {
+/// Housekeeping jobs run this long after the server starts, then on their
+/// interval. Waiting a little lets startup finish first, and running at all
+/// means a server that is only up for an hour or two still cleans up.
+pub const STARTUP_DELAY: tokio::time::Duration = tokio::time::Duration::from_secs(60);
+
+/// Log files older than this are deleted (the privacy notice promises 30 days).
+pub const LOG_RETENTION: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 3600);
+
+/// Runs about a minute after start, then every 24 h: drops expired sessions and
+/// revocation rows, folds the write-ahead log into the database file, and
+/// deletes logs past their retention.
+pub async fn daily_maintenance(pool: SqlitePool) {
+    tokio::time::sleep(STARTUP_DELAY).await;
     let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(86_400));
-    interval.tick().await; // skip first tick — already ran at startup
+    loop {
+        interval.tick().await;
+        if let Ok(n) = db::sessions::delete_expired_and_revoked(&pool).await {
+            tracing::info!("session cleanup: removed {n} rows");
+        }
+        if let Ok(n) = db::jwt_revocations::delete_expired(&pool).await {
+            if n > 0 {
+                tracing::info!("jti cleanup: removed {n} expired rows");
+            }
+        }
+        if let Err(e) = db::checkpoint_wal(&pool).await {
+            tracing::warn!("WAL checkpoint failed: {e}");
+        }
+        match clean_old_logs(Path::new("logs"), LOG_RETENTION).await {
+            Ok(n) if n > 0 => tracing::info!("log cleanup: removed {n} old log files"),
+            Err(e) => tracing::warn!("log cleanup failed: {e}"),
+            _ => {}
+        }
+    }
+}
+
+/// Runs about a minute after start, then hourly: removes stale export files.
+pub async fn export_cleanup() {
+    tokio::time::sleep(STARTUP_DELAY).await;
+    let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
+    loop {
+        interval.tick().await;
+        match clean_old_exports().await {
+            Ok(n) if n > 0 => tracing::info!("export cleanup: removed {n} stale export files"),
+            Err(e) => tracing::warn!("export cleanup failed: {e}"),
+            _ => {}
+        }
+    }
+}
+
+/// Deletes `lodgr*.log*` files in `dir` last modified more than `max_age` ago.
+/// Returns how many were removed. A missing directory is not an error.
+pub async fn clean_old_logs(dir: &Path, max_age: std::time::Duration) -> std::io::Result<u32> {
+    let cutoff = std::time::SystemTime::now()
+        .checked_sub(max_age)
+        .unwrap_or(std::time::UNIX_EPOCH);
+
+    let mut entries = match tokio::fs::read_dir(dir).await {
+        Ok(d) => d,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(e),
+    };
+
+    let mut removed = 0u32;
+    while let Some(entry) = entries.next_entry().await? {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with("lodgr") || !name.contains(".log") {
+            continue;
+        }
+        let Ok(meta) = entry.metadata().await else {
+            continue;
+        };
+        if !meta.is_file() {
+            continue;
+        }
+        let Ok(modified) = meta.modified() else {
+            continue;
+        };
+        if modified < cutoff && tokio::fs::remove_file(entry.path()).await.is_ok() {
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
+
+/// Runs about a minute after start, then every 24 h. Hard-deletes users
+/// soft-deleted more than 30 days ago. Mirrors the manual path: ensures a
+/// pre-deletion export exists, generating one if none has been taken, before
+/// cascading the delete.
+pub async fn hard_delete_expired_users(pool: SqlitePool, enc_key: EncryptionKey) {
+    tokio::time::sleep(STARTUP_DELAY).await;
+    let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(86_400));
     loop {
         interval.tick().await;
         let cutoff = (Utc::now() - chrono::Duration::days(30)).to_rfc3339();
@@ -316,7 +404,7 @@ pub async fn clean_old_exports() -> std::io::Result<u32> {
 }
 
 async fn cascade_hard_delete_user(pool: &SqlitePool, user_id: &str) -> crate::error::AppResult<()> {
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
     crate::services::admin::cascade_delete_user_data(&mut tx, user_id).await?;
     tx.commit().await?;
     Ok(())

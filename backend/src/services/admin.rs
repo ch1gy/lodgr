@@ -228,7 +228,7 @@ pub async fn soft_delete_client(pool: &SqlitePool, client_id: &str) -> AppResult
     }
 
     let now = chrono::Utc::now().to_rfc3339();
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
 
     sqlx::query(
         "UPDATE tickets SET deleted_at = ?
@@ -274,7 +274,7 @@ pub async fn restore_client(pool: &SqlitePool, client_id: &str) -> AppResult<()>
         ));
     }
 
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
 
     // Only restore tickets that were deleted together with this user (same deleted_at
     // timestamp), not tickets that were individually deleted beforehand.
@@ -331,7 +331,7 @@ pub async fn hard_delete_client(
     export_client(pool, enc_key, client_id).await?;
 
     // Single transaction: cascade all child rows then delete the user.
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
     cascade_delete_user_data(&mut tx, client_id).await?;
     tx.commit().await?;
 

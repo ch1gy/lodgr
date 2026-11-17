@@ -18,7 +18,7 @@ pub async fn create_capped(
     s: NewSession<'_>,
     max_sessions: i64,
 ) -> AppResult<()> {
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
     let created_at = Utc::now().to_rfc3339();
 
     let active: i64 = sqlx::query_scalar(

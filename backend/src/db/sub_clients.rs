@@ -49,7 +49,7 @@ pub async fn create(
 /// null the references first inside the same transaction to avoid a
 /// SQLITE_CONSTRAINT failure surfacing as a 500.
 pub async fn delete(pool: &SqlitePool, id: &str) -> AppResult<()> {
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
     sqlx::query("UPDATE tickets SET sub_client_id = NULL WHERE sub_client_id = ?")
         .bind(id)
         .execute(&mut *tx)

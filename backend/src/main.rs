@@ -1,13 +1,13 @@
 // All modules live in lib.rs so integration tests can import them.
 use backend::{auth, crypto, db, email, routes, services, tasks};
 use backend::{
-    config::Config,
+    config::{Config, Database},
     crypto::EncryptionKey,
     email::SmtpMailer,
     rate_limit::{rate_limit_by_ip, rate_limit_reports, IpRateLimiter, ReportRateLimiter},
 };
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{future::IntoFuture, net::SocketAddr, sync::Arc};
 
 use axum::{
     extract::{DefaultBodyLimit, FromRef},
@@ -24,6 +24,7 @@ use std::str::FromStr;
 use tower_http::{
     services::{ServeDir, ServeFile},
     set_header::SetResponseHeaderLayer,
+    trace::TraceLayer,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -58,14 +59,27 @@ impl FromRef<AppState> for Option<Arc<SmtpMailer>> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // ── Logging: daily-rotating file (30-day retention) + stdout ─────────────
+    let config = Config::from_env()?;
+
+    // Everything the server writes (uploads/, exports/, logs/) is a relative
+    // path, so pin the working directory to DATA_DIR before anything is
+    // created. With DATA_DIR unset the legacy layout applies: the directory
+    // the process was started from.
+    if config.data_dir_explicit {
+        std::fs::create_dir_all(&config.data_dir)?;
+        std::env::set_current_dir(&config.data_dir)?;
+    }
+
+    // ── Logging: daily-rotating file + stdout ────────────────────────────────
+    // Retention is by age (tasks::daily_maintenance deletes files older than
+    // 30 days), not by file count: a count cap keeps old logs forever when the
+    // server only runs now and then.
     std::fs::create_dir_all("logs")?;
 
     let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
         .rotation(tracing_appender::rolling::Rotation::DAILY)
         .filename_prefix("lodgr")
         .filename_suffix("log")
-        .max_log_files(30)
         .build("logs")
         .map_err(|e| anyhow::anyhow!("log appender init: {e}"))?;
 
@@ -84,7 +98,26 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let config = Config::from_env()?;
+    tracing::info!(data_dir = %config.data_dir.display(), "data directory");
+    if !config.data_dir_explicit {
+        tracing::warn!(
+            "DATA_DIR is not set: data lives in the directory the server was started from ({}). Starting it from another folder would create a second, empty database. Set DATA_DIR to pin it.",
+            config.data_dir.display()
+        );
+    }
+    tracing::info!(static_dir = %config.static_dir.display(), "frontend directory");
+    if !config.static_dir.join("index.html").is_file() {
+        let msg = format!(
+            "STATIC_DIR {} has no index.html — build the frontend (npm run build in frontend/) or set STATIC_DIR",
+            config.static_dir.display()
+        );
+        // In production (COOKIE_SECURE=true) the backend serves the app, so a
+        // missing build is fatal. In development Vite serves it instead.
+        if config.cookie_secure {
+            anyhow::bail!(msg);
+        }
+        tracing::warn!("{msg}");
+    }
 
     let enc_key: EncryptionKey = {
         let passphrase = zeroize::Zeroizing::new(
@@ -114,24 +147,40 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    // Create the DB parent directory from the configured URL.
-    // Also create upload/export dirs relative to the process working dir.
-    if let Some(db_path) = config.database_url.strip_prefix("sqlite:///") {
-        if let Some(parent) = std::path::Path::new(db_path).parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-    } else if let Some(db_path) = config.database_url.strip_prefix("sqlite://") {
-        if let Some(parent) = std::path::Path::new(db_path).parent() {
-            if !parent.as_os_str().is_empty() {
+    // Create the DB parent directory, and the upload/export dirs (relative to
+    // the data directory, which is the working directory by now).
+    let connect_opts = match &config.database {
+        Database::File(path) => {
+            if let Some(parent) = path.parent() {
                 tokio::fs::create_dir_all(parent).await?;
             }
+            if !path.exists() {
+                tracing::warn!(
+                    "database file {} does not exist — creating a NEW, empty database (and a new desk account). If you expected existing data, stop now and check DATA_DIR / the folder you started the server from.",
+                    path.display()
+                );
+            }
+            tracing::info!(database = %path.display(), "database file");
+            SqliteConnectOptions::new().filename(path)
         }
-    }
+        Database::Url(url) => {
+            let file = url
+                .strip_prefix("sqlite:///")
+                .or_else(|| url.strip_prefix("sqlite://"));
+            if let Some(parent) = file.and_then(|f| std::path::Path::new(f).parent()) {
+                if !parent.as_os_str().is_empty() {
+                    tokio::fs::create_dir_all(parent).await?;
+                }
+            }
+            tracing::info!("database: explicit DATABASE_URL");
+            SqliteConnectOptions::from_str(url)?
+        }
+    };
     for dir in &["uploads", "exports"] {
         tokio::fs::create_dir_all(dir).await?;
     }
 
-    let connect_opts = SqliteConnectOptions::from_str(&config.database_url)?
+    let connect_opts = connect_opts
         .create_if_missing(true)
         .journal_mode(SqliteJournalMode::Wal)
         .foreign_keys(true)
@@ -182,36 +231,11 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    {
-        let cleanup_pool = pool.clone();
-        tokio::spawn(async move {
-            let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(24 * 3600));
-            iv.tick().await;
-            loop {
-                iv.tick().await;
-                if let Ok(n) = db::sessions::delete_expired_and_revoked(&cleanup_pool).await {
-                    tracing::info!("session cleanup: removed {n} rows");
-                }
-                if let Ok(n) = db::jwt_revocations::delete_expired(&cleanup_pool).await {
-                    if n > 0 {
-                        tracing::info!("jti cleanup: removed {n} expired rows");
-                    }
-                }
-            }
-        });
-    }
-
-    tokio::spawn(async {
-        let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(3600));
-        iv.tick().await;
-        loop {
-            iv.tick().await;
-            match tasks::clean_old_exports().await {
-                Ok(n) if n > 0 => tracing::info!("export cleanup: removed {n} stale export files"),
-                Err(e) => tracing::warn!("export cleanup failed: {e}"),
-                _ => {}
-            }
-        }
+    // Housekeeping that must also run on short uptimes: a first pass about a
+    // minute after start, then on the usual interval (see tasks::STARTUP_DELAY).
+    spawn_with_restart("daily_maintenance", pool.clone(), tasks::daily_maintenance);
+    spawn_with_restart("export_cleanup", pool.clone(), |_pool| {
+        tasks::export_cleanup()
     });
 
     let auth_limiter = IpRateLimiter::new(config.rate_limit_auth_rps, config.rate_limit_auth_burst);
@@ -219,12 +243,15 @@ async fn main() -> anyhow::Result<()> {
         config.rate_limit_report_rps,
         config.rate_limit_report_burst,
     ));
+    let shutdown_pool = pool.clone();
     let state = AppState {
         pool,
         config,
         enc_key,
         mailer,
     };
+
+    let static_dir = state.config.static_dir.clone();
 
     // ── Rate-limited sub-routers ───────────────────────────────────────────
     // route_layer() in Axum applies to ALL routes currently in the router, so
@@ -366,8 +393,7 @@ async fn main() -> anyhow::Result<()> {
         // fallback so React Router can handle client-side paths like /clients.
         .nest_service(
             "/",
-            ServeDir::new("../frontend/dist")
-                .fallback(ServeFile::new("../frontend/dist/index.html")),
+            ServeDir::new(&static_dir).fallback(ServeFile::new(static_dir.join("index.html"))),
         )
         // ── Global middleware ──────────────────────────────────────────────
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
@@ -397,19 +423,104 @@ async fn main() -> anyhow::Result<()> {
             HeaderName::from_static("permissions-policy"),
             HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
         ))
+        // Outermost: every log line emitted while handling a request, including
+        // AppError::Internal, carries the method and path. Path only: the query
+        // string is never logged.
+        .layer(
+            TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {
+                tracing::info_span!("request", method = %req.method(), path = %req.uri().path())
+            }),
+        )
         .with_state(state);
 
     let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_string());
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
     tracing::info!("Listening on http://{bind_addr}");
 
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await?;
+    // Stop on Ctrl-C / SIGTERM / console close, let in-flight requests finish
+    // (bounded: a stuck connection must not make the server unkillable), then
+    // fold the write-ahead log into the main database file and close the pool.
+    let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn(
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(async {
+            stop_rx.await.ok();
+        })
+        .into_future(),
+    );
+    tokio::pin!(server);
+
+    tokio::select! {
+        res = &mut server => {
+            // The server stopped by itself: surface why.
+            res??;
+        }
+        () = shutdown_signal() => {
+            tracing::info!("shutdown requested — finishing in-flight requests");
+            stop_tx.send(()).ok();
+            match tokio::time::timeout(SHUTDOWN_GRACE, &mut server).await {
+                Ok(res) => res??,
+                Err(_) => tracing::warn!("in-flight requests did not finish in time — closing anyway"),
+            }
+        }
+    }
+
+    if let Err(e) = db::checkpoint_wal(&shutdown_pool).await {
+        tracing::warn!("WAL checkpoint at shutdown failed: {e}");
+    }
+    shutdown_pool.close().await;
+    tracing::info!("shutdown complete");
 
     Ok(())
+}
+
+/// How long in-flight requests get to finish after a shutdown signal.
+const SHUTDOWN_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Resolves on Ctrl-C, SIGTERM (Unix), or Ctrl-Break / the console window being
+/// closed / the machine shutting down (Windows).
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c().await.ok();
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+
+    #[cfg(windows)]
+    let terminate = async {
+        let close = tokio::signal::windows::ctrl_close();
+        let shutdown = tokio::signal::windows::ctrl_shutdown();
+        let brk = tokio::signal::windows::ctrl_break();
+        match (close, shutdown, brk) {
+            (Ok(mut c), Ok(mut s), Ok(mut b)) => {
+                tokio::select! {
+                    _ = c.recv() => {}
+                    _ = s.recv() => {}
+                    _ = b.recv() => {}
+                }
+            }
+            _ => std::future::pending::<()>().await,
+        }
+    };
+
+    #[cfg(not(any(unix, windows)))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c => {}
+        () = terminate => {}
+    }
 }
 
 /// Spawns a background task inside a restart supervisor with exponential backoff.

@@ -36,7 +36,10 @@ pub async fn setup_test_db() -> (SqlitePool, tempfile::TempDir) {
 
 pub fn test_config() -> Config {
     Config {
-        database_url: "sqlite::memory:".into(),
+        database: backend::config::Database::Url("sqlite::memory:".into()),
+        data_dir: std::path::PathBuf::from("."),
+        data_dir_explicit: false,
+        static_dir: std::path::PathBuf::from("../frontend/dist"),
         jwt_secret: Zeroizing::new("test_secret_at_least_32_bytes_long_abcdef".into()),
         access_token_ttl_secs: 900,
         refresh_token_ttl_secs: 604_800,

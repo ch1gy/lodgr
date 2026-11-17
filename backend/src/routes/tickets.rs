@@ -214,7 +214,7 @@ pub async fn delete(
     _: DeskUser,
     Path(id): Path<String>,
 ) -> AppResult<impl IntoResponse> {
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(&pool).await?;
     sqlx::query("DELETE FROM thread_entries WHERE ticket_id = ?")
         .bind(&id)
         .execute(&mut *tx)

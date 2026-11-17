@@ -202,7 +202,7 @@ Where your data lives is decided once, at startup, and written to the log
 4. Derives the AES-256-GCM encryption key (~2–4 s, Argon2id 64 MiB)
 5. Cleans up expired and revoked sessions
 6. Seeds `desk@local` with the password from `DESK_INITIAL_PASSWORD` (default: `changeme`)
-7. Starts background tasks: recurring ticket spawner, expired-user cleanup, hourly stale export cleanup. Housekeeping (expired sessions, log retention, stale exports, the 30-day account purge) first runs about a minute after start, so it also happens on short uptimes
+7. Starts background tasks: recurring ticket spawner, expired-user cleanup, hourly stale export cleanup. Housekeeping (expired sessions, log retention, stale exports) first runs about a minute after start, so it also happens on short uptimes. The 30-day purge of archived clients only deletes when `AUTO_PURGE_ARCHIVED_CLIENTS=true`
 
 **Change the desk password immediately** (or set `DESK_INITIAL_PASSWORD` in `.env`
 before first run):
@@ -260,6 +260,7 @@ Ctrl-C first and copy the whole data folder.
 |---|---|---|---|
 | `DATA_DIR` | no | the folder the server is started from | Where the database (`support.db`), `uploads/`, `exports/` and `logs/` live. Relative paths resolve against the starting folder. See "Run the backend" |
 | `STATIC_DIR` | no | auto-detected `frontend/dist` | Built frontend served at `/`. Required to contain `index.html` when `COOKIE_SECURE=true` |
+| `AUTO_PURGE_ARCHIVED_CLIENTS` | no | `false` | When `true`, a background job permanently deletes clients 30 days after they were archived (after ensuring an export exists). When `false` (default) nothing is deleted automatically: the server logs a warning with the ids of clients past the window and the desk deletes them by hand |
 | `DATABASE_URL` | no | `DATA_DIR/support.db` (legacy: `data/support.db`) | Explicit SQLite URL. Overrides the database location only; `uploads/`, `exports/` and `logs/` still follow `DATA_DIR` |
 | `BIND_ADDR` | no | `127.0.0.1:3000` | TCP bind address |
 | `BASE_URL` | no | `http://{BIND_ADDR}` | Public base URL for magic link construction. **Must be `https://...` in any HTTPS deployment** — server panics at startup if `COOKIE_SECURE=true` and this starts with `http://` |
@@ -663,7 +664,7 @@ curl http://localhost:3000/reports/monthly/CLIENT_ID/2026/05 \
 ## Soft Delete & Recovery
 
 Soft-deleting a client hides them and all their tickets from normal views.
-Recovery window is 30 days. After 30 days the account must be hard-deleted.
+Recovery window is 30 days. After 30 days the account must be hard-deleted: automatically if `AUTO_PURGE_ARCHIVED_CLIENTS=true`, otherwise by the desk (Clients page, or the hard-delete endpoint below). The server logs a warning with the ids of clients past the window.
 
 Hard deletion:
 1. Requires at least one prior export (`POST /admin/clients/:id/export`)
@@ -714,7 +715,7 @@ transmitted via email — reducing exposure to email provider logging and interc
 
 **Minimal retention, automated cleanup.** Export files are deleted immediately on
 download (RAII guard — survives panics) and hourly for anything not yet downloaded.
-Soft-deleted accounts are permanently purged after 30 days by a background task.
+Soft-deleted accounts are permanently purged after 30 days by a background task **only when `AUTO_PURGE_ARCHIVED_CLIENTS=true`**; by default the desk deletes them by hand.
 Session tokens and magic links are cleaned daily.
 
 **What was deliberately left out.** No analytics, no tracking pixels, no

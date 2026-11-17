@@ -289,84 +289,117 @@ pub async fn clean_old_logs(dir: &Path, max_age: std::time::Duration) -> std::io
     Ok(removed)
 }
 
-/// Runs about a minute after start, then every 24 h. Hard-deletes users
-/// soft-deleted more than 30 days ago. Mirrors the manual path: ensures a
-/// pre-deletion export exists, generating one if none has been taken, before
-/// cascading the delete.
-pub async fn hard_delete_expired_users(pool: SqlitePool, enc_key: EncryptionKey) {
+/// Runs about a minute after start, then every 24 h. See `purge_expired_users`.
+pub async fn hard_delete_expired_users(pool: SqlitePool, enc_key: EncryptionKey, auto_purge: bool) {
     tokio::time::sleep(STARTUP_DELAY).await;
     let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(86_400));
     loop {
         interval.tick().await;
-        let cutoff = (Utc::now() - chrono::Duration::days(30)).to_rfc3339();
-        match db::users::find_expired_soft_deleted(&pool, &cutoff).await {
-            Ok(users) => {
-                for u in users {
-                    // Ensure a pre-deletion export record exists. If not, generate
-                    // one now — mirrors the guard in services::admin::hard_delete_client.
-                    let has_export = match db::exports::exists_for_client(&pool, &u.id).await {
-                        Ok(v) => v,
-                        Err(e) => {
+        purge_expired_users(&pool, &enc_key, auto_purge).await;
+    }
+}
+
+/// One pass over clients archived more than 30 days ago.
+///
+/// Permanently deleting a client (tickets, messages, notes, sessions, drafts)
+/// is irreversible, so it only happens when `auto_purge` is true
+/// (`AUTO_PURGE_ARCHIVED_CLIENTS=true`). Otherwise this only reports, by id,
+/// how many clients are past the window, and the desk deletes them by hand.
+/// When enabled it mirrors the manual path: a pre-deletion export is ensured
+/// (generated if none exists) before the cascade delete.
+/// Returns how many clients were deleted.
+pub async fn purge_expired_users(
+    pool: &SqlitePool,
+    enc_key: &EncryptionKey,
+    auto_purge: bool,
+) -> usize {
+    let cutoff = (Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+    let users = match db::users::find_expired_soft_deleted(pool, &cutoff).await {
+        Ok(users) => users,
+        Err(e) => {
+            tracing::warn!("expired user query failed: {e}");
+            return 0;
+        }
+    };
+    if users.is_empty() {
+        return 0;
+    }
+
+    if !auto_purge {
+        let ids: Vec<&str> = users.iter().map(|u| u.id.as_str()).collect();
+        tracing::warn!(
+            count = users.len(),
+            user_ids = ?ids,
+            "archived clients are past the 30-day recovery window and were NOT deleted; set AUTO_PURGE_ARCHIVED_CLIENTS=true to purge them automatically, or delete them from the Clients page"
+        );
+        return 0;
+    }
+
+    let mut purged = 0;
+    for u in users {
+        // Ensure a pre-deletion export record exists. If not, generate
+        // one now — mirrors the guard in services::admin::hard_delete_client.
+        let has_export = match db::exports::exists_for_client(pool, &u.id).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    user_id = %u.id,
+                    err = %e,
+                    "auto hard-delete: export check failed — skipping"
+                );
+                continue;
+            }
+        };
+        if !has_export {
+            tracing::info!(
+                user_id = %u.id,
+                "auto hard-delete: no prior export found — generating now"
+            );
+            match export_client(pool, enc_key, &u.id).await {
+                Ok(_) => tracing::info!(
+                    user_id = %u.id,
+                    "auto hard-delete: export generated"
+                ),
+                Err(e) => {
+                    tracing::warn!(
+                        user_id = %u.id,
+                        err = %e,
+                        "auto hard-delete: export failed — skipping delete"
+                    );
+                    continue;
+                }
+            }
+        }
+
+        // Collect ticket IDs before deletion for filesystem cleanup.
+        let ticket_ids: Vec<String> =
+            sqlx::query_scalar("SELECT id FROM tickets WHERE client_id = ?")
+                .bind(&u.id)
+                .fetch_all(pool)
+                .await
+                .unwrap_or_default();
+
+        match cascade_hard_delete_user(pool, &u.id).await {
+            Ok(()) => {
+                tracing::info!(user_id = %u.id, "auto hard-delete: user deleted");
+                purged += 1;
+                for ticket_id in &ticket_ids {
+                    let dir = format!("uploads/{ticket_id}");
+                    if let Err(e) = tokio::fs::remove_dir_all(&dir).await {
+                        if e.kind() != std::io::ErrorKind::NotFound {
                             tracing::warn!(
-                                user_id = %u.id,
+                                dir = %dir,
                                 err = %e,
-                                "auto hard-delete: export check failed — skipping"
+                                "failed to remove upload dir during user hard delete"
                             );
-                            continue;
                         }
-                    };
-                    if !has_export {
-                        tracing::info!(
-                            user_id = %u.id,
-                            "auto hard-delete: no prior export found — generating now"
-                        );
-                        match export_client(&pool, &enc_key, &u.id).await {
-                            Ok(_) => tracing::info!(
-                                user_id = %u.id,
-                                "auto hard-delete: export generated"
-                            ),
-                            Err(e) => {
-                                tracing::warn!(
-                                    user_id = %u.id,
-                                    err = %e,
-                                    "auto hard-delete: export failed — skipping delete"
-                                );
-                                continue;
-                            }
-                        }
-                    }
-
-                    // Collect ticket IDs before deletion for filesystem cleanup.
-                    let ticket_ids: Vec<String> =
-                        sqlx::query_scalar("SELECT id FROM tickets WHERE client_id = ?")
-                            .bind(&u.id)
-                            .fetch_all(&pool)
-                            .await
-                            .unwrap_or_default();
-
-                    match cascade_hard_delete_user(&pool, &u.id).await {
-                        Ok(()) => {
-                            tracing::info!(user_id = %u.id, "auto hard-delete: user deleted");
-                            for ticket_id in &ticket_ids {
-                                let dir = format!("uploads/{ticket_id}");
-                                if let Err(e) = tokio::fs::remove_dir_all(&dir).await {
-                                    if e.kind() != std::io::ErrorKind::NotFound {
-                                        tracing::warn!(
-                                            dir = %dir,
-                                            err = %e,
-                                            "failed to remove upload dir during user hard delete"
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => tracing::warn!(user_id = %u.id, err = %e, "hard delete failed"),
                     }
                 }
             }
-            Err(e) => tracing::warn!("expired user query failed: {e}"),
+            Err(e) => tracing::warn!(user_id = %u.id, err = %e, "hard delete failed"),
         }
     }
+    purged
 }
 
 /// Scans `exports/` and removes any file older than 24 hours.

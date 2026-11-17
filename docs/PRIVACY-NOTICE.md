@@ -45,7 +45,7 @@ beyond what is listed above.
 
 | Data | Retention |
 |---|---|
-| Your account and all associated data | Retained until you request deletion. After a deletion request the account enters a 30-day recovery window, then is permanently deleted automatically |
+| Your account and all associated data | Retained until you request deletion. After a deletion request the account enters a 30-day recovery window, then is permanently deleted. The deletion happens automatically only if the operator has enabled automatic purging; otherwise the operator deletes the account by hand |
 | Message threads and attachments | Deleted together with your account |
 | **Draft invoices** | Deleted together with your account |
 | **Issued invoices** (status: sent or paid) | Retained for the statutory bookkeeping period — **10 years** (Swiss Code of Obligations, Art. 958f) / **5 years** (Kenya Tax Procedures Act) — even after account deletion, on the legal basis of statutory record-keeping obligations. Retained invoices are no longer linked to a login account and can no longer be accessed through this system by any party except the desk operator for bookkeeping purposes |

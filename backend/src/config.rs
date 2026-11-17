@@ -128,6 +128,10 @@ pub struct Config {
     pub data_dir: PathBuf,
     pub data_dir_explicit: bool,
     pub static_dir: PathBuf,
+    /// Whether the background job may permanently delete clients archived more
+    /// than 30 days ago. Off unless `AUTO_PURGE_ARCHIVED_CLIENTS=true`: deleting
+    /// client data automatically must be a deliberate choice.
+    pub auto_purge_archived_clients: bool,
     pub jwt_secret: Zeroizing<String>,
     pub access_token_ttl_secs: i64,
     pub refresh_token_ttl_secs: i64,
@@ -205,6 +209,10 @@ impl Config {
             .map(|v| v.to_lowercase() != "false")
             .unwrap_or(true);
 
+        let auto_purge_archived_clients = std::env::var("AUTO_PURGE_ARCHIVED_CLIENTS")
+            .map(|v| matches!(v.trim().to_lowercase().as_str(), "true" | "1" | "yes"))
+            .unwrap_or(false);
+
         let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_string());
 
         let base_url = std::env::var("BASE_URL").unwrap_or_else(|_| format!("http://{bind_addr}"));
@@ -279,6 +287,7 @@ impl Config {
             data_dir: paths.data_dir,
             data_dir_explicit: paths.data_dir_explicit,
             static_dir: paths.static_dir,
+            auto_purge_archived_clients,
             jwt_secret,
             access_token_ttl_secs,
             refresh_token_ttl_secs,

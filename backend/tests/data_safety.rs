@@ -8,7 +8,7 @@ use std::{
 use backend::{
     config::{resolve_paths, Database},
     db,
-    tasks::clean_old_logs,
+    tasks::{clean_old_logs, purge_expired_users},
 };
 
 // ── DATA_DIR / STATIC_DIR resolution (O1) ────────────────────────────────────
@@ -226,4 +226,67 @@ async fn begin_write_makes_a_second_writer_wait_instead_of_failing() {
         .await
         .unwrap()
         .expect("second writer proceeds once the first commits");
+}
+
+// ── Archived-client purge is opt-in (F14 follow-up) ──────────────────────────
+
+/// An archived client plus an export record, so a purge does not try to write
+/// an export file into the working directory.
+async fn archived_client(pool: &sqlx::SqlitePool, archived_days_ago: i64) -> String {
+    let (id, _, _) = common::create_test_client(pool).await;
+    let archived_at = (chrono::Utc::now() - chrono::Duration::days(archived_days_ago)).to_rfc3339();
+    sqlx::query("UPDATE users SET deleted_at = ? WHERE id = ?")
+        .bind(archived_at)
+        .bind(&id)
+        .execute(pool)
+        .await
+        .unwrap();
+    db::exports::create(
+        pool,
+        &uuid::Uuid::new_v4().to_string(),
+        &id,
+        "exports/none.json",
+    )
+    .await
+    .unwrap();
+    id
+}
+
+async fn user_exists(pool: &sqlx::SqlitePool, id: &str) -> bool {
+    db::users::find_by_id(pool, id).await.unwrap().is_some()
+}
+
+#[tokio::test]
+async fn purge_is_off_by_default_and_deletes_nothing() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let expired = archived_client(&pool, 40).await;
+
+    let purged = purge_expired_users(&pool, &common::test_enc_key(), false).await;
+
+    assert_eq!(purged, 0);
+    assert!(
+        user_exists(&pool, &expired).await,
+        "an archived client past the window must survive while auto-purge is off"
+    );
+}
+
+#[tokio::test]
+async fn purge_when_enabled_deletes_only_clients_past_the_window() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let expired = archived_client(&pool, 40).await;
+    let recent = archived_client(&pool, 5).await;
+    let (active, _, _) = common::create_test_client(&pool).await;
+
+    let purged = purge_expired_users(&pool, &common::test_enc_key(), true).await;
+
+    assert_eq!(purged, 1);
+    assert!(
+        !user_exists(&pool, &expired).await,
+        "expired client is purged"
+    );
+    assert!(
+        user_exists(&pool, &recent).await,
+        "recently archived client stays"
+    );
+    assert!(user_exists(&pool, &active).await, "active client stays");
 }

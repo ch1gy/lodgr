@@ -225,9 +225,10 @@ async fn main() -> anyhow::Result<()> {
     {
         // Clone the key before it moves into AppState so the task can own a copy.
         let enc_key_for_task = Arc::clone(&enc_key);
+        let auto_purge = config.auto_purge_archived_clients;
         spawn_with_restart("hard_delete_expired_users", pool.clone(), move |pool| {
             let key = Arc::clone(&enc_key_for_task);
-            tasks::hard_delete_expired_users(pool, key)
+            tasks::hard_delete_expired_users(pool, key, auto_purge)
         });
     }
 

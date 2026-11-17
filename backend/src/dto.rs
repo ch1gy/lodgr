@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::{
     AuthEvent, ClientExport, DeskProfile, InternalNote, Invoice, Session, SubClient, ThreadEntry,
-    Ticket, User,
+    ThreadSender, Ticket, User,
 };
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
@@ -20,6 +20,8 @@ pub struct MagicLinkResponse {
     /// Full URL the client can open — copyable for any delivery channel
     /// (email, WhatsApp, SMS, etc.).
     pub url: String,
+    /// Seconds until the link can no longer be redeemed.
+    pub expires_in_secs: i64,
 }
 
 // ── Auth events ──────────────────────────────────────────────────────────────
@@ -228,17 +230,22 @@ pub struct ThreadEntryResponse {
     pub id: String,
     pub ticket_id: String,
     pub sender_id: String,
+    /// "desk", "client", or "unknown" when the sender's account is gone.
+    pub sender_role: String,
+    pub sender_name: String,
     pub body: String,
     pub attachment_path: Option<String>,
     pub created_at: String,
 }
 
-impl From<ThreadEntry> for ThreadEntryResponse {
-    fn from(e: ThreadEntry) -> Self {
+impl ThreadEntryResponse {
+    pub fn new(e: ThreadEntry, sender: Option<&ThreadSender>) -> Self {
         ThreadEntryResponse {
             id: e.id,
             ticket_id: e.ticket_id,
             sender_id: e.sender_id,
+            sender_role: sender.map_or_else(|| "unknown".to_owned(), |s| s.role.clone()),
+            sender_name: sender.map_or_else(|| "Former user".to_owned(), |s| s.name.clone()),
             body: e.body,
             attachment_path: e.attachment_path,
             created_at: e.created_at,

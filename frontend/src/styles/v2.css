@@ -1004,6 +1004,7 @@
   pointer-events: auto;
   animation: toast-in var(--dur-base) var(--ease-spring) forwards;
 }
+.lg-toast.is-error { border-left: 3px solid var(--red); max-width: min(480px, 92vw); text-transform: none; letter-spacing: .04em; line-height: 1.5; }
 .lg-toast.is-leaving {
   animation: toast-out var(--dur-base) var(--ease-out) forwards;
 }

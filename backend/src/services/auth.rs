@@ -522,7 +522,9 @@ pub async fn change_password(
 
     if !verify_password(current_password, &user.password_hash)? {
         tracing::warn!(user_id = %user_id, "password change rejected — wrong current password");
-        return Err(AppError::Unauthorized);
+        // 400, not 401: the session is fine, and a 401 would make the client
+        // treat it as an expired session and sign the user out.
+        return Err(AppError::BadRequest("current password is incorrect".into()));
     }
 
     validate_password_strength(new_password)?;

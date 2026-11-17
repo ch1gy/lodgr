@@ -25,7 +25,9 @@ import { useEffect, useRef, useState } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './components/Toast';
 import './styles/buttons.css';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { emitToast } from './utils/toastBus';
+import { extractApiError } from './utils/format';
 import { AuthProvider } from './auth/AuthContext';
 import { ThemeProvider } from './theme/ThemeContext';
 import { MorphProvider } from './theme/MorphContext';
@@ -48,7 +50,17 @@ import { SettingsPage } from './pages/SettingsPage';
 //   • retry: 1     — don't spin on a flaky network forever.
 //   • refetchOnWindowFocus: false — desk users tab away constantly; let
 //                      page-level polling drive freshness instead.
+//
+// Mutation errors: any mutation that does not define its own onError (or opt
+// out with meta.inlineError because it renders mutation.error itself) raises
+// an error toast, so failures are never silent.
 const queryClient = new QueryClient({
+  mutationCache: new MutationCache({
+    onError: (error, _vars, _ctx, mutation) => {
+      if (mutation.options.onError || mutation.meta?.inlineError) return;
+      emitToast({ kind: 'error', text: extractApiError(error, 'That action failed. Try again.') });
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 10_000,

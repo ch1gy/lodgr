@@ -49,6 +49,22 @@ export function addInterval(isoDate: string, interval: RecurInterval): string {
   return new Date(Date.UTC(y, m - 1 + months, Math.min(d, lastDay))).toISOString().slice(0, 10);
 }
 
+/** Human wording for a link lifetime ("1 hour", "24 hours", "15 minutes"). Mirrors the backend. */
+export function describeTtl(secs: number): string {
+  const s = Math.max(secs, 60);
+  const [n, unit] = s >= 3600 && s % 3600 === 0 ? [s / 3600, 'hour'] : [Math.ceil(s / 60), 'minute'];
+  return `${n} ${unit}${n === 1 ? '' : 's'}`;
+}
+
+/**
+ * Display name for a stored attachment path such as `/uploads/<ticket>/ab12cd34-report.pdf`:
+ * the file name without the uniqueness prefix the server adds.
+ */
+export function attachmentName(path: string): string {
+  const last = path.split('/').pop() ?? path;
+  return last.replace(/^[0-9a-f]{8}-/i, '');
+}
+
 /** Short locale date+time string for thread entry timestamps. */
 export function fmtDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', {

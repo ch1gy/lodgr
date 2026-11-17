@@ -469,7 +469,10 @@ async fn next_seq_in_tx_matches_pool_next_seq() {
     let tx_seq = db::invoices::next_seq(&mut *tx).await.unwrap();
     tx.rollback().await.unwrap();
 
-    assert_eq!(pool_seq, tx_seq, "tx executor must yield the same seq as the pool");
+    assert_eq!(
+        pool_seq, tx_seq,
+        "tx executor must yield the same seq as the pool"
+    );
 
     // Create one invoice and verify both executors see it.
     let id = Uuid::new_v4().to_string();
@@ -519,7 +522,10 @@ async fn create_in_tx_is_discarded_on_rollback() {
         .unwrap();
     tx.rollback().await.unwrap();
 
-    assert!(db::invoices::find_by_id(&pool, &id).await.unwrap().is_none());
+    assert!(db::invoices::find_by_id(&pool, &id)
+        .await
+        .unwrap()
+        .is_none());
 }
 
 #[tokio::test]
@@ -629,7 +635,10 @@ async fn update_clears_kra_number_when_set_to_none() {
     db::invoices::update(&pool, &id, u).await.unwrap();
 
     let updated = db::invoices::find_by_id(&pool, &id).await.unwrap().unwrap();
-    assert!(updated.kra_number.is_none(), "kra_number must be NULL after clearing");
+    assert!(
+        updated.kra_number.is_none(),
+        "kra_number must be NULL after clearing"
+    );
 }
 
 #[tokio::test]
@@ -663,8 +672,14 @@ async fn update_clears_recur_fields_when_recurring_false() {
 
     let updated = db::invoices::find_by_id(&pool, &id).await.unwrap().unwrap();
     assert_eq!(updated.recurring, 0);
-    assert!(updated.recur_interval.is_none(), "recur_interval must be NULL when recurring=false");
-    assert!(updated.next_recur_date.is_none(), "next_recur_date must be NULL when recurring=false");
+    assert!(
+        updated.recur_interval.is_none(),
+        "recur_interval must be NULL when recurring=false"
+    );
+    assert!(
+        updated.next_recur_date.is_none(),
+        "next_recur_date must be NULL when recurring=false"
+    );
 }
 
 // ── Status / transition validation ───────────────────────────────────────────
@@ -679,7 +694,10 @@ fn valid_status_accepts_known_values() {
 #[test]
 fn valid_status_rejects_unknown_values() {
     for s in ["pending", "cancelled", "DRAFT", ""] {
-        assert!(!inv_routes::valid_status(s), "{s} must not be a valid status");
+        assert!(
+            !inv_routes::valid_status(s),
+            "{s} must not be a valid status"
+        );
     }
 }
 
@@ -693,7 +711,10 @@ fn valid_transition_allows_documented_paths() {
         ("paid", "void"),
     ];
     for (from, to) in allowed {
-        assert!(inv_routes::valid_transition(from, to), "{from}→{to} must be allowed");
+        assert!(
+            inv_routes::valid_transition(from, to),
+            "{from}→{to} must be allowed"
+        );
     }
 }
 
@@ -709,14 +730,20 @@ fn valid_transition_rejects_undocumented_paths() {
         ("void", "paid"),
     ];
     for (from, to) in blocked {
-        assert!(!inv_routes::valid_transition(from, to), "{from}→{to} must be blocked");
+        assert!(
+            !inv_routes::valid_transition(from, to),
+            "{from}→{to} must be blocked"
+        );
     }
 }
 
 #[test]
 fn valid_transition_no_op_same_status() {
     for s in ["draft", "sent", "paid", "void"] {
-        assert!(inv_routes::valid_transition(s, s), "{s}→{s} no-op must be allowed");
+        assert!(
+            inv_routes::valid_transition(s, s),
+            "{s}→{s} no-op must be allowed"
+        );
     }
 }
 
@@ -757,7 +784,10 @@ async fn respond(res: AppResult<impl IntoResponse>) -> (StatusCode, Value) {
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
         .unwrap();
-    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
 }
 
 async fn route_create(pool: &SqlitePool, client_id: &str, extra: Value) -> (StatusCode, Value) {
@@ -929,7 +959,11 @@ async fn route_update_turning_recurrence_on_needs_interval_and_date() {
         let (status, _) = route_patch(&pool, &id, patch.clone()).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{patch} must be rejected");
     }
-    assert_eq!(fetch(&pool, &id).await.recurring, 0, "row must be untouched");
+    assert_eq!(
+        fetch(&pool, &id).await.recurring,
+        0,
+        "row must be untouched"
+    );
 
     let (status, _) = route_patch(
         &pool,
@@ -960,7 +994,11 @@ async fn route_update_recurrence_stays_editable_after_sending() {
         json!({"recur_interval": "yearly", "next_recur_date": "2026-02-01"}),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "interval/date are not locked fields");
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "interval/date are not locked fields"
+    );
     let changed = fetch(&pool, &id).await;
     assert_eq!(changed.recur_interval.as_deref(), Some("yearly"));
     assert_eq!(changed.next_recur_date.as_deref(), Some("2026-02-01"));
@@ -1010,7 +1048,11 @@ async fn route_update_rejects_content_changes_once_sent() {
     assert_eq!(fetch(&pool, &id).await.billed_to_name, "Acme Corp");
 
     let (same, _) = route_patch(&pool, &id, json!({"billed_to_name": "Acme Corp"})).await;
-    assert_eq!(same, StatusCode::OK, "resending an unchanged value is not an edit");
+    assert_eq!(
+        same,
+        StatusCode::OK,
+        "resending an unchanged value is not an edit"
+    );
 
     let (kra, _) = route_patch(&pool, &id, json!({"kra_number": "KRA-1"})).await;
     assert_eq!(kra, StatusCode::OK);
@@ -1024,7 +1066,11 @@ async fn route_update_enforces_status_transitions() {
     let id = new_draft(&pool, &client_id, json!({})).await;
 
     let (status, _) = route_patch(&pool, &id, json!({"status": "paid"})).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "draft -> paid is not allowed");
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "draft -> paid is not allowed"
+    );
 
     let (status, _) = route_patch(&pool, &id, json!({"status": "sent"})).await;
     assert_eq!(status, StatusCode::OK);
@@ -1033,7 +1079,11 @@ async fn route_update_enforces_status_transitions() {
 
     for back in ["draft", "sent", "paid"] {
         let (status, _) = route_patch(&pool, &id, json!({"status": back})).await;
-        assert_eq!(status, StatusCode::BAD_REQUEST, "void -> {back} must be blocked");
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "void -> {back} must be blocked"
+        );
     }
     assert_eq!(fetch(&pool, &id).await.status, "void");
 }
@@ -1072,10 +1122,105 @@ async fn route_delete_rejects_a_sent_invoice_and_removes_a_draft() {
 
     assert_eq!(route_delete(&pool, &sent_id).await, StatusCode::BAD_REQUEST);
     assert!(
-        db::invoices::find_by_id(&pool, &sent_id).await.unwrap().is_some(),
+        db::invoices::find_by_id(&pool, &sent_id)
+            .await
+            .unwrap()
+            .is_some(),
         "a sent invoice must survive a delete attempt"
     );
 
     assert_eq!(route_delete(&pool, &draft_id).await, StatusCode::NO_CONTENT);
-    assert!(db::invoices::find_by_id(&pool, &draft_id).await.unwrap().is_none());
+    assert!(db::invoices::find_by_id(&pool, &draft_id)
+        .await
+        .unwrap()
+        .is_none());
+}
+
+// ── Void turns recurrence off; recurrence validation only when touched ───────
+
+#[tokio::test]
+async fn route_void_switches_recurrence_off() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let id = new_draft(
+        &pool,
+        &client_id,
+        json!({"recurring": true, "recur_interval": "monthly", "next_recur_date": "2025-02-01"}),
+    )
+    .await;
+    let (sent, _) = route_patch(&pool, &id, json!({"status": "sent"})).await;
+    assert_eq!(sent, StatusCode::OK);
+
+    // Even a request that asks to keep recurring cannot keep it on a void row.
+    let (status, _) = route_patch(&pool, &id, json!({"status": "void", "recurring": true})).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let voided = fetch(&pool, &id).await;
+    assert_eq!(voided.status, "void");
+    assert_eq!(voided.recurring, 0);
+    assert!(voided.recur_interval.is_none());
+    assert!(voided.next_recur_date.is_none());
+}
+
+#[tokio::test]
+async fn list_due_for_recurrence_skips_void_rows() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let live = Uuid::new_v4().to_string();
+    let dead = Uuid::new_v4().to_string();
+    for (id, number) in [(&live, "INV-LIVE"), (&dead, "INV-DEAD")] {
+        db::invoices::create(
+            &pool,
+            db::invoices::NewInvoice {
+                recurring: true,
+                recur_interval: Some("monthly"),
+                next_recur_date: Some("2020-01-01"),
+                ..base_invoice(id, &client_id, number)
+            },
+        )
+        .await
+        .unwrap();
+    }
+    // A legacy void row that still has recurring = 1.
+    let row = fetch(&pool, &dead).await;
+    let mut u = update_all(&row);
+    u.status = "void";
+    db::invoices::update(&pool, &dead, u).await.unwrap();
+
+    let due = db::invoices::list_due_for_recurrence(&pool).await.unwrap();
+    let ids: Vec<&str> = due.iter().map(|i| i.id.as_str()).collect();
+    assert_eq!(ids, vec![live.as_str()]);
+}
+
+#[tokio::test]
+async fn route_status_change_on_legacy_recurring_row_is_not_rejected() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let id = Uuid::new_v4().to_string();
+    // Stored before interval validation existed: an interval the API now refuses.
+    db::invoices::create(
+        &pool,
+        db::invoices::NewInvoice {
+            recurring: true,
+            recur_interval: Some("weekly"),
+            next_recur_date: Some("2025-02-01"),
+            ..base_invoice(&id, &client_id, "INV-LEGACY")
+        },
+    )
+    .await
+    .unwrap();
+
+    let (status, _) = route_patch(&pool, &id, json!({"status": "sent"})).await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "status-only change must not trip recurrence validation"
+    );
+
+    let (status, _) = route_patch(&pool, &id, json!({"next_recur_date": "2025-03-01"})).await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "touching recurrence re-validates the whole recurrence state"
+    );
 }

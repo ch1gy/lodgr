@@ -105,12 +105,19 @@ impl SmtpMailer {
 
     /// Send a magic link. The URL is always included so the desk can also
     /// copy it manually and deliver via any channel (WhatsApp, SMS, etc.).
-    pub async fn send_magic_link(&self, to_email: &str, to_name: &str, magic_url: &str) {
+    pub async fn send_magic_link(
+        &self,
+        to_email: &str,
+        to_name: &str,
+        magic_url: &str,
+        ttl_secs: i64,
+    ) {
+        let lifetime = describe_ttl(ttl_secs);
         let body = format!(
             "Hello {to_name},\n\n\
              A support access link has been generated for you:\n\n\
              {magic_url}\n\n\
-             This link expires in 1 hour and can only be used once.\n\n\
+             This link expires in {lifetime} and can only be used once.\n\n\
              If you did not request this, you can safely ignore it."
         );
 
@@ -128,7 +135,7 @@ impl SmtpMailer {
         let paragraphs = vec![
             format!("Hello {to_name},"),
             "A support access link has been generated for you.".to_owned(),
-            "This link expires in 1 hour and can only be used once.".to_owned(),
+            format!("This link expires in {lifetime} and can only be used once."),
             "If you did not request this, you can safely ignore it.".to_owned(),
         ];
         let html = render_html(
@@ -226,6 +233,17 @@ impl SmtpMailer {
 /// Build a lettre `Mailbox` from a display name and email address.
 /// Returns `Err` (never panics) if either field is unparsable — e.g. when
 /// `email` is still ciphertext hex (regression guard for BUG-1).
+/// Human wording for a link lifetime: "1 hour", "24 hours", "15 minutes".
+pub fn describe_ttl(secs: i64) -> String {
+    let secs = secs.max(60);
+    let (n, unit) = if secs >= 3600 && secs % 3600 == 0 {
+        (secs / 3600, "hour")
+    } else {
+        ((secs + 59) / 60, "minute")
+    };
+    format!("{n} {unit}{}", if n == 1 { "" } else { "s" })
+}
+
 fn build_mailbox(name: &str, email: &str) -> Result<Mailbox, lettre::address::AddressError> {
     format!("{name} <{email}>").parse()
 }

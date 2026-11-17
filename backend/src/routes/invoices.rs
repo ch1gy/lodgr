@@ -547,7 +547,10 @@ pub async fn create(
 
     let is_recurring = body.recurring.unwrap_or(false);
     if is_recurring {
-        validate_recurrence(body.recur_interval.as_deref(), body.next_recur_date.as_deref())?;
+        validate_recurrence(
+            body.recur_interval.as_deref(),
+            body.next_recur_date.as_deref(),
+        )?;
     }
 
     if let Some(sc_id) = body.sub_client_id.as_deref().filter(|s| !s.is_empty()) {
@@ -682,11 +685,7 @@ pub async fn update(
                 .as_deref()
                 .filter(|&v| v != inv.currency)
                 .is_some()
-            || body
-                .terms
-                .as_deref()
-                .filter(|&v| v != inv.terms)
-                .is_some()
+            || body.terms.as_deref().filter(|&v| v != inv.terms).is_some()
             || body
                 .issued_date
                 .as_deref()
@@ -812,8 +811,10 @@ pub async fn update(
         Some(v) => Some(v),
     };
 
-    // recurring=false clears recur_interval and next_recur_date.
-    let new_recurring = body.recurring.unwrap_or(inv.recurring != 0);
+    // recurring=false clears recur_interval and next_recur_date. Voiding an
+    // invoice always switches its recurrence off.
+    let voiding = body.status.as_deref() == Some("void");
+    let new_recurring = !voiding && body.recurring.unwrap_or(inv.recurring != 0);
     let recur_interval = if !new_recurring {
         None
     } else {
@@ -828,7 +829,11 @@ pub async fn update(
             .as_deref()
             .or(inv.next_recur_date.as_deref())
     };
-    if new_recurring {
+    // Only judge recurrence when the request touches it, so a status-only change
+    // on a legacy row is never rejected.
+    let touches_recurrence =
+        body.recurring.is_some() || body.recur_interval.is_some() || body.next_recur_date.is_some();
+    if new_recurring && touches_recurrence {
         validate_recurrence(recur_interval, next_recur_date)?;
     }
 

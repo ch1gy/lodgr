@@ -52,7 +52,7 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
-  const { isDesk } = useAuth();
+  const { isDesk, isScoped } = useAuth();
 
   const open  = useCallback(() => { setIsOpen(true);  setQuery(''); setActive(0); }, []);
   const close = useCallback(() => { setIsOpen(false); setQuery(''); }, []);
@@ -128,12 +128,14 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
         }))
     : [];
 
+  // Only offer destinations the signed-in session can actually open.
   const staticActions: ResultItem[] = [
-    { id: 'a-queue',    title: 'Open ticket queue', meta: '/tickets',  av: '↗', action: () => { navigate('/tickets'); close(); } },
-    { id: 'a-clients',  title: 'Clients roster',    meta: '/clients',  av: '↗', action: () => { navigate('/clients'); close(); } },
-    { id: 'a-reports',  title: 'Monthly reports',   meta: '/reports',  av: '↗', action: () => { navigate('/reports'); close(); } },
-    { id: 'a-settings', title: 'Settings',          meta: '/settings', av: '↗', action: () => { navigate('/settings'); close(); } },
-  ].filter((a) => {
+    { id: 'a-queue',    title: 'Open ticket queue', meta: '/tickets',  av: '↗', show: true,       action: () => { navigate('/tickets'); close(); } },
+    { id: 'a-clients',  title: 'Clients roster',    meta: '/clients',  av: '↗', show: isDesk,     action: () => { navigate('/clients'); close(); } },
+    { id: 'a-invoices', title: 'Invoices',          meta: '/invoices', av: '↗', show: !isScoped,  action: () => { navigate('/invoices'); close(); } },
+    { id: 'a-reports',  title: 'Monthly reports',   meta: '/reports',  av: '↗', show: isDesk,     action: () => { navigate('/reports'); close(); } },
+    { id: 'a-settings', title: 'Settings',          meta: '/settings', av: '↗', show: !isScoped,  action: () => { navigate('/settings'); close(); } },
+  ].filter((a) => a.show).filter((a) => {
     if (!q) return true;
     return a.title.toLowerCase().includes(q) || a.meta.toLowerCase().includes(q);
   });

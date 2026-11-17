@@ -83,6 +83,13 @@ pub struct ThreadEntry {
     pub created_at: String,
 }
 
+/// Who wrote a thread entry, for display. Names are stored in plain text.
+#[derive(Debug, Clone)]
+pub struct ThreadSender {
+    pub role: String,
+    pub name: String,
+}
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct InternalNote {
     pub id: String,

@@ -20,3 +20,5 @@ frontend/.env.local
 design.md
 mobile/
 /handoff/
+.claude/
+.vscode/

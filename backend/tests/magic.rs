@@ -383,3 +383,40 @@ async fn magic_request_writes_auth_event_for_known_client() {
         events.iter().map(|e| &e.event_type).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn describe_ttl_uses_the_configured_lifetime() {
+    use backend::email::describe_ttl;
+    assert_eq!(describe_ttl(3_600), "1 hour");
+    assert_eq!(describe_ttl(86_400), "24 hours");
+    assert_eq!(describe_ttl(900), "15 minutes");
+    assert_eq!(describe_ttl(60), "1 minute");
+    assert_eq!(describe_ttl(5_400), "90 minutes");
+    assert_eq!(
+        describe_ttl(0),
+        "1 minute",
+        "never claims a zero or negative lifetime"
+    );
+}
+
+#[tokio::test]
+async fn magic_link_output_reports_the_configured_lifetime() {
+    let (pool, _dir) = common::setup_test_db().await;
+    let mut config = common::test_config();
+    config.magic_link_ttl_secs = 5_400;
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+
+    let out = magic::create_magic_link(
+        &pool,
+        &config,
+        &common::test_enc_key(),
+        None,
+        &client_id,
+        "full",
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(out.expires_in_secs, 5_400);
+}

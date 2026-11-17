@@ -323,6 +323,8 @@
 }
 .lg-msg.is-desk .lg-msg__txt { color: var(--ink); }
 .lg-msg__attach {
+  background: none;
+  cursor: pointer;
   display: inline-block;
   margin-top: 10px;
   font-family: var(--mono);

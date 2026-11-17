@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::NaiveDate;
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -7,7 +9,7 @@ use crate::{
     db,
     email::{SmtpMailer, TicketEvent},
     error::{AppError, AppResult},
-    models::{Claims, ThreadEntry, Ticket, User},
+    models::{Claims, ThreadEntry, ThreadSender, Ticket, User},
     notify,
     ticket_status::{transition, TransitionAction},
 };
@@ -16,6 +18,9 @@ use crate::{
 pub struct TicketWithThread {
     pub ticket: Ticket,
     pub thread: Vec<ThreadEntry>,
+    /// Keyed by `ThreadEntry::sender_id`. A sender whose account no longer
+    /// exists has no entry.
+    pub senders: HashMap<String, ThreadSender>,
 }
 
 pub struct CreateTicketInput<'a> {
@@ -271,7 +276,27 @@ pub async fn get_with_thread(
         })
         .collect::<AppResult<Vec<ThreadEntry>>>()?;
 
-    Ok(TicketWithThread { ticket, thread })
+    let mut senders = HashMap::new();
+    for entry in &thread {
+        if senders.contains_key(&entry.sender_id) {
+            continue;
+        }
+        if let Some(u) = db::users::find_by_id(pool, &entry.sender_id).await? {
+            senders.insert(
+                entry.sender_id.clone(),
+                ThreadSender {
+                    role: u.role,
+                    name: u.name,
+                },
+            );
+        }
+    }
+
+    Ok(TicketWithThread {
+        ticket,
+        thread,
+        senders,
+    })
 }
 
 pub async fn update(

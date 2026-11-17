@@ -99,6 +99,9 @@ pub async fn create_ticket_scoped(
 
     Ok((
         StatusCode::CREATED,
-        Json(MagicLinkResponse { url: out.url }),
+        Json(MagicLinkResponse {
+            url: out.url,
+            expires_in_secs: out.expires_in_secs,
+        }),
     ))
 }

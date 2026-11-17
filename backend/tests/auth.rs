@@ -498,8 +498,8 @@ async fn change_password_fails_with_wrong_current_password() {
         auth::change_password(&pool, &config, &id, "NotTheRealPassword!", "NewPass999!").await;
 
     assert!(
-        matches!(result, Err(AppError::Unauthorized)),
-        "expected Unauthorized for wrong current password, got: {:?}",
+        matches!(result, Err(AppError::BadRequest(_))),
+        "expected BadRequest (not 401) for wrong current password, got: {:?}",
         result,
     );
 }

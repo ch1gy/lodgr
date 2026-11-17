@@ -12,6 +12,7 @@
 //   url          — The full magic link URL (e.g. https://…/magic?token=…)
 //   scope        — 'ticket' | 'full' — drives the descriptive copy only
 //   ticketId     — Optional short ticket ID shown in scoped copy
+//   expiresInSecs — Link lifetime reported by the server (MagicLinkResponse)
 //   onClose      — Dismiss callback
 //   onRegenerate — Optional async callback to mint a new link. When provided,
 //                  shows the "Regenerate" button.
@@ -19,17 +20,20 @@
 
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'react-qr-code';
+import { describeTtl } from '../utils/format';
 import '../styles/v2.css';
 
 interface Props {
   url: string;
   scope: 'ticket' | 'full';
   ticketId?: string;
+  /** Link lifetime from the server, in seconds. */
+  expiresInSecs: number;
   onClose: () => void;
   onRegenerate?: () => Promise<void>;
 }
 
-export function MagicLinkModal({ url, scope, ticketId, onClose, onRegenerate }: Props) {
+export function MagicLinkModal({ url, scope, ticketId, expiresInSecs, onClose, onRegenerate }: Props) {
   const [copied, setCopied]       = useState(false);
   const [regen, setRegen]         = useState(false);
   const qrRef = useRef<HTMLDivElement>(null);
@@ -125,7 +129,7 @@ export function MagicLinkModal({ url, scope, ticketId, onClose, onRegenerate }: 
             {scope === 'full'
               ? <>Full session<span className="sep">/</span></>
               : null}
-            Single use<span className="sep">/</span>Link expires in 24h
+            Single use<span className="sep">/</span>Link expires in {describeTtl(expiresInSecs)}
           </div>
 
           {/* Copy URL box */}
@@ -156,7 +160,7 @@ export function MagicLinkModal({ url, scope, ticketId, onClose, onRegenerate }: 
 
         {/* ── Footer ──────────────────────────────────────────────── */}
         <div className="lg-mdl__foot">
-          <span className="meta">Single-use · link expires 24h from generation · session lasts 24h</span>
+          <span className="meta">Single-use · link expires {describeTtl(expiresInSecs)} after it is generated</span>
           <div className="lg-mdl__btns">
             {onRegenerate && (
               <button

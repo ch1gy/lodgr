@@ -30,6 +30,8 @@ import remarkGfm from 'remark-gfm';
 import { tickets as ticketsApi } from '../api/tickets';
 import { admin } from '../api/admin';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { MagicLinkModal } from '../components/MagicLinkModal';
+import { attachmentName, downloadBlob } from '../utils/format';
 import type {
   InternalNote,
   TicketResponse,
@@ -92,7 +94,7 @@ function clientInitials(name: string): string {
 
 export function TicketDetailPage() {
   const { id = '' } = useParams<{ id: string }>();
-  const { user, isDesk, isScoped } = useAuth();
+  const { profile, isDesk, isScoped } = useAuth();
   const nav = useNavigate();
   const qc = useQueryClient();
 
@@ -174,15 +176,20 @@ export function TicketDetailPage() {
     },
   });
 
+  const [magicLink, setMagicLink] = useState<{ url: string; expiresInSecs: number } | null>(null);
   const magicM = useMutation({
     mutationFn: () => ticketsApi.magicLinkFor(id),
-    onSuccess: (data) => {
-      // Copy URL to clipboard for desk convenience.
-      try { void navigator.clipboard?.writeText(data.url); } catch { /* fine */ }
-      alert(`Magic link copied to clipboard:\n${data.url}`);
-    },
+    onSuccess: (data) => setMagicLink({ url: data.url, expiresInSecs: data.expires_in_secs }),
   });
   const [confirmMagic, setConfirmMagic] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
+
+  const attachmentM = useMutation({
+    mutationFn: async (path: string) => {
+      const blob = await ticketsApi.downloadAttachment(path);
+      downloadBlob(blob, attachmentName(path));
+    },
+  });
 
   // ── Composer state ────────────────────────────────────────────────────
   const [composerTab, setComposerTab] = useState<ComposerTab>('reply');
@@ -222,8 +229,12 @@ export function TicketDetailPage() {
 
   const due = daysUntil(ticket?.due_date ?? null);
   const dueLbl = due === null ? '—' : due < 0 ? `${Math.abs(due)}d overdue` : due === 0 ? 'today' : `${due}d`;
-  const clientName = ticket ? (clientMap[ticket.client_id] ?? `#${ticket.client_id.slice(0, 8)}`) : '—';
-  const createdByLabel = isDesk ? 'the desk' : clientName;
+  const clientName = !ticket
+    ? '—'
+    : isDesk
+      ? (clientMap[ticket.client_id] ?? `#${ticket.client_id.slice(0, 8)}`)
+      : (profile?.name ?? 'You');
+  const createdByLabel = ticket && ticket.created_by === ticket.client_id ? clientName : 'the desk';
 
   // ── Render ───────────────────────────────────────────────────────────
   if (ticketQ.isLoading) {
@@ -385,7 +396,7 @@ export function TicketDetailPage() {
 
           <div className="lg-article__byline">
             <span className="lg-article__byline-av">
-              {clientInitials(clientMap[ticket.client_id] ?? ticket.client_id)}
+              {clientInitials(clientName)}
             </span>
             <div className="lg-article__byline-nm">
               {clientName} <b>· created by {createdByLabel}</b>
@@ -407,9 +418,7 @@ export function TicketDetailPage() {
               </p>
             )}
             {thread.map((m, i) => {
-              // The handoff doesn't currently tell us if a sender is desk or
-              // client per message. We fall back to a sender_id comparison.
-              const isFromDesk = !!user && m.sender_id === user.sub && isDesk;
+              const isFromDesk = m.sender_role === 'desk';
               return (
                 <div
                   key={m.id}
@@ -418,17 +427,24 @@ export function TicketDetailPage() {
                 >
                   <div className="lg-msg__marker">
                     <div className="lg-msg__num">{String(i + 1).padStart(2, '0')}</div>
-                    <div className="lg-msg__role">{isFromDesk ? 'From the desk' : 'Client'}</div>
+                    <div className="lg-msg__role">
+                      {isFromDesk ? 'From the desk' : m.sender_role === 'client' ? 'Client' : 'Former user'}
+                    </div>
                   </div>
                   <div>
                     <div className="lg-msg__who">
-                      {m.sender_id.slice(0, 8)} <b>· {fmtDateTime(m.created_at)}</b>
+                      {m.sender_name} <b>· {fmtDateTime(m.created_at)}</b>
                     </div>
                     <div className="lg-msg__txt">{m.body}</div>
                     {m.attachment_path && (
-                      <span className="lg-msg__attach" title="Backend doesn't yet expose a download route (see Known Gaps in the handoff).">
-                        📎 {m.attachment_path.split('/').pop()} (download n/a)
-                      </span>
+                      <button
+                        type="button"
+                        className="lg-msg__attach"
+                        disabled={attachmentM.isPending}
+                        onClick={() => attachmentM.mutate(m.attachment_path!)}
+                      >
+                        📎 {attachmentName(m.attachment_path)}
+                      </button>
                     )}
                   </div>
                 </div>
@@ -528,6 +544,7 @@ export function TicketDetailPage() {
               notes={notes}
               can={can}
               transition={(k) => transitionM.mutate(k)}
+              requestClose={() => setConfirmClose(true)}
               shareMagicLink={() => setConfirmMagic(true)}
               transitionPending={transitionM.isPending}
               magicPending={magicM.isPending}
@@ -551,6 +568,7 @@ export function TicketDetailPage() {
             notes={notes}
             can={can}
             transition={(k) => { transitionM.mutate(k); setSheetOpen(false); }}
+            requestClose={() => { setConfirmClose(true); setSheetOpen(false); }}
             shareMagicLink={() => setConfirmMagic(true)}
             transitionPending={transitionM.isPending}
             magicPending={magicM.isPending}
@@ -569,6 +587,31 @@ export function TicketDetailPage() {
           onCancel={() => setConfirmMagic(false)}
         />
       )}
+
+      {confirmClose && (
+        <ConfirmModal
+          title="Close this ticket?"
+          body="Clients can still reply to reopen it."
+          confirmLabel="Close ticket"
+          danger
+          onConfirm={() => { transitionM.mutate('close'); setConfirmClose(false); }}
+          onCancel={() => setConfirmClose(false)}
+        />
+      )}
+
+      {magicLink && (
+        <MagicLinkModal
+          url={magicLink.url}
+          expiresInSecs={magicLink.expiresInSecs}
+          scope="ticket"
+          ticketId={ticket.id.slice(0, 8)}
+          onClose={() => setMagicLink(null)}
+          onRegenerate={async () => {
+            const data = await ticketsApi.magicLinkFor(id);
+            setMagicLink({ url: data.url, expiresInSecs: data.expires_in_secs });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -583,6 +626,7 @@ function PropsContent({
   notes,
   can,
   transition,
+  requestClose,
   shareMagicLink,
   transitionPending,
   magicPending,
@@ -591,6 +635,7 @@ function PropsContent({
   notes: InternalNote[];
   can: { ack: boolean; pend: boolean; close: boolean; reopen: boolean };
   transition: (k: 'ack' | 'pend' | 'close' | 'reopen') => void;
+  requestClose: () => void;
   shareMagicLink: () => void;
   transitionPending: boolean;
   magicPending: boolean;
@@ -622,11 +667,7 @@ function PropsContent({
             type="button"
             className="lg-props__act is-danger"
             disabled={!can.close || transitionPending}
-            onClick={() => {
-              if (confirm('Close this ticket? Clients can still reply to reopen it.')) {
-                transition('close');
-              }
-            }}
+            onClick={requestClose}
           >
             <span>Close ticket</span>
             <span className="arr">→ closed</span>

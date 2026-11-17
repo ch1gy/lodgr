@@ -14,11 +14,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { jwtDecode } from 'jwt-decode';
-import type { JwtPayload } from '../api/types';
+import { safeDecode } from '../auth/AuthContext';
+import { extractApiError } from '../utils/format';
 import '../styles/login.css';
 
 type State = 'redeeming' | 'ok' | 'bad';
+
+const FALLBACK_ERROR = "That link didn't work — it may have expired or been used already.";
 
 export function MagicLandingPage() {
   const [params] = useSearchParams();
@@ -43,30 +45,24 @@ export function MagicLandingPage() {
 
     (async () => {
       try {
-        await redeemMagicLink(token);
+        const accessToken = await redeemMagicLink(token);
 
-        // Peek at the JWT to decide where to land. Scoped tokens jump straight
-        // to that one ticket; full sessions land on the list.
-        // (No verification needed client-side — the server already validated.)
-        try {
-          const payload = jwtDecode<JwtPayload>(token);
-          if (payload.ticket_scope) {
-            setState('ok');
-            nav(`/tickets/${payload.ticket_scope}`, { replace: true });
-            return;
-          }
-        } catch {
-          /* fall through — we'll just send them to the list */
+        // Peek at the access token the server just issued to decide where to
+        // land: scoped tokens jump straight to that one ticket; full sessions
+        // land on the list. (The URL token is an opaque one-time secret, not a
+        // JWT. No verification needed client-side; the server enforces scope.)
+        const scope = safeDecode(accessToken)?.ticket_scope;
+        if (scope) {
+          setState('ok');
+          nav(`/tickets/${scope}`, { replace: true });
+          return;
         }
 
         setState('ok');
         nav('/tickets', { replace: true });
       } catch (e) {
         setState('bad');
-        setErrMsg(
-          (e as { message?: string })?.message ||
-            'That link didn\'t work — it may have expired or been used already.'
-        );
+        setErrMsg(extractApiError(e, FALLBACK_ERROR));
       }
     })();
   }, [token, redeemMagicLink, nav]);

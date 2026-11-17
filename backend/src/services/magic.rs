@@ -18,6 +18,8 @@ pub struct MagicLinkOutput {
     /// Full URL ready to be sent via any channel. Always included regardless
     /// of whether SMTP is configured — desk can copy it to WhatsApp, etc.
     pub url: String,
+    /// How long the link stays redeemable, from the configured TTL.
+    pub expires_in_secs: i64,
 }
 
 pub async fn create_magic_link(
@@ -88,8 +90,10 @@ pub async fn create_magic_link(
                 let m = m.clone();
                 let name = user.name.clone();
                 let link = url.clone();
+                let ttl_secs = config.magic_link_ttl_secs;
                 tokio::spawn(async move {
-                    m.send_magic_link(&decrypted_email, &name, &link).await;
+                    m.send_magic_link(&decrypted_email, &name, &link, ttl_secs)
+                        .await;
                 });
             }
             Err(err) => {
@@ -101,7 +105,10 @@ pub async fn create_magic_link(
         }
     }
 
-    Ok(MagicLinkOutput { url })
+    Ok(MagicLinkOutput {
+        url,
+        expires_in_secs: config.magic_link_ttl_secs,
+    })
 }
 
 pub async fn exchange_magic_link(
@@ -352,7 +359,8 @@ pub async fn send_desk_recovery_link(
     let m = mailer.clone();
     let email = user_email.to_owned();
     let name = user_name.to_owned();
+    let ttl_secs = config.magic_link_ttl_secs;
     tokio::spawn(async move {
-        m.send_magic_link(&email, &name, &url).await;
+        m.send_magic_link(&email, &name, &url, ttl_secs).await;
     });
 }

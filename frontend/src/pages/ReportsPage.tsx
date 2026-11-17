@@ -54,6 +54,7 @@ export function ReportsPage() {
   const rangeValid = from && to && from <= to;
 
   const downloadM = useMutation({
+    meta: { inlineError: true },
     mutationFn: () => {
       if (!selectedClient) throw new Error('No client selected');
       return api

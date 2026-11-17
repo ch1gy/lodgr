@@ -7,18 +7,20 @@
 //
 // The shelf is portalled to <body> via a fixed-position div in ToastProvider.
 
-import { createContext, useCallback, useContext, useId, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useState } from 'react';
+import { subscribeToasts } from '../utils/toastBus';
 import '../styles/v2.css';
 
-interface ToastItem { id: string; text: string; leaving: boolean; undo?: () => void; }
+interface ToastItem { id: string; text: string; leaving: boolean; undo?: () => void; kind: 'info' | 'error'; }
 
 interface ToastCtx {
-  show: (text: string, opts?: { undo?: () => void }) => void;
+  show: (text: string, opts?: { undo?: () => void; kind?: 'info' | 'error' }) => void;
 }
 
 const Ctx = createContext<ToastCtx>({ show: () => {} });
 
 const DISMISS_MS = 2600;
+const ERROR_DISMISS_MS = 6000; // errors need time to be read
 const EXIT_MS    = 320; // must match CSS animation duration
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -26,9 +28,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const baseId = useId();
   let counter = 0;
 
-  const show = useCallback((text: string, opts?: { undo?: () => void }) => {
+  const show = useCallback((text: string, opts?: { undo?: () => void; kind?: 'info' | 'error' }) => {
     const id = `${baseId}-${Date.now()}-${counter++}`;
-    setToasts((prev) => [...prev, { id, text, leaving: false, undo: opts?.undo }]);
+    const kind = opts?.kind ?? 'info';
+    setToasts((prev) => [...prev, { id, text, leaving: false, undo: opts?.undo, kind }]);
 
     // Mark leaving after DISMISS_MS so exit animation plays.
     setTimeout(() => {
@@ -37,8 +40,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
       }, EXIT_MS);
-    }, DISMISS_MS);
+    }, kind === 'error' ? ERROR_DISMISS_MS : DISMISS_MS);
   }, [baseId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Toasts raised from outside React (e.g. the global mutation error handler).
+  useEffect(() => subscribeToasts((t) => show(t.text, { kind: t.kind })), [show]);
 
   const dismiss = useCallback((id: string) => {
     setToasts((prev) => prev.map((t) => t.id === id ? { ...t, leaving: true } : t));
@@ -52,7 +58,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       <div className="lg-toast-shelf" aria-live="polite" aria-atomic>
         {toasts.map((t) => (
-          <div key={t.id} className={`lg-toast${t.leaving ? ' is-leaving' : ''}`}>
+          <div
+            key={t.id}
+            className={`lg-toast${t.kind === 'error' ? ' is-error' : ''}${t.leaving ? ' is-leaving' : ''}`}
+            role={t.kind === 'error' ? 'alert' : undefined}
+          >
             {t.text}
             {t.undo && (
               <button

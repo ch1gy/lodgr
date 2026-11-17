@@ -322,6 +322,7 @@ function NewClientModal({ onClose, onCreated }: NewClientModalProps) {
   });
 
   const createM = useMutation({
+    meta: { inlineError: true },
     mutationFn: () => admin.createClient({
       name: name.trim(),
       email: email.trim(),
@@ -495,7 +496,7 @@ export function ClientsPage() {
   const [filter, setFilter]         = useState<FilterTab>('all');
   const [search, setSearch]         = useState('');
   const [newClientOpen, setNewClientOpen] = useState(false);
-  const [magicLink, setMagicLink]   = useState<{ url: string; clientId: string } | null>(null);
+  const [magicLink, setMagicLink]   = useState<{ url: string; clientId: string; expiresInSecs: number } | null>(null);
   const [confirmOpts, setConfirmOpts] = useState<(ConfirmOptions & { onConfirm: () => void }) | null>(null);
 
   function showConfirm(opts: ConfirmOptions, onConfirm: () => void) {
@@ -569,7 +570,7 @@ export function ClientsPage() {
   const magicM   = useMutation({
     mutationFn: admin.createMagicLink,
     onSuccess: (data, id) => {
-      setMagicLink({ url: data.url, clientId: id });
+      setMagicLink({ url: data.url, clientId: id, expiresInSecs: data.expires_in_secs });
     },
   });
 
@@ -749,10 +750,15 @@ export function ClientsPage() {
         <MagicLinkModal
           url={magicLink.url}
           scope="full"
+          expiresInSecs={magicLink.expiresInSecs}
           onClose={() => setMagicLink(null)}
           onRegenerate={async () => {
             const data = await admin.createMagicLink(magicLink.clientId);
-            setMagicLink({ url: data.url, clientId: magicLink.clientId });
+            setMagicLink({
+              url: data.url,
+              clientId: magicLink.clientId,
+              expiresInSecs: data.expires_in_secs,
+            });
           }}
         />
       )}

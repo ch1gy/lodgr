@@ -184,11 +184,11 @@ export function LoginPage() {
             </div>
           ) : magicSent ? (
             <div className="lg-login__helper">
-              <b>Check your inbox.</b> If this email is registered, a sign-in link has been sent. It expires in <b>15 minutes</b> and works once.
+              <b>Check your inbox.</b> If this email is registered, a sign-in link has been sent. It expires soon and works once.
             </div>
           ) : (
             <div className="lg-login__helper">
-              We&rsquo;ll email you a one-time sign-in link. It expires in <b>15 minutes</b> and works once.
+              We&rsquo;ll email you a one-time sign-in link. It expires soon and works once.
             </div>
           )}
 

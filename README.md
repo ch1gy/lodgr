@@ -227,7 +227,7 @@ origin as the backend (already handled if you point `ServeDir` at the dist folde
 | `ACCESS_TOKEN_TTL_SECS` | no | `900` | Access token lifetime (15 min) |
 | `REFRESH_TOKEN_TTL_SECS` | no | `604800` | Refresh token lifetime (7 days) |
 | `SCOPED_TOKEN_TTL_SECS` | no | `86400` | Magic link JWT lifetime (24 h) |
-| `MAGIC_LINK_TTL_SECS` | no | `3600` | Magic link expiry before exchange (1 h) |
+| `MAGIC_LINK_TTL_SECS` | no | `86400` | Magic link expiry before exchange (24 h) |
 | `COOKIE_SECURE` | no | `true` | Adds `; Secure` to the refresh cookie. Set `false` for local plain-HTTP dev only |
 | `ENCRYPTION_PASSPHRASE` | **yes** | — | Passphrase for AES key derivation (min 16 chars) |
 | `ENCRYPTION_SALT` | **yes** | — | Hex salt, **fixed for the lifetime of the database**. Minimum 32 hex chars (16 bytes); 32 bytes recommended. Generate once: `openssl rand -hex 32` |

@@ -40,7 +40,7 @@ function issueLabel(now = new Date()): string {
 }
 
 export function Masthead({ active = 'tickets' }: Props) {
-  const { profile, isDesk, logout } = useAuth();
+  const { profile, isDesk, isScoped, logout } = useAuth();
   const { theme, toggle } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -65,7 +65,10 @@ export function Masthead({ active = 'tickets' }: Props) {
       .slice(0, 2)
       .join('') || '—';
 
-  const visibleNav = NAV.filter((n) => !n.deskOnly || isDesk);
+  // Scoped (single-ticket) sessions cannot reach invoices or settings.
+  const visibleNav = NAV.filter(
+    (n) => (!n.deskOnly || isDesk) && !(isScoped && (n.key === 'invoices' || n.key === 'settings')),
+  );
 
   return (
     <header className="lg-mast">
@@ -101,17 +104,21 @@ export function Masthead({ active = 'tickets' }: Props) {
             Clients
           </Link>
         )}
-        <Link to="/invoices" className={'lg-mast-link' + (active === 'invoices' ? ' active' : '')}>
-          Invoices
-        </Link>
+        {!isScoped && (
+          <Link to="/invoices" className={'lg-mast-link' + (active === 'invoices' ? ' active' : '')}>
+            Invoices
+          </Link>
+        )}
         {isDesk && (
           <Link to="/reports" className={'lg-mast-link' + (active === 'reports' ? ' active' : '')}>
             Reports
           </Link>
         )}
-        <Link to="/settings" className={'lg-mast-link' + (active === 'settings' ? ' active' : '')}>
-          Settings
-        </Link>
+        {!isScoped && (
+          <Link to="/settings" className={'lg-mast-link' + (active === 'settings' ? ' active' : '')}>
+            Settings
+          </Link>
+        )}
 
         {/* Light / dark toggle. We pass the click coordinates so the View
             Transitions reveal radiates from the toggle itself. */}

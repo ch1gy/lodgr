@@ -589,3 +589,75 @@ async fn scoped_session_cannot_message_other_ticket() {
     .await;
     assert!(matches!(r, Err(AppError::Forbidden)));
 }
+
+// -- Thread sender labels ------------------------------------------------------
+
+#[tokio::test]
+async fn thread_entries_carry_sender_role_and_name() {
+    use backend::dto::ThreadEntryResponse;
+
+    let (pool, _dir) = common::setup_test_db().await;
+    let enc_key = common::test_enc_key();
+    let (client_id, _, _) = common::create_test_client(&pool).await;
+    let (desk_id, _, _) = common::create_test_desk(&pool).await;
+    let ticket = create_ticket_for_client(&pool, &desk_id, &client_id).await;
+
+    for (sender_id, role, body) in [
+        (&client_id, "client", "Question from the client."),
+        (&desk_id, "desk", "Answer from the desk."),
+    ] {
+        post_message(
+            &pool,
+            &enc_key,
+            None,
+            PostMessageInput {
+                ticket_id: ticket.id.clone(),
+                sender_id: sender_id.clone(),
+                sender_role: role.into(),
+                sender_session_type: "full".into(),
+                ticket_scope: None,
+                body: body.into(),
+                attachment_path: None,
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    // The client reads the thread: desk replies must not be labelled as the client's own.
+    let result = tickets::get_with_thread(&pool, &ticket.id, &client_claims(&client_id), &enc_key)
+        .await
+        .unwrap();
+    let rows: Vec<ThreadEntryResponse> = result
+        .thread
+        .into_iter()
+        .map(|e| {
+            let sender = result.senders.get(&e.sender_id);
+            ThreadEntryResponse::new(e, sender)
+        })
+        .collect();
+
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].sender_role, "client");
+    assert_eq!(rows[0].sender_name, "Test Client");
+    assert_eq!(rows[1].sender_role, "desk");
+    assert_eq!(rows[1].sender_name, "Test Desk");
+}
+
+#[tokio::test]
+async fn thread_entry_from_a_missing_account_is_labelled_unknown() {
+    use backend::{dto::ThreadEntryResponse, models::ThreadEntry};
+
+    let entry = ThreadEntry {
+        id: "e1".into(),
+        ticket_id: "t1".into(),
+        sender_id: "gone".into(),
+        body: "hello".into(),
+        body_nonce: None,
+        attachment_path: None,
+        created_at: "2025-01-01T00:00:00Z".into(),
+    };
+    let row = ThreadEntryResponse::new(entry, None);
+    assert_eq!(row.sender_role, "unknown");
+    assert_eq!(row.sender_name, "Former user");
+}

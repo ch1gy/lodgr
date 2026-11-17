@@ -221,9 +221,7 @@ pub async fn delete(pool: &SqlitePool, id: &str) -> AppResult<()> {
 /// Returns the next invoice sequence number based on the current maximum.
 /// Uses MAX instead of COUNT so deletions never cause number collisions.
 /// Accepts any sqlx executor so it works with both a pool and an open transaction.
-pub async fn next_seq<'e>(
-    executor: impl Executor<'e, Database = Sqlite>,
-) -> AppResult<i64> {
+pub async fn next_seq<'e>(executor: impl Executor<'e, Database = Sqlite>) -> AppResult<i64> {
     let (max,): (Option<i64>,) = sqlx::query_as(
         "SELECT MAX(CAST(SUBSTR(number, 5) AS INTEGER)) FROM invoices WHERE number LIKE 'INV-%'",
     )
@@ -239,7 +237,7 @@ pub async fn list_due_for_recurrence(pool: &SqlitePool) -> AppResult<Vec<Invoice
     let today = Utc::now().format("%Y-%m-%d").to_string();
     Ok(sqlx::query_as(&format!(
         "SELECT {COLS} {JOIN} \
-         WHERE i.recurring = 1 AND i.client_id IS NOT NULL \
+         WHERE i.recurring = 1 AND i.status != 'void' AND i.client_id IS NOT NULL \
          AND i.next_recur_date IS NOT NULL AND i.next_recur_date <= ?"
     ))
     .bind(&today)

@@ -25,3 +25,7 @@ yarn-error.log*
 
 # TypeScript cache
 *.tsbuildinfo
+
+# Emitted by `tsc -b` if tsconfig.node.json is misconfigured; vite.config.ts is the source
+vite.config.js
+vite.config.d.ts

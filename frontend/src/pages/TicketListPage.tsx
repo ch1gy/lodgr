@@ -115,7 +115,7 @@ function SkeletonRow({ i }: { i: number }) {
 // ── Component ────────────────────────────────────────────────────────────
 
 export function TicketListPage() {
-  const { isDesk } = useAuth();
+  const { isDesk, isScoped, profile } = useAuth();
   const navigate = useNavigate();
   const { morphId, setMorphId } = useMorph();
 
@@ -177,6 +177,7 @@ export function TicketListPage() {
   const clientsQ = useQuery({
     queryKey: ['clients'],
     queryFn: () => admin.listClients(),
+    enabled: isDesk, // the client roster is desk-only; clients would just get a 403
     staleTime: 5 * 60_000,
   });
 
@@ -185,6 +186,10 @@ export function TicketListPage() {
     for (const c of clientsQ.data ?? []) m[c.id] = c.name;
     return m;
   }, [clientsQ.data]);
+
+  // Desks see the client's name; a client sees their own name, not an id.
+  const clientLabel = (t: TicketResponse): string =>
+    isDesk ? (clientMap[t.client_id] ?? t.client_id.slice(0, 8)) : (profile?.name ?? 'You');
 
   const all: TicketResponse[] = useMemo(
     () => query.data?.tickets ?? [],
@@ -383,13 +388,15 @@ export function TicketListPage() {
             </div>
           )}
 
-          <button
-            type="button"
-            className="lg-list__filt-new"
-            onClick={() => setCreateOpen(true)}
-          >
-            + New ticket
-          </button>
+          {!isScoped && (
+            <button
+              type="button"
+              className="lg-list__filt-new"
+              onClick={() => setCreateOpen(true)}
+            >
+              + New ticket
+            </button>
+          )}
         </div>
 
         {/* ── New-arrived pill ───────────────────────────────────────── */}
@@ -508,9 +515,9 @@ export function TicketListPage() {
                     className="lg-row__av"
                     style={isMorph ? vt('sig-avatar') : undefined}
                   >
-                    {clientInitials(clientMap[t.client_id] ?? t.client_id)}
+                    {clientInitials(clientLabel(t))}
                   </span>
-                  <span className="lg-row__client-nm">{clientMap[t.client_id] ?? t.client_id.slice(0, 8)}<span className="lg-row__hash-nm"> · #{t.id.slice(0, 8)}</span></span>
+                  <span className="lg-row__client-nm">{clientLabel(t)}<span className="lg-row__hash-nm"> · #{t.id.slice(0, 8)}</span></span>
                 </div>
                 <div className="lg-row__title-blk">
                   <div className="lg-row__cat">

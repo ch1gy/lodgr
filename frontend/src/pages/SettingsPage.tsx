@@ -161,6 +161,7 @@ function PasswordSection({ userEmail }: { userEmail?: string }) {
   const [showNew, setShowNew]         = useState(false);
 
   const changeM = useMutation({
+    meta: { inlineError: true },
     mutationFn: () => authApi.changePassword(current, newPw),
     onSuccess: () => {
       setDone(true);
@@ -344,6 +345,7 @@ function ProfileSection() {
   }
 
   const updateM = useMutation({
+    meta: { inlineError: true },
     mutationFn: () => authApi.updateMyProfile({ name, email }),
     onSuccess: () => {
       void refreshProfile();
@@ -417,6 +419,7 @@ function DeskProfileSection() {
   }
 
   const updateM = useMutation({
+    meta: { inlineError: true },
     mutationFn: () => admin.updateDeskProfile({ name, tagline, email, website, city, phone, vat_number: vatNumber }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['desk-profile'] });

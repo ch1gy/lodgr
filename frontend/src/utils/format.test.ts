@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { addInterval, extractApiError } from './format';
+import { addInterval, describeTtl, extractApiError } from './format';
 
 // These cases mirror backend/tests/invoices.rs::advance_recur_date_* so the form's
 // default "next date" agrees with what the scheduler will actually produce.
@@ -54,5 +54,21 @@ describe('extractApiError', () => {
 
   it('returns the fallback for undefined', () => {
     expect(extractApiError(undefined, 'custom')).toBe('custom');
+  });
+});
+
+// Mirrors backend/tests/magic.rs::describe_ttl_uses_the_configured_lifetime.
+describe('describeTtl', () => {
+  it('words whole hours and minutes the way the email does', () => {
+    expect(describeTtl(3600)).toBe('1 hour');
+    expect(describeTtl(86400)).toBe('24 hours');
+    expect(describeTtl(900)).toBe('15 minutes');
+    expect(describeTtl(60)).toBe('1 minute');
+    expect(describeTtl(5400)).toBe('90 minutes');
+  });
+
+  it('never reports a zero or negative lifetime', () => {
+    expect(describeTtl(0)).toBe('1 minute');
+    expect(describeTtl(-5)).toBe('1 minute');
   });
 });

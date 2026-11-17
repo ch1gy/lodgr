@@ -61,14 +61,36 @@ async function doRefresh(): Promise<string | null> {
   }
 }
 
+// Covers /auth/refresh, /auth/login, /auth/magic and /auth/magic-request.
+const NO_REFRESH_PATHS = ['/auth/refresh', '/auth/login', '/auth/magic'];
+
+/**
+ * Requests made with responseType 'blob' (PDFs, reports) receive their JSON
+ * error body as a Blob. Parse it back so `extractApiError` can read `.error`.
+ */
+export async function unwrapBlobError(error: AxiosError): Promise<void> {
+  const data = error.response?.data;
+  if (typeof Blob !== 'undefined' && data instanceof Blob && data.type.includes('json')) {
+    try {
+      error.response!.data = JSON.parse(await data.text());
+    } catch { /* not JSON after all — leave the Blob */ }
+  }
+}
+
 api.interceptors.response.use(
   (r) => r,
   async (error: AxiosError) => {
+    await unwrapBlobError(error);
     const original = error.config as AxiosRequestConfig & { _retry?: boolean; _skipRefresh?: boolean };
     if (!original) return Promise.reject(error);
 
-    // Don't recurse on the refresh endpoint itself, or on opt-out requests.
-    if (original.url?.includes('/auth/refresh') || original._skipRefresh) {
+    // Don't recurse on the refresh endpoint itself, on opt-out requests, or on
+    // the sign-in endpoints: a 401 there means "wrong password / bad link", not
+    // "your session expired", and the caller needs to show that error.
+    if (
+      original._skipRefresh ||
+      NO_REFRESH_PATHS.some((p) => original.url?.includes(p))
+    ) {
       return Promise.reject(error);
     }
 
@@ -83,8 +105,8 @@ api.interceptors.response.use(
         (original.headers as Record<string, string>)['Authorization'] = `Bearer ${newToken}`;
         return api(original);
       }
-      // Refresh failed — session is dead, send the user to login.
-      window.location.href = '/login';
+      // Refresh failed — doRefresh already cleared the token, so ProtectedRoute
+      // redirects to /login without a full page reload.
     }
 
     return Promise.reject(error);

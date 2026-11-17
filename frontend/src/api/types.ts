@@ -52,6 +52,9 @@ export interface ThreadEntry {
   id: string;
   ticket_id: string;
   sender_id: string;
+  /** 'desk' | 'client', or 'unknown' when the sender's account no longer exists. */
+  sender_role: 'desk' | 'client' | 'unknown';
+  sender_name: string;
   body: string;
   attachment_path: string | null;
   created_at: string;
@@ -222,6 +225,8 @@ export interface DeskProfile {
 
 export interface MagicLinkResponse {
   url: string;
+  /** Seconds until the link can no longer be redeemed. */
+  expires_in_secs: number;
 }
 
 // ── Me (GET /auth/me) ────────────────────────────────────────────────────────

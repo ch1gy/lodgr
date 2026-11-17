@@ -121,7 +121,10 @@ pub async fn get(
         thread: result
             .thread
             .into_iter()
-            .map(ThreadEntryResponse::from)
+            .map(|e| {
+                let sender = result.senders.get(&e.sender_id);
+                ThreadEntryResponse::new(e, sender)
+            })
             .collect(),
     }))
 }

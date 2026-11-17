@@ -50,6 +50,16 @@ export const tickets = {
     return api.post<{ id: string }>(`/tickets/${id}/message`, fd).then((r) => r.data);
   },
 
+  /** Download an attachment by the `attachment_path` stored on a thread entry. */
+  downloadAttachment(attachmentPath: string): Promise<Blob> {
+    const [ticketDir, name] = attachmentPath.split('/').filter(Boolean).slice(1);
+    return api
+      .get<Blob>(`/uploads/${encodeURIComponent(ticketDir)}/${encodeURIComponent(name)}`, {
+        responseType: 'blob',
+      })
+      .then((r) => r.data);
+  },
+
   // ── Internal notes (desk only) ──────────────────────────────────────────
   listNotes(id: string): Promise<InternalNote[]> {
     return api.get<InternalNote[]>(`/tickets/${id}/notes`).then((r) => r.data);

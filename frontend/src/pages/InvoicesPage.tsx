@@ -5,6 +5,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { admin } from '../api/admin';
 import { api } from '../api/client';
 import { addInterval, downloadBlob, extractApiError } from '../utils/format';
+import { emitToast } from '../utils/toastBus';
 import { useAuth } from '../auth/AuthContext';
 import type {
   Client,
@@ -815,7 +816,7 @@ function InvoiceRow({ invoice, clientName, isDesk, onStatusChange, onDelete, onD
               Edit ✎
             </button>
           )}
-          {isDesk && invoice.status !== 'draft' && invoice.recurring && (
+          {isDesk && invoice.status !== 'draft' && invoice.status !== 'void' && invoice.recurring && (
             <button type="button" className="lg-inv-act" onClick={(e) => { e.stopPropagation(); onEditRecurrence(invoice); }}>
               Recurrence ↻
             </button>
@@ -978,22 +979,30 @@ export function InvoicesPage() {
   const voidTarget = invoices.find((i) => i.id === confirmVoidId);
 
   async function handlePreview(id: string) {
-    const html = await api
-      .get<string>(`/admin/invoices/${id}/print`, { responseType: 'text' })
-      .then((r) => r.data);
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const win = window.open(url, '_blank');
-    if (win) win.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+    try {
+      const html = await api
+        .get<string>(`/admin/invoices/${id}/print`, { responseType: 'text' })
+        .then((r) => r.data);
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, '_blank');
+      if (win) win.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+    } catch (e) {
+      emitToast({ kind: 'error', text: extractApiError(e, 'Could not open the invoice preview') });
+    }
   }
 
   async function handleDownload(id: string) {
-    const blob = await api
-      .get<Blob>(`/admin/invoices/${id}/pdf`, { responseType: 'blob' })
-      .then((r) => r.data);
-    const inv = invoices.find((i) => i.id === id);
-    const num = inv?.number ?? id.slice(0, 8);
-    downloadBlob(blob, `invoice-${num}.pdf`);
+    try {
+      const blob = await api
+        .get<Blob>(`/admin/invoices/${id}/pdf`, { responseType: 'blob' })
+        .then((r) => r.data);
+      const inv = invoices.find((i) => i.id === id);
+      const num = inv?.number ?? id.slice(0, 8);
+      downloadBlob(blob, `invoice-${num}.pdf`);
+    } catch (e) {
+      emitToast({ kind: 'error', text: extractApiError(e, 'Could not download the invoice') });
+    }
   }
 
   const counts = useMemo(() => {
